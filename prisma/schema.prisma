@@ -1,0 +1,447 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String         @id @default(cuid())
+  email             String         @unique
+  name              String
+  password          String
+  role              UserRole       @default(USER)
+  avatarUrl         String?
+  isActive          Boolean        @default(true)
+  passwordChangedAt DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  sessions          Session[]
+  fetchJobs         FetchJob[]     @relation("FetchJobInitiator")
+  activityLogs      ActivityLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+  GUEST
+}
+
+model Season {
+  id                 String              @id @default(cuid())
+  year               Int                 @unique
+  name               String
+  startDate          DateTime
+  endDate            DateTime
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  teams              Team[]
+  games              Game[]
+  standings          Standing[]
+  competitions       CompetitionSeason[]
+  playerStats        PlayerStatistics[]
+  teamStats          TeamStatistics[]
+  fetchJobs          FetchJob[]
+
+  @@map("seasons")
+}
+
+model Competition {
+  id             String              @id @default(cuid())
+  apiFootballId  Int?                @unique
+  countryEn      String?
+  countryHe      String?
+  nameEn         String
+  nameHe         String
+  logoUrl        String?
+  type           CompetitionType     @default(LEAGUE)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  seasons        CompetitionSeason[]
+  games          Game[]
+  standings      Standing[]
+  playerStats    PlayerStatistics[]
+  teamStats      TeamStatistics[]
+  fetchJobs      FetchJob[]
+
+  @@map("competitions")
+}
+
+enum CompetitionType {
+  LEAGUE
+  CUP
+  EUROPE
+}
+
+model CompetitionSeason {
+  id                  String     @id @default(cuid())
+  competitionId       String
+  seasonId            String
+  stageNameEn         String?
+  stageNameHe         String?
+  currentRoundEn      String?
+  currentRoundHe      String?
+  standingsUpdatedAt  DateTime?
+  fixturesUpdatedAt   DateTime?
+  playersUpdatedAt    DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  competition         Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  season              Season      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([competitionId, seasonId])
+  @@index([seasonId])
+  @@map("competition_seasons")
+}
+
+model Team {
+  id              String           @id @default(cuid())
+  apiFootballId   Int?
+  nameEn          String
+  nameHe          String
+  shortNameEn     String?
+  shortNameHe     String?
+  code            String?
+  logoUrl         String?
+  coach           String?
+  coachHe         String?
+  founded         Int?
+  countryEn       String?
+  countryHe       String?
+  cityEn          String?
+  cityHe          String?
+  stadiumEn       String?
+  stadiumHe       String?
+  additionalInfo  Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  seasonId        String
+  season          Season           @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  players         Player[]
+  homeGames       Game[]           @relation("HomeTeam")
+  awayGames       Game[]           @relation("AwayTeam")
+  standings       Standing[]
+  teamStats       TeamStatistics[]
+  fetchJobs       FetchJob[]
+  homeEvents      GameEvent[]      @relation("EventTeam")
+  uploads         MediaAsset[]     @relation("TeamAssets")
+
+  @@unique([nameEn, seasonId])
+  @@unique([apiFootballId, seasonId])
+  @@index([seasonId])
+  @@map("teams")
+}
+
+model Player {
+  id                String              @id @default(cuid())
+  apiFootballId     Int?
+  nameEn            String
+  nameHe            String
+  firstNameEn       String?
+  firstNameHe       String?
+  lastNameEn        String?
+  lastNameHe        String?
+  jerseyNumber      Int?
+  photoUrl          String?
+  position          String?
+  nationalityEn     String?
+  nationalityHe     String?
+  birthDate         DateTime?
+  additionalInfo    Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  teamId            String
+  team              Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  events            GameEvent[]         @relation("PrimaryPlayer")
+  relatedEvents     GameEvent[]         @relation("RelatedPlayer")
+  playerStats       PlayerStatistics[]
+  uploads           MediaAsset[]        @relation("PlayerAssets")
+
+  @@unique([jerseyNumber, teamId])
+  @@unique([apiFootballId, teamId])
+  @@index([teamId])
+  @@map("players")
+}
+
+model Game {
+  id                  String            @id @default(cuid())
+  apiFootballId       Int?              @unique
+  externalRef         String?
+  roundNameEn         String?
+  roundNameHe         String?
+  venueNameEn         String?
+  venueNameHe         String?
+  refereeEn           String?
+  refereeHe           String?
+  dateTime            DateTime
+  homeScore           Int?
+  awayScore           Int?
+  status              GameStatus        @default(SCHEDULED)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  homeTeamId          String
+  homeTeam            Team              @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayTeamId          String
+  awayTeam            Team              @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  seasonId            String
+  season              Season            @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  competitionId       String?
+  competition         Competition?      @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  events              GameEvent[]
+  gameStats           GameStatistics?
+  fetchJobs           FetchJob[]
+  activityLogs        ActivityLog[]
+
+  @@index([seasonId, competitionId])
+  @@map("games")
+}
+
+enum GameStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model GameEvent {
+  id               String         @id @default(cuid())
+  apiFootballId    Int?
+  minute           Int
+  extraMinute      Int?
+  type             EventType
+  team             String
+  notesEn          String?
+  notesHe          String?
+  icon             String?
+  sortOrder        Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  gameId           String
+  game             Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  teamId           String?
+  eventTeam        Team?          @relation("EventTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  playerId         String?
+  player           Player?        @relation("PrimaryPlayer", fields: [playerId], references: [id], onDelete: SetNull)
+  relatedPlayerId  String?
+  relatedPlayer    Player?        @relation("RelatedPlayer", fields: [relatedPlayerId], references: [id], onDelete: SetNull)
+  assistPlayerId   String?
+
+  @@index([gameId, sortOrder])
+  @@map("game_events")
+}
+
+enum EventType {
+  GOAL
+  ASSIST
+  YELLOW_CARD
+  RED_CARD
+  SUBSTITUTION_IN
+  SUBSTITUTION_OUT
+  OWN_GOAL
+  PENALTY_GOAL
+  PENALTY_MISSED
+}
+
+model Standing {
+  id              String       @id @default(cuid())
+  position        Int
+  played          Int          @default(0)
+  wins            Int          @default(0)
+  draws           Int          @default(0)
+  losses          Int          @default(0)
+  goalsFor        Int          @default(0)
+  goalsAgainst    Int          @default(0)
+  points          Int          @default(0)
+  cleanSheets     Int          @default(0)
+  form            String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  teamId          String
+  team            Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  seasonId        String
+  season          Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  competitionId   String?
+  competition     Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+
+  @@unique([seasonId, teamId])
+  @@index([competitionId, position])
+  @@map("standings")
+}
+
+model PlayerStatistics {
+  id              String       @id @default(cuid())
+  goals           Int          @default(0)
+  assists         Int          @default(0)
+  yellowCards     Int          @default(0)
+  redCards        Int          @default(0)
+  gamesPlayed     Int          @default(0)
+  minutesPlayed   Int          @default(0)
+  starts          Int          @default(0)
+  shots           Int          @default(0)
+  keyPasses       Int          @default(0)
+  seasonLabelEn   String?
+  seasonLabelHe   String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  playerId        String
+  player          Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  seasonId        String?
+  season          Season?      @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  competitionId   String?
+  competition     Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+
+  @@unique([playerId, seasonId, competitionId])
+  @@index([playerId, seasonId])
+  @@map("player_statistics")
+}
+
+model TeamStatistics {
+  id                String       @id @default(cuid())
+  totalGoals        Int          @default(0)
+  totalAssists      Int          @default(0)
+  goalsConceded     Int          @default(0)
+  cleanSheets       Int          @default(0)
+  wins              Int          @default(0)
+  draws             Int          @default(0)
+  losses            Int          @default(0)
+  points            Int          @default(0)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  teamId            String
+  team              Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  seasonId          String?
+  season            Season?      @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  competitionId     String?
+  competition       Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, seasonId, competitionId])
+  @@index([teamId, seasonId])
+  @@map("team_statistics")
+}
+
+model GameStatistics {
+  id                     String   @id @default(cuid())
+  homeTeamPossession     Float?
+  awayTeamPossession     Float?
+  homeShotsOnTarget      Int?
+  awayShotsOnTarget      Int?
+  homeShotsTotal         Int?
+  awayShotsTotal         Int?
+  homeCorners            Int?
+  awayCorners            Int?
+  homeFouls              Int?
+  awayFouls              Int?
+  homeOffsides           Int?
+  awayOffsides           Int?
+  homeYellowCards        Int?
+  awayYellowCards        Int?
+  homeRedCards           Int?
+  awayRedCards           Int?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  gameId                 String   @unique
+  game                   Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@map("game_statistics")
+}
+
+model ActivityLog {
+  id         String            @id @default(cuid())
+  entityType ActivityEntityType
+  entityId   String
+  actionHe   String
+  details    Json?
+  timestamp  DateTime          @default(now())
+  userId     String?
+  user       User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  gameId     String?
+  game       Game?             @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp])
+  @@map("activity_logs")
+}
+
+enum ActivityEntityType {
+  GAME
+  PLAYER
+  TEAM
+  FETCH_JOB
+  COMPETITION
+  USER
+}
+
+model FetchJob {
+  id              String         @id @default(cuid())
+  status          FetchJobStatus @default(PENDING)
+  labelHe         String
+  requestPayload  Json
+  progressPercent Int            @default(0)
+  stepsJson       Json
+  resultJson      Json?
+  errorMessage    String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  initiatedById   String?
+  initiatedBy     User?          @relation("FetchJobInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
+  seasonId        String?
+  season          Season?        @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  competitionId   String?
+  competition     Competition?   @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  teamId          String?
+  team            Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  gameId          String?
+  game            Game?          @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("fetch_jobs")
+}
+
+enum FetchJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model MediaAsset {
+  id             String          @id @default(cuid())
+  kind           MediaAssetKind
+  title          String?
+  originalName   String?
+  filePath       String
+  mimeType       String?
+  sizeBytes      Int?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  teamId         String?
+  team           Team?           @relation("TeamAssets", fields: [teamId], references: [id], onDelete: SetNull)
+  playerId       String?
+  player         Player?         @relation("PlayerAssets", fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@map("media_assets")
+}
+
+enum MediaAssetKind {
+  TEAM_LOGO
+  PLAYER_PHOTO
+  BANNER
+}

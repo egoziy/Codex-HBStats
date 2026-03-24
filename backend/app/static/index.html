@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מרכז נתוני כדורגל ישראלי</title>
+  <style>
+    :root {
+      --bg: #f5efe4;
+      --panel: rgba(255, 252, 246, 0.96);
+      --ink: #1f1b18;
+      --muted: #6f665e;
+      --line: #ddcfbd;
+      --accent: #9d1f1f;
+      --accent-2: #d3a34a;
+      --good: #14673c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(157, 31, 31, 0.16), transparent 34%),
+        radial-gradient(circle at top left, rgba(211, 163, 74, 0.18), transparent 28%),
+        linear-gradient(180deg, #f8f3eb 0%, #efe4d0 100%);
+      min-height: 100vh;
+    }
+    .shell { max-width: 1320px; margin: 0 auto; padding: 22px; }
+    .hero, .panel {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.7);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 18px 38px rgba(98, 72, 27, 0.08);
+    }
+    .hero {
+      background: linear-gradient(135deg, rgba(157,31,31,0.95), rgba(117,20,20,0.92));
+      color: #fff7ef;
+    }
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .hero h1 { margin: 0 0 8px; font-size: clamp(2rem, 4vw, 3.2rem); }
+    .hero p { margin: 8px 0 0; max-width: 760px; }
+    .hero-actions { display: grid; gap: 10px; width: 220px; }
+    .hero-link, select, button {
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: inherit;
+    }
+    .hero-link {
+      text-decoration: none;
+      color: #fff7ef;
+      border: 1px solid rgba(255,255,255,0.35);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.08);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+      margin-top: 20px;
+    }
+    .stack { display: grid; gap: 12px; }
+    label { display: block; font-weight: 700; margin-bottom: 6px; }
+    select, button {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fffdf8;
+    }
+    button {
+      border: none;
+      background: linear-gradient(135deg, var(--accent-2), #f0c875);
+      color: #2d1a06;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .checks { display: grid; gap: 10px; margin: 10px 0 4px; }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 13px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.7);
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 16px;
+    }
+    .results { display: grid; gap: 10px; margin-top: 14px; }
+    .result-item {
+      border-right: 4px solid var(--accent);
+      background: #fff8f1;
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .muted { color: var(--muted); }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,0.75);
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: right;
+      vertical-align: top;
+    }
+    th { background: rgba(157,31,31,0.08); }
+    .table-link {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 5px 10px;
+      background: rgba(20, 103, 60, 0.08);
+      color: var(--good);
+      font-size: 0.9rem;
+    }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 720px) {
+      .shell { padding: 14px; }
+      .hero, .panel { padding: 16px; }
+      .toolbar { grid-template-columns: 1fr; }
+      .hero-actions { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <div class="hero-top">
+        <div>
+          <h1 id="title">מרכז נתוני כדורגל ישראלי</h1>
+          <p id="heroText">בחרו עונה, ליגה וקבוצה, משכו נתונים מ-API Football רק אם הם עוד לא שמורים, ונהלו את המידע המקומי בעברית.</p>
+          <p id="statusText">טוען את מצב השרת...</p>
+        </div>
+        <div class="hero-actions">
+          <select id="languageSelect">
+            <option value="he">עברית</option>
+            <option value="en">English</option>
+          </select>
+          <a class="hero-link" id="editorLink" href="/editor">לעמוד העריכה</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="layout">
+      <aside class="panel">
+        <h2 id="fetchTitle">משיכה ושמירה</h2>
+        <div class="stack">
+          <div>
+            <label for="seasonSelect" id="seasonLabel">עונה</label>
+            <select id="seasonSelect"></select>
+          </div>
+          <div>
+            <label for="leagueSelect" id="leagueLabel">ליגה</label>
+            <select id="leagueSelect"></select>
+          </div>
+          <div>
+            <label for="teamSelect" id="teamLabel">קבוצה</label>
+            <select id="teamSelect"></select>
+          </div>
+        </div>
+        <div class="checks">
+          <label class="check"><input id="fixturesCheck" type="checkbox" checked> <span id="fixturesText">משחקים / תוצאות</span></label>
+          <label class="check"><input id="playersCheck" type="checkbox" checked> <span id="playersText">סטטיסטיקת שחקנים</span></label>
+          <label class="check"><input id="standingsCheck" type="checkbox" checked> <span id="standingsText">טבלה</span></label>
+        </div>
+        <button id="fetchButton">משוך ושמור</button>
+        <div class="results" id="resultsPanel">
+          <div class="muted" id="emptyResults">עדיין לא בוצעה משיכה.</div>
+        </div>
+      </aside>
+
+      <main class="panel">
+        <h2 id="browseTitle">עיון בנתונים המקומיים</h2>
+        <div class="toolbar">
+          <div>
+            <label for="browseType" id="browseTypeLabel">סוג נתונים</label>
+            <select id="browseType">
+              <option value="fixtures">משחקים</option>
+              <option value="player_stats">שחקנים</option>
+              <option value="standings">טבלה</option>
+            </select>
+          </div>
+          <div>
+            <label for="browseSeason" id="browseSeasonLabel">עונה</label>
+            <select id="browseSeason"></select>
+          </div>
+          <div>
+            <label for="browseLeague" id="browseLeagueLabel">ליגה</label>
+            <select id="browseLeague"></select>
+          </div>
+          <div>
+            <label for="browseTeam" id="browseTeamLabel">קבוצה</label>
+            <select id="browseTeam"></select>
+          </div>
+          <div>
+            <button id="refreshBrowse">רענן טבלה</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="dataTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const TEXT = {
+      he: {
+        title: "מרכז נתוני כדורגל ישראלי",
+        hero: "בחרו עונה, ליגה וקבוצה, משכו נתונים מ-API Football רק אם הם עוד לא שמורים, ונהלו את המידע המקומי בעברית.",
+        editor: "לעמוד העריכה",
+        fetchTitle: "משיכה ושמירה",
+        season: "עונה",
+        league: "ליגה",
+        team: "קבוצה",
+        fixtures: "משחקים / תוצאות",
+        players: "סטטיסטיקת שחקנים",
+        standings: "טבלה",
+        fetch: "משוך ושמור",
+        noResults: "עדיין לא בוצעה משיכה.",
+        browse: "עיון בנתונים המקומיים",
+        browseType: "סוג נתונים",
+        refresh: "רענן טבלה",
+        allSeasons: "כל העונות",
+        allLeagues: "כל הליגות",
+        allTeams: "כל הקבוצות",
+        loading: "טוען...",
+        selectBoth: "יש לבחור גם ליגה וגם קבוצה.",
+        fetching: "מושך נתונים...",
+        cached: "מהמטמון",
+        fetched: "נשמר עכשיו",
+        records: "רשומות",
+        leagueWide: "ברמת הליגה",
+        openGame: "למשחק",
+        noRows: "אין נתונים שמורים עבור הבחירה הזו.",
+        backendReady: "השרת מוכן",
+        defaultTeam: "קבוצת ברירת מחדל",
+        database: "מסד נתונים",
+        columns: {
+          season: "עונה",
+          league_name: "ליגה",
+          team_name: "קבוצה",
+          fetched_at: "נשמר בתאריך",
+          record_count: "כמות",
+          fixture_id: "מזהה",
+          date: "תאריך",
+          status: "סטטוס",
+          league: "ליגה",
+          home: "מארחת",
+          away: "אורחת",
+          score: "תוצאה",
+          game_page: "עמוד משחק",
+          player: "שחקן",
+          age: "גיל",
+          position: "עמדה",
+          appearances: "הופעות",
+          minutes: "דקות",
+          goals: "שערים",
+          assists: "בישולים",
+          yellow: "צהובים",
+          red: "אדומים",
+          jersey_number: "מספר",
+          rank: "מקום",
+          team: "קבוצה",
+          points: "נקודות",
+          played: "משחקים",
+          goal_diff: "הפרש",
+          form: "כושר"
+        }
+      },
+      en: {
+        title: "Israeli Football Data Hub",
+        hero: "Choose a season, league, and team, fetch from API Football only when needed, and manage the local bilingual dataset.",
+        editor: "Open Editor",
+        fetchTitle: "Fetch & Save",
+        season: "Season",
+        league: "League",
+        team: "Team",
+        fixtures: "Fixtures / Results",
+        players: "Player Stats",
+        standings: "Standings",
+        fetch: "Fetch & Save",
+        noResults: "No fetches yet.",
+        browse: "Browse Local Data",
+        browseType: "Data Type",
+        refresh: "Refresh Table",
+        allSeasons: "All seasons",
+        allLeagues: "All leagues",
+        allTeams: "All teams",
+        loading: "Loading...",
+        selectBoth: "Please select both a league and a team.",
+        fetching: "Fetching data...",
+        cached: "cached",
+        fetched: "fetched now",
+        records: "records",
+        leagueWide: "League-wide",
+        openGame: "Open game",
+        noRows: "No local rows for this selection.",
+        backendReady: "Backend ready",
+        defaultTeam: "Default team",
+        database: "Database",
+        columns: {
+          season: "season",
+          league_name: "league",
+          team_name: "team",
+          fetched_at: "saved at",
+          record_count: "count",
+          fixture_id: "id",
+          date: "date",
+          status: "status",
+          league: "league",
+          home: "home",
+          away: "away",
+          score: "score",
+          game_page: "game page",
+          player: "player",
+          age: "age",
+          position: "position",
+          appearances: "apps",
+          minutes: "minutes",
+          goals: "goals",
+          assists: "assists",
+          yellow: "yellow",
+          red: "red",
+          jersey_number: "shirt",
+          rank: "rank",
+          team: "team",
+          points: "points",
+          played: "played",
+          goal_diff: "goal diff",
+          form: "form"
+        }
+      }
+    };
+
+    const state = { language: "he", status: null, leagues: [], teams: [] };
+    const seasonSelect = document.getElementById("seasonSelect");
+    const leagueSelect = document.getElementById("leagueSelect");
+    const teamSelect = document.getElementById("teamSelect");
+    const browseSeason = document.getElementById("browseSeason");
+    const browseLeague = document.getElementById("browseLeague");
+    const browseTeam = document.getElementById("browseTeam");
+    const browseType = document.getElementById("browseType");
+    const resultsPanel = document.getElementById("resultsPanel");
+    const statusText = document.getElementById("statusText");
+
+    function t() { return TEXT[state.language]; }
+    function escapeHtml(value) {
+      return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+    }
+    async function fetchJson(url, options) {
+      const response = await fetch(url, options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Request failed");
+      return data;
+    }
+    function applyText() {
+      document.documentElement.lang = state.language;
+      document.documentElement.dir = state.language === "he" ? "rtl" : "ltr";
+      document.title = t().title;
+      document.getElementById("title").textContent = t().title;
+      document.getElementById("heroText").textContent = t().hero;
+      document.getElementById("editorLink").textContent = t().editor;
+      document.getElementById("fetchTitle").textContent = t().fetchTitle;
+      document.getElementById("seasonLabel").textContent = t().season;
+      document.getElementById("leagueLabel").textContent = t().league;
+      document.getElementById("teamLabel").textContent = t().team;
+      document.getElementById("fixturesText").textContent = t().fixtures;
+      document.getElementById("playersText").textContent = t().players;
+      document.getElementById("standingsText").textContent = t().standings;
+      document.getElementById("fetchButton").textContent = t().fetch;
+      document.getElementById("browseTitle").textContent = t().browse;
+      document.getElementById("browseTypeLabel").textContent = t().browseType;
+      document.getElementById("browseSeasonLabel").textContent = t().season;
+      document.getElementById("browseLeagueLabel").textContent = t().league;
+      document.getElementById("browseTeamLabel").textContent = t().team;
+      document.getElementById("refreshBrowse").textContent = t().refresh;
+      document.getElementById("emptyResults").textContent = t().noResults;
+    }
+    function setSelectOptions(select, items, placeholder, valueKey, labelKey) {
+      select.innerHTML = placeholder ? `<option value="">${escapeHtml(placeholder)}</option>` : "";
+      items.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = String(item[valueKey]);
+        option.textContent = item[labelKey];
+        if (item.league_name) option.dataset.nameEn = item.league_name;
+        if (item.team_name) option.dataset.nameEn = item.team_name;
+        select.appendChild(option);
+      });
+    }
+    function fillSeasons(seasons) {
+      seasonSelect.innerHTML = seasons.map((season) => `<option value="${season}">${season}</option>`).join("");
+      setSelectOptions(browseSeason, seasons.map((season) => ({ value: season, label: season })), t().allSeasons, "value", "label");
+      seasonSelect.value = String(seasons[seasons.length - 1]);
+    }
+    async function loadStatus() {
+      state.status = await fetchJson("/api/status");
+      fillSeasons(state.status.seasons);
+      if (state.status.default_team) {
+        const teamName = state.language === "he" ? state.status.default_team.name_he : state.status.default_team.name_en;
+        statusText.textContent = `${t().backendReady}. ${t().defaultTeam}: ${teamName}. ${t().database}: ${state.status.database_path}`;
+      } else {
+        statusText.textContent = `${t().backendReady}. ${t().database}: ${state.status.database_path}`;
+      }
+    }
+    async function loadLeagues() {
+      leagueSelect.innerHTML = `<option>${t().loading}</option>`;
+      const data = await fetchJson(`/api/options/leagues?season=${seasonSelect.value}&language=${state.language}`);
+      state.leagues = data.leagues;
+      setSelectOptions(leagueSelect, data.leagues, "", "league_id", "display_name");
+      setSelectOptions(browseLeague, data.leagues, t().allLeagues, "league_id", "display_name");
+      if (data.leagues.length) {
+        leagueSelect.value = String(data.leagues[0].league_id);
+        await loadTeams();
+      }
+    }
+    async function loadTeams() {
+      if (!leagueSelect.value) return;
+      teamSelect.innerHTML = `<option>${t().loading}</option>`;
+      const data = await fetchJson(`/api/options/teams?season=${seasonSelect.value}&league_id=${leagueSelect.value}&language=${state.language}`);
+      state.teams = data.teams;
+      setSelectOptions(teamSelect, data.teams, "", "team_id", "display_name");
+      setSelectOptions(browseTeam, data.teams, t().allTeams, "team_id", "display_name");
+      if (data.teams.length) {
+        teamSelect.value = String(data.teams[0].team_id);
+      }
+    }
+    function renderResults(items) {
+      if (!items.length) {
+        resultsPanel.innerHTML = `<div class="muted">${escapeHtml(t().noResults)}</div>`;
+        return;
+      }
+      resultsPanel.innerHTML = items.map((item) => {
+        const leagueName = state.language === "he" ? (item.league_name_he || item.league_name_en) : (item.league_name_en || item.league_name_he);
+        const teamName = state.language === "he" ? (item.team_name_he || item.team_name_en) : (item.team_name_en || item.team_name_he);
+        return `<div class="result-item"><strong>${escapeHtml(item.data_type)}</strong><br>${escapeHtml(leagueName || "")}<br>${escapeHtml(teamName || t().leagueWide)}<br><span class="pill">${escapeHtml(item.status === "cached" ? t().cached : t().fetched)}</span> ${escapeHtml(item.record_count)} ${escapeHtml(t().records)}</div>`;
+      }).join("");
+    }
+    function renderCell(column, value) {
+      if (column === "game_page" && value) {
+        return `<a class="table-link" href="${escapeHtml(value)}">${escapeHtml(t().openGame)}</a>`;
+      }
+      return escapeHtml(value ?? "");
+    }
+    function renderTable(rows) {
+      const thead = document.querySelector("#dataTable thead");
+      const tbody = document.querySelector("#dataTable tbody");
+      if (!rows.length) {
+        thead.innerHTML = "";
+        tbody.innerHTML = `<tr><td class="muted">${escapeHtml(t().noRows)}</td></tr>`;
+        return;
+      }
+      const sample = rows.find((row) => row.items.length)?.items[0] || {};
+      const columns = ["season", "league_name", "team_name", "fetched_at", "record_count", ...Object.keys(sample)];
+      thead.innerHTML = `<tr>${columns.map((column) => `<th>${escapeHtml(t().columns[column] || column)}</th>`).join("")}</tr>`;
+      const html = [];
+      rows.forEach((row) => {
+        if (!row.items.length) {
+          html.push(`<tr>${columns.map((column) => `<td>${renderCell(column, row[column])}</td>`).join("")}</tr>`);
+          return;
+        }
+        row.items.forEach((item, index) => {
+          html.push("<tr>");
+          columns.forEach((column) => {
+            if (["season", "league_name", "team_name", "fetched_at", "record_count"].includes(column)) {
+              html.push(`<td>${index === 0 ? renderCell(column, row[column]) : ""}</td>`);
+            } else {
+              html.push(`<td>${renderCell(column, item[column])}</td>`);
+            }
+          });
+          html.push("</tr>");
+        });
+      });
+      tbody.innerHTML = html.join("");
+    }
+    function buildBrowseQuery() {
+      const params = new URLSearchParams({ language: state.language });
+      if (browseSeason.value) params.set("season", browseSeason.value);
+      if (browseLeague.value) params.set("league_id", browseLeague.value);
+      if (browseType.value !== "standings" && browseTeam.value) params.set("team_id", browseTeam.value);
+      return params.toString();
+    }
+    async function loadBrowseTable() {
+      browseTeam.disabled = browseType.value === "standings";
+      const data = await fetchJson(`/api/data/${browseType.value}?${buildBrowseQuery()}`);
+      renderTable(data.rows);
+    }
+    async function fetchData() {
+      const league = state.leagues.find((item) => String(item.league_id) === leagueSelect.value);
+      const team = state.teams.find((item) => String(item.team_id) === teamSelect.value);
+      if (!league || !team) {
+        resultsPanel.innerHTML = `<div class="result-item">${escapeHtml(t().selectBoth)}</div>`;
+        return;
+      }
+      resultsPanel.innerHTML = `<div class="muted">${escapeHtml(t().fetching)}</div>`;
+      const payload = {
+        season: Number(seasonSelect.value),
+        league_id: Number(leagueSelect.value),
+        league_name_en: league.league_name,
+        team_id: Number(teamSelect.value),
+        team_name_en: team.team_name,
+        fixtures: document.getElementById("fixturesCheck").checked,
+        player_stats: document.getElementById("playersCheck").checked,
+        standings: document.getElementById("standingsCheck").checked
+      };
+      const data = await fetchJson("/api/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      renderResults(data.results);
+      browseSeason.value = seasonSelect.value;
+      browseLeague.value = leagueSelect.value;
+      browseTeam.value = teamSelect.value;
+      await loadBrowseTable();
+    }
+    document.getElementById("languageSelect").addEventListener("change", async (event) => {
+      state.language = event.target.value;
+      applyText();
+      await loadStatus();
+      await loadLeagues();
+      await loadBrowseTable();
+    });
+    seasonSelect.addEventListener("change", loadLeagues);
+    leagueSelect.addEventListener("change", loadTeams);
+    document.getElementById("fetchButton").addEventListener("click", fetchData);
+    document.getElementById("refreshBrowse").addEventListener("click", loadBrowseTable);
+    browseType.addEventListener("change", loadBrowseTable);
+    browseSeason.addEventListener("change", loadBrowseTable);
+    browseLeague.addEventListener("change", loadBrowseTable);
+    browseTeam.addEventListener("change", loadBrowseTable);
+    async function init() {
+      applyText();
+      await loadStatus();
+      await loadLeagues();
+      await loadBrowseTable();
+    }
+    init().catch((error) => { statusText.textContent = error.message; });
+  </script>
+</body>
+</html>

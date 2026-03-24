@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>עמוד עריכה</title>
+  <style>
+    body{margin:0;font-family:"Segoe UI",Tahoma,sans-serif;background:#f6efe2;color:#221b17}
+    .shell{max-width:1320px;margin:0 auto;padding:18px}.card{background:#fffdf8;border:1px solid #decfbc;border-radius:22px;padding:18px;box-shadow:0 16px 30px rgba(88,66,27,.08)}
+    .hero{background:linear-gradient(135deg,#a12020,#741919);color:#fff7ef}.hero a{color:#fff7ef;text-decoration:none;border:1px solid rgba(255,255,255,.35);padding:10px 14px;border-radius:999px}
+    .grid,.controls,.cols2,.cols3{display:grid;gap:14px}.controls{grid-template-columns:repeat(4,minmax(130px,1fr));margin-top:16px}.grid{grid-template-columns:1.05fr 1fr}.cols2{grid-template-columns:1fr 1fr}.cols3{grid-template-columns:repeat(3,1fr)}
+    label{display:block;font-weight:700;margin-bottom:6px}input,select,textarea,button{width:100%;font:inherit;border-radius:14px;padding:11px 12px;border:1px solid #decfbc;background:#fffdf9}textarea{min-height:84px;resize:vertical}
+    button{border:none;background:linear-gradient(135deg,#d6a54c,#efc979);font-weight:700;cursor:pointer}.secondary{background:#fff7eb;border:1px solid #decfbc}.danger{background:#cc5b5b;color:#fff}
+    .tabs{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.tab{padding:10px 16px;border-radius:999px;border:1px solid #decfbc;background:#fffdf8;cursor:pointer}.tab.active{background:#f0c875}
+    .panel{display:none}.panel.active{display:block}.list,.table,.events{border:1px solid #decfbc;border-radius:18px;background:#fff;overflow:auto}.item,.game,.event{padding:12px 14px;border-bottom:1px solid #decfbc;cursor:pointer}.item.active,.game.active,.event.active{background:#fbe9e9}
+    table{width:100%;border-collapse:collapse;min-width:640px}th,td{padding:10px 12px;border-bottom:1px solid #decfbc;text-align:right}th{background:#f8ecec}.preview{width:150px;height:150px;object-fit:cover;border-radius:18px;border:1px solid #decfbc;background:#efe4d4}
+    .small{color:#6f655d}.ok{color:#16673d;font-weight:700}.line{display:grid;grid-template-columns:1.4fr 1fr 1fr 80px 110px;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid #decfbc}
+    .legend{display:flex;gap:10px;flex-wrap:wrap}.badge{border:1px solid #decfbc;border-radius:999px;padding:7px 10px;background:#fff7eb}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:16px}.modal.open{display:flex}.modal-card{width:min(560px,100%);background:#fffdf8;border-radius:20px;padding:18px}
+    @media (max-width:1100px){.controls,.grid,.cols2,.cols3,.line{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="card hero">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <h1 style="margin:0 0 8px">עמוד עריכה</h1>
+          <div id="statusText">טוען נתוני מערכת...</div>
+        </div>
+        <a href="/">חזרה לעמוד הראשי</a>
+      </div>
+      <div class="controls">
+        <div><label>עונה</label><select id="seasonSelect"></select></div>
+        <div><label>ליגה</label><select id="leagueSelect"></select></div>
+        <div><label>קבוצה</label><select id="teamSelect"></select></div>
+        <div><label>&nbsp;</label><button id="loadButton">טען נתוני עריכה</button></div>
+      </div>
+    </section>
+
+    <div class="tabs">
+      <button class="tab active" data-panel="teamPanel">קבוצה וצוות</button>
+      <button class="tab" data-panel="playersPanel">שחקנים</button>
+      <button class="tab" data-panel="gamesPanel">משחקים</button>
+    </div>
+
+    <section id="teamPanel" class="panel active">
+      <div class="grid">
+        <div class="card">
+          <h2>פרופיל קבוצה</h2>
+          <div class="grid">
+            <div><img id="teamLogoPreview" class="preview" alt="לוגו"><div style="margin-top:10px"><input id="teamLogoFile" type="file" accept="image/*"></div></div>
+            <div>
+              <div class="cols2">
+                <div><label>שם בעברית</label><input id="teamNameHe"></div>
+                <div><label>שם באנגלית</label><input id="teamNameEn"></div>
+              </div>
+              <div class="cols2" style="margin-top:12px">
+                <div><label>שם המאמן</label><input id="coachName"></div>
+                <div><label>תפקיד המאמן</label><input id="coachTitle"></div>
+              </div>
+              <div style="margin-top:12px"><label>הערות</label><textarea id="teamNotes"></textarea></div>
+              <div style="margin-top:12px"><button id="saveTeamButton">שמור פרופיל קבוצה</button></div>
+              <div id="teamStatus" class="small"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>אנשי צוות</h2>
+          <div class="cols3">
+            <div><label>שם בעברית</label><input id="memberNameHe"></div>
+            <div><label>שם באנגלית</label><input id="memberNameEn"></div>
+            <div><label>סדר תצוגה</label><input id="memberOrder" type="number" value="0"></div>
+          </div>
+          <div class="cols2" style="margin-top:12px">
+            <div><label>תפקיד בעברית</label><input id="memberRoleHe"></div>
+            <div><label>תפקיד באנגלית</label><input id="memberRoleEn"></div>
+          </div>
+          <div class="cols2" style="margin-top:12px">
+            <div><label>ביוגרפיה בעברית</label><textarea id="memberBioHe"></textarea></div>
+            <div><label>ביוגרפיה באנגלית</label><textarea id="memberBioEn"></textarea></div>
+          </div>
+          <div style="margin-top:12px"><label>תמונה</label><input id="memberPhoto" type="file" accept="image/*"></div>
+          <div class="cols3" style="margin-top:12px">
+            <button id="saveMemberButton">שמור</button>
+            <button id="resetMemberButton" class="secondary">נקה</button>
+            <button id="deleteMemberButton" class="danger">מחק</button>
+          </div>
+          <div id="memberStatus" class="small"></div>
+        </div>
+      </div>
+      <section class="card" style="margin-top:18px">
+        <h2>טבלת אנשי צוות</h2>
+        <div class="table"><table><thead><tr><th>שם</th><th>תפקיד</th><th>תקציר</th></tr></thead><tbody id="memberTableBody"><tr><td colspan="3" class="small">טענו קבוצה כדי לערוך אנשי צוות.</td></tr></tbody></table></div>
+      </section>
+    </section>
+
+    <section id="playersPanel" class="panel">
+      <div class="grid">
+        <div class="card"><h2>רשימת שחקנים</h2><div id="playerList" class="list"><div class="item small">טענו קבוצה כדי לראות שחקנים.</div></div></div>
+        <div class="card">
+          <h2>עריכת שחקן</h2>
+          <div class="grid">
+            <div><img id="playerPhotoPreview" class="preview" alt="שחקן"><div style="margin-top:10px"><input id="playerPhoto" type="file" accept="image/*"></div></div>
+            <div>
+              <div class="cols2">
+                <div><label>שם בעברית</label><input id="playerNameHe"></div>
+                <div><label>שם באנגלית</label><input id="playerNameEn"></div>
+              </div>
+              <div class="cols2" style="margin-top:12px">
+                <div><label>עמדה חופשית</label><input id="positionOverride"></div>
+                <div><label>קבוצת עמדה</label><select id="positionGroup"><option value="goalkeeper">שוער</option><option value="defender">הגנה</option><option value="midfielder">קישור</option><option value="attacker">התקפה</option><option value="unknown">לא הוגדר</option></select></div>
+              </div>
+              <div style="margin-top:12px"><label>מספר חולצה</label><input id="jerseyNumber"></div>
+              <div style="margin-top:12px"><button id="savePlayerButton">שמור שחקן</button></div>
+              <div id="playerStatus" class="small"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="gamesPanel" class="panel">
+      <div class="grid">
+        <div class="card"><h2>רשימת משחקים</h2><div id="gameList" class="list"><div class="game small">טענו קבוצה כדי לראות משחקים.</div></div></div>
+        <div class="card"><h2>כותרת משחק</h2><div id="gameHeader" class="small">בחרו משחק מהרשימה.</div><div id="legend" class="legend" style="margin-top:12px"></div></div>
+      </div>
+      <div class="grid" style="margin-top:18px">
+        <div class="card"><h2>הרכב למשחק</h2><div id="lineupEditor" class="list"><div class="item small">לא נבחר משחק.</div></div></div>
+        <div class="card">
+          <h2>אירועים</h2>
+          <div class="cols3">
+            <div><label>סוג אירוע</label><select id="eventType"></select></div>
+            <div><label>שחקן</label><select id="eventPlayer"></select></div>
+            <div><label>שחקן קשור</label><select id="eventRelatedPlayer"></select></div>
+          </div>
+          <div class="cols3" style="margin-top:12px">
+            <div><label>דקה</label><input id="eventMinute" type="number" min="0"></div>
+            <div><label>תוספת</label><input id="eventExtraMinute" type="number" min="0"></div>
+            <div><label>קבוצה</label><select id="eventTeam"></select></div>
+          </div>
+          <div class="cols2" style="margin-top:12px">
+            <div><label>הערה בעברית</label><textarea id="eventNotesHe"></textarea></div>
+            <div><label>הערה באנגלית</label><textarea id="eventNotesEn"></textarea></div>
+          </div>
+          <div class="cols3" style="margin-top:12px">
+            <button id="saveEventButton">שמור אירוע</button>
+            <button id="resetEventButton" class="secondary">נקה</button>
+            <button id="deleteEventButton" class="danger">מחק</button>
+          </div>
+          <div id="eventStatus" class="small"></div>
+          <div id="eventList" class="events" style="margin-top:14px"><div class="event small">אין אירועים למשחק.</div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="memberModal" class="modal"><div class="modal-card"><h3 id="modalName"></h3><p id="modalRole" class="small"></p><img id="modalPhoto" class="preview" alt="תמונה"><p id="modalBioHe"></p><p id="modalBioEn" class="small"></p><button id="closeModalButton" class="secondary">סגור</button></div></div>
+
+  <script>
+    const state={leagues:[],teams:[],players:[],personnel:[],games:[],selectedPlayer:null,selectedPersonnel:null,selectedGame:null,gameData:null,selectedEvent:null};
+    const el=(id)=>document.getElementById(id);
+    const escapeHtml=(v)=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+    async function fetchJson(url,options){const r=await fetch(url,options);const d=await r.json();if(!r.ok)throw new Error(d.detail||"Request failed");return d;}
+    function scope(){return{season:el("seasonSelect").value,league_id:el("leagueSelect").value,team_id:el("teamSelect").value};}
+    function setOk(id,text){el(id).textContent=text;el(id).className="ok";}
+    function setNote(id,text){el(id).textContent=text;el(id).className="small";}
+    function activate(panelId){document.querySelectorAll(".tab").forEach((b)=>b.classList.toggle("active",b.dataset.panel===panelId));document.querySelectorAll(".panel").forEach((p)=>p.classList.toggle("active",p.id===panelId));}
+    async function loadStatus(){const s=await fetchJson("/api/status");el("seasonSelect").innerHTML=s.seasons.map((season)=>`<option value="${season}">${season}</option>`).join("");el("seasonSelect").value=String(s.seasons[s.seasons.length-1]);el("statusText").textContent=s.startup_error?`השרת עלה, אבל הייתה שגיאה באתחול: ${s.startup_error}`:`השרת מוכן. מסד הנתונים: ${s.database_path}`;el("eventType").innerHTML=s.event_types.map((item)=>`<option value="${item.value}">${item.icon} ${item.label_he}</option>`).join("");}
+    async function loadLeagues(){const data=await fetchJson(`/api/options/leagues?season=${el("seasonSelect").value}&language=he`);state.leagues=data.leagues;el("leagueSelect").innerHTML=data.leagues.map((league)=>`<option value="${league.league_id}">${escapeHtml(league.display_name)}</option>`).join("");if(data.leagues.length)await loadTeams();}
+    async function loadTeams(){const data=await fetchJson(`/api/options/teams?season=${el("seasonSelect").value}&league_id=${el("leagueSelect").value}&language=he`);state.teams=data.teams;el("teamSelect").innerHTML=data.teams.map((team)=>`<option value="${team.team_id}">${escapeHtml(team.display_name)}</option>`).join("");}
+    async function loadTeamProfile(){const s=scope();const data=await fetchJson(`/api/editor/team?season=${s.season}&league_id=${s.league_id}&team_id=${s.team_id}`);el("teamNameHe").value=data.team_name_he||"";el("teamNameEn").value=data.team_name_en||"";el("coachName").value=data.coach_name||"";el("coachTitle").value=data.coach_title||"";el("teamNotes").value=data.notes||"";el("teamLogoPreview").src=data.logo_url||"";setNote("teamStatus","");}
+    async function loadPersonnel(){const s=scope();const data=await fetchJson(`/api/editor/team-personnel?season=${s.season}&league_id=${s.league_id}&team_id=${s.team_id}`);state.personnel=data.members;state.selectedPersonnel=null;renderPersonnel();resetMember();}
+    function fillMember(member){el("memberNameHe").value=member?.name_he||"";el("memberNameEn").value=member?.name_en||"";el("memberRoleHe").value=member?.role_he||"";el("memberRoleEn").value=member?.role_en||"";el("memberBioHe").value=member?.bio_he||"";el("memberBioEn").value=member?.bio_en||"";el("memberOrder").value=member?.display_order??0;el("memberPhoto").value="";}
+    function resetMember(){state.selectedPersonnel=null;fillMember(null);setNote("memberStatus","");}
+    function renderPersonnel(){const body=el("memberTableBody");if(!state.personnel.length){body.innerHTML='<tr><td colspan="3" class="small">עדיין אין אנשי צוות שמורים.</td></tr>';return;}body.innerHTML=state.personnel.map((m)=>`<tr class="member-row" data-id="${m.id}"><td>${escapeHtml(m.name_he||m.name_en)}</td><td>${escapeHtml(m.role_he||m.role_en)}</td><td>${escapeHtml((m.bio_he||m.bio_en||"").slice(0,90))}</td></tr>`).join("");body.querySelectorAll(".member-row").forEach((row)=>row.addEventListener("click",()=>{const member=state.personnel.find((m)=>m.id===Number(row.dataset.id));state.selectedPersonnel=member;fillMember(member);el("modalName").textContent=member.name_he||member.name_en||"";el("modalRole").textContent=member.role_he||member.role_en||"";el("modalPhoto").src=member.photo_url||"";el("modalBioHe").textContent=member.bio_he||"אין ביוגרפיה בעברית.";el("modalBioEn").textContent=member.bio_en||"No English bio.";el("memberModal").classList.add("open");}));}
+    async function saveTeam(){const s=scope();const form=new FormData();form.append("season",s.season);form.append("league_id",s.league_id);form.append("team_id",s.team_id);form.append("team_name_he_override",el("teamNameHe").value.trim());form.append("team_name_en_override",el("teamNameEn").value.trim());form.append("coach_name",el("coachName").value.trim());form.append("coach_title",el("coachTitle").value.trim());form.append("notes",el("teamNotes").value.trim());if(el("teamLogoFile").files[0])form.append("logo",el("teamLogoFile").files[0]);const data=await fetchJson("/api/editor/team-logo",{method:"POST",body:form});if(data.logo_url)el("teamLogoPreview").src=data.logo_url;setOk("teamStatus","פרטי הקבוצה נשמרו.");await loadTeams();}
+    async function saveMember(){const s=scope();const form=new FormData();if(state.selectedPersonnel?.id)form.append("personnel_id",state.selectedPersonnel.id);form.append("season",s.season);form.append("league_id",s.league_id);form.append("team_id",s.team_id);form.append("name_he",el("memberNameHe").value.trim());form.append("name_en",el("memberNameEn").value.trim());form.append("role_he",el("memberRoleHe").value.trim());form.append("role_en",el("memberRoleEn").value.trim());form.append("bio_he",el("memberBioHe").value.trim());form.append("bio_en",el("memberBioEn").value.trim());form.append("display_order",el("memberOrder").value||"0");if(el("memberPhoto").files[0])form.append("photo",el("memberPhoto").files[0]);await fetchJson("/api/editor/team-personnel",{method:"POST",body:form});setOk("memberStatus","איש הצוות נשמר.");await loadPersonnel();}
+    async function deleteMember(){if(!state.selectedPersonnel?.id){setNote("memberStatus","בחרו איש צוות למחיקה.");return;}await fetchJson(`/api/editor/team-personnel/${state.selectedPersonnel.id}`,{method:"DELETE"});setOk("memberStatus","איש הצוות נמחק.");await loadPersonnel();}
+    async function loadPlayers(){const s=scope();const data=await fetchJson(`/api/editor/players?season=${s.season}&league_id=${s.league_id}&team_id=${s.team_id}`);state.players=data.players;state.selectedPlayer=data.players[0]||null;renderPlayers();fillPlayer();}
+    function fillPlayer(){const p=state.selectedPlayer;el("playerNameHe").value=p?.player_name_he||"";el("playerNameEn").value=p?.player_name_en||"";el("positionOverride").value=p?.position_override||p?.base_position||"";el("positionGroup").value=p?.position_group||"unknown";el("jerseyNumber").value=p?.jersey_number||"";el("playerPhotoPreview").src=p?.photo_url||"";el("playerPhoto").value="";setNote("playerStatus","");}
+    function renderPlayers(){const wrap=el("playerList");if(!state.players.length){wrap.innerHTML='<div class="item small">אין שחקנים שמורים. משכו קודם נתוני שחקנים מהעמוד הראשי.</div>';return;}const order=["goalkeeper","defender","midfielder","attacker","unknown"];const groups={};state.players.forEach((p)=>{const key=p.position_group||"unknown";(groups[key]??=[]).push(p);});wrap.innerHTML=order.filter((key)=>groups[key]?.length).map((key)=>`<div><div style="padding:10px 14px;background:#f8ecec;font-weight:700">${escapeHtml(groups[key][0].position_group_he)}</div>${groups[key].map((p)=>`<div class="item ${state.selectedPlayer&&state.selectedPlayer.player_id===p.player_id?"active":""}" data-id="${p.player_id}"><strong>${escapeHtml(p.player_name_he||p.player_name_en)}</strong><br><span class="small">${escapeHtml(p.position_override||p.base_position||"")}${p.jersey_number?" | #"+escapeHtml(p.jersey_number):""}</span></div>`).join("")}</div>`).join("");wrap.querySelectorAll(".item[data-id]").forEach((item)=>item.addEventListener("click",()=>{state.selectedPlayer=state.players.find((p)=>p.player_id===Number(item.dataset.id));renderPlayers();fillPlayer();}));}
+    async function savePlayer(){if(!state.selectedPlayer){setNote("playerStatus","בחרו שחקן.");return;}const s=scope();const form=new FormData();form.append("player_id",state.selectedPlayer.player_id);form.append("season",s.season);form.append("league_id",s.league_id);form.append("team_id",s.team_id);form.append("player_name_he_override",el("playerNameHe").value.trim());form.append("player_name_en_override",el("playerNameEn").value.trim());form.append("position_override",el("positionOverride").value.trim());form.append("jersey_number",el("jerseyNumber").value.trim());if(el("playerPhoto").files[0])form.append("photo",el("playerPhoto").files[0]);await fetchJson("/api/editor/player",{method:"POST",body:form});setOk("playerStatus","השחקן נשמר.");await loadPlayers();}
+    async function loadGames(){const s=scope();const data=await fetchJson(`/api/editor/games?season=${s.season}&league_id=${s.league_id}&team_id=${s.team_id}&language=he`);state.games=data.games;state.selectedGame=data.games[0]||null;renderGames();if(state.selectedGame)await loadGame(state.selectedGame.fixture_id);}
+    function renderGames(){const wrap=el("gameList");if(!state.games.length){wrap.innerHTML='<div class="game small">אין משחקים שמורים לעונה/קבוצה הזו.</div>';return;}wrap.innerHTML=state.games.map((g)=>`<div class="game ${state.selectedGame&&state.selectedGame.fixture_id===g.fixture_id?"active":""}" data-id="${g.fixture_id}"><strong>${escapeHtml(g.home_name)} - ${escapeHtml(g.away_name)}</strong><br><span class="small">${escapeHtml(g.date||"")}</span><br>${escapeHtml(g.score||"-")}</div>`).join("");wrap.querySelectorAll(".game[data-id]").forEach((row)=>row.addEventListener("click",async()=>{state.selectedGame=state.games.find((g)=>g.fixture_id===Number(row.dataset.id));renderGames();await loadGame(Number(row.dataset.id));}));}
+    function fillEventSelects(){const players=state.gameData?.home_team?.all_players||[];const opts=['<option value="">ללא</option>',...players.map((p)=>`<option value="${p.player_id}">${escapeHtml(p.player_name_he||p.player_name_en)}</option>`)].join("");el("eventPlayer").innerHTML=opts;el("eventRelatedPlayer").innerHTML=opts;const teams=[state.gameData?.home_team,state.gameData?.away_team].filter(Boolean);el("eventTeam").innerHTML=teams.map((t)=>`<option value="${t.team_id}">${escapeHtml(t.team_name_he||t.team_name_en||t.display_name)}</option>`).join("");}
+    async function loadGame(fixtureId){const s=scope();state.gameData=await fetchJson(`/api/editor/game/${fixtureId}?team_id=${s.team_id}&language=he`);el("gameHeader").innerHTML=`<strong>${escapeHtml(state.gameData.home_team?.display_name||"")} ${escapeHtml(state.gameData.fixture.score||"-")} ${escapeHtml(state.gameData.away_team?.display_name||"")}</strong><br><span class="small">${escapeHtml(state.gameData.fixture.date||"")} | ${escapeHtml(state.gameData.fixture.status||"")}</span>`;el("legend").innerHTML=state.gameData.legend.map((item)=>`<span class="badge">${escapeHtml(item.icon)} ${escapeHtml(item.label)}</span>`).join("");fillEventSelects();renderLineup();renderEvents();resetEvent();}
+    function currentPlayerState(player){const pool=[...(state.gameData?.home_team?.starters||[]).flatMap((g)=>g.players),...(state.gameData?.home_team?.bench||[]),...(state.gameData?.home_team?.not_in_squad||[])];return pool.find((p)=>p.player_id===player.player_id)||player;}
+    function renderLineup(){const wrap=el("lineupEditor");const players=state.gameData?.home_team?.all_players||[];if(!players.length){wrap.innerHTML='<div class="item small">אין שחקנים זמינים למשחק הזה.</div>';return;}wrap.innerHTML=players.map((player)=>{const c=currentPlayerState(player);return `<div class="line"><div><strong>${escapeHtml(player.player_name_he||player.player_name_en)}</strong><br><span class="small">${escapeHtml(player.base_position||"")}</span></div><select data-role="status" data-id="${player.player_id}"><option value="starter" ${c.lineup_status==="starter"?"selected":""}>פתח</option><option value="bench" ${c.lineup_status==="bench"?"selected":""}>ספסל</option><option value="not_in_squad" ${c.lineup_status==="not_in_squad"?"selected":""}>לא בסגל</option></select><select data-role="group" data-id="${player.player_id}"><option value="goalkeeper" ${c.position_group==="goalkeeper"?"selected":""}>שוער</option><option value="defender" ${c.position_group==="defender"?"selected":""}>הגנה</option><option value="midfielder" ${c.position_group==="midfielder"?"selected":""}>קישור</option><option value="attacker" ${c.position_group==="attacker"?"selected":""}>התקפה</option><option value="unknown" ${c.position_group==="unknown"?"selected":""}>לא הוגדר</option></select><input data-role="sort" data-id="${player.player_id}" type="number" value="${c.sort_order||0}"><button data-role="save" data-id="${player.player_id}">שמור</button></div>`;}).join("");wrap.querySelectorAll('button[data-role="save"]').forEach((btn)=>btn.addEventListener("click",async()=>{const id=Number(btn.dataset.id);await fetchJson("/api/editor/game-lineup",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fixture_id:state.gameData.fixture_id,team_id:Number(scope().team_id),player_id:id,lineup_status:wrap.querySelector(`select[data-role="status"][data-id="${id}"]`).value,position_group:wrap.querySelector(`select[data-role="group"][data-id="${id}"]`).value,sort_order:Number(wrap.querySelector(`input[data-role="sort"][data-id="${id}"]`).value||0)})});await loadGame(state.gameData.fixture_id);}));}
+    function fillEvent(){const e=state.selectedEvent;el("eventType").value=e?.event_type||el("eventType").value;el("eventPlayer").value=e?.player_id||"";el("eventRelatedPlayer").value=e?.related_player_id||"";el("eventMinute").value=e?.minute??"";el("eventExtraMinute").value=e?.extra_minute??"";el("eventTeam").value=e?.team_id||scope().team_id;el("eventNotesHe").value=e?.notes_he||"";el("eventNotesEn").value=e?.notes_en||"";setNote("eventStatus","");}
+    function resetEvent(){state.selectedEvent=null;fillEvent();}
+    function renderEvents(){const wrap=el("eventList");const events=state.gameData?.events||[];if(!events.length){wrap.innerHTML='<div class="event small">אין אירועים למשחק.</div>';return;}wrap.innerHTML=events.map((e)=>`<div class="event ${state.selectedEvent&&state.selectedEvent.id===e.id?"active":""}" data-id="${e.id}"><strong>${escapeHtml(e.icon)} ${escapeHtml(e.event_label)} - ${escapeHtml(e.player_name||"")}</strong><br><span class="small">${escapeHtml(e.minute_label)} ${escapeHtml(e.related_player_name||"")}</span><br>${escapeHtml(e.notes||"")}</div>`).join("");wrap.querySelectorAll(".event[data-id]").forEach((node)=>node.addEventListener("click",()=>{state.selectedEvent=state.gameData.events.find((e)=>e.id===Number(node.dataset.id));fillEvent();renderEvents();}));}
+    async function saveEvent(){if(!state.gameData)return;const form=new FormData();if(state.selectedEvent?.id)form.append("event_id",state.selectedEvent.id);form.append("fixture_id",state.gameData.fixture_id);form.append("team_id",el("eventTeam").value);if(el("eventPlayer").value)form.append("player_id",el("eventPlayer").value);if(el("eventRelatedPlayer").value)form.append("related_player_id",el("eventRelatedPlayer").value);form.append("event_type",el("eventType").value);if(el("eventMinute").value)form.append("minute",el("eventMinute").value);if(el("eventExtraMinute").value)form.append("extra_minute",el("eventExtraMinute").value);form.append("notes_he",el("eventNotesHe").value.trim());form.append("notes_en",el("eventNotesEn").value.trim());await fetchJson("/api/editor/game-event",{method:"POST",body:form});setOk("eventStatus","האירוע נשמר.");await loadGame(state.gameData.fixture_id);}
+    async function deleteEvent(){if(!state.selectedEvent?.id){setNote("eventStatus","בחרו אירוע למחיקה.");return;}await fetchJson(`/api/editor/game-event/${state.selectedEvent.id}`,{method:"DELETE"});setOk("eventStatus","האירוע נמחק.");await loadGame(state.gameData.fixture_id);}
+    async function loadAll(){await loadTeamProfile();await loadPersonnel();await loadPlayers();await loadGames();}
+    document.querySelectorAll(".tab").forEach((btn)=>btn.addEventListener("click",()=>activate(btn.dataset.panel)));
+    el("seasonSelect").addEventListener("change",loadLeagues);el("leagueSelect").addEventListener("change",loadTeams);el("loadButton").addEventListener("click",loadAll);
+    el("saveTeamButton").addEventListener("click",saveTeam);el("saveMemberButton").addEventListener("click",saveMember);el("resetMemberButton").addEventListener("click",resetMember);el("deleteMemberButton").addEventListener("click",deleteMember);
+    el("savePlayerButton").addEventListener("click",savePlayer);el("saveEventButton").addEventListener("click",saveEvent);el("resetEventButton").addEventListener("click",resetEvent);el("deleteEventButton").addEventListener("click",deleteEvent);
+    el("closeModalButton").addEventListener("click",()=>el("memberModal").classList.remove("open"));el("memberModal").addEventListener("click",(event)=>{if(event.target.id==="memberModal")el("memberModal").classList.remove("open");});
+    async function init(){await loadStatus();await loadLeagues();await loadAll();}init().catch((error)=>{el("statusText").textContent=error.message;});
+  </script>
+</body>
+</html>

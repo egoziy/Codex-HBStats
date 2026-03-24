@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>עמוד משחק</title>
+  <style>
+    body{margin:0;font-family:"Segoe UI",Tahoma,sans-serif;background:#f6efe3;color:#211a17}
+    .shell{max-width:1200px;margin:0 auto;padding:18px}.card{background:#fffdf8;border:1px solid #decfbc;border-radius:22px;padding:18px;box-shadow:0 16px 30px rgba(88,66,27,.08)}
+    .hero{background:linear-gradient(135deg,#a12020,#731818);color:#fff7ef}.hero a{color:#fff7ef;text-decoration:none;border:1px solid rgba(255,255,255,.35);padding:10px 14px;border-radius:999px}
+    .grid,.teams{display:grid;gap:16px}.grid{grid-template-columns:1fr 1fr}.teams{grid-template-columns:1fr 1fr}.score{font-size:2.2rem;font-weight:800;text-align:center}
+    .legend{display:flex;gap:10px;flex-wrap:wrap}.badge{border:1px solid #decfbc;border-radius:999px;padding:7px 10px;background:#fff7eb}
+    .list,.events{border:1px solid #decfbc;border-radius:18px;background:#fff;overflow:auto}.player,.event{padding:12px 14px;border-bottom:1px solid #decfbc}
+    .group-title{margin:0;padding:10px 14px;background:#f7eded;font-size:1rem}.small{color:#6e655d}
+    @media (max-width:900px){.grid,.teams{grid-template-columns:1fr}.shell{padding:14px}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="card hero">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <h1 style="margin:0 0 8px">עמוד משחק</h1>
+          <div id="metaText">טוען נתוני משחק...</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a href="/">חזרה</a>
+          <a id="editorLink" href="/editor">לעמוד העריכה</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:18px">
+      <div class="teams">
+        <div><h2 id="homeName"></h2></div>
+        <div><h2 id="awayName" style="text-align:left"></h2></div>
+      </div>
+      <div class="score" id="scoreText"></div>
+      <div id="fixtureInfo" class="small" style="text-align:center"></div>
+      <div id="legend" class="legend" style="margin-top:14px"></div>
+    </section>
+
+    <div class="grid" style="margin-top:18px">
+      <section class="card">
+        <h2>הרכב מקומי</h2>
+        <div id="homeSquad" class="list"></div>
+      </section>
+      <section class="card">
+        <h2>אירועי משחק</h2>
+        <div id="events" class="events"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const params=new URLSearchParams(location.search);
+    const fixtureId=params.get("fixture_id");
+    const teamId=params.get("team_id");
+    async function fetchJson(url){const r=await fetch(url);const d=await r.json();if(!r.ok)throw new Error(d.detail||"Request failed");return d;}
+    function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
+    function renderSquad(team){const root=document.getElementById("homeSquad");if(!team){root.innerHTML='<div class="player small">אין נתוני סגל שמורים.</div>';return;}const starters=(team.starters||[]).map((group)=>`<div><h3 class="group-title">${escapeHtml(group.label)}</h3>${group.players.map((player)=>`<div class="player"><strong>${escapeHtml(player.player_name_he||player.player_name_en)}</strong><br><span class="small">#${escapeHtml(player.jersey_number||"-")} | ${escapeHtml(player.position_override||player.base_position||"")}</span></div>`).join("")}</div>`).join("");const bench=`<div><h3 class="group-title">מחליפים</h3>${(team.bench||[]).length?(team.bench||[]).map((player)=>`<div class="player"><strong>${escapeHtml(player.player_name_he||player.player_name_en)}</strong><br><span class="small">#${escapeHtml(player.jersey_number||"-")}</span></div>`).join(""):'<div class="player small">אין מחליפים שמורים.</div>'}</div>`;root.innerHTML=starters+bench;}
+    function renderEvents(events){const root=document.getElementById("events");if(!events.length){root.innerHTML='<div class="event small">אין אירועים שמורים למשחק הזה.</div>';return;}root.innerHTML=events.map((event)=>`<div class="event"><strong>${escapeHtml(event.icon)} ${escapeHtml(event.event_label)}</strong><br>${escapeHtml(event.player_name||"")} ${event.related_player_name?`<span class="small">| ${escapeHtml(event.related_player_name)}</span>`:""}<br><span class="small">${escapeHtml(event.minute_label)} ${escapeHtml(event.notes||"")}</span></div>`).join("");}
+    async function init(){if(!fixtureId)throw new Error("חסר fixture_id בכתובת.");const qs=new URLSearchParams({language:"he"});if(teamId)qs.set("team_id",teamId);const data=await fetchJson(`/api/game/${fixtureId}?${qs.toString()}`);document.getElementById("homeName").textContent=data.home_team?.display_name||"";document.getElementById("awayName").textContent=data.away_team?.display_name||"";document.getElementById("scoreText").textContent=data.fixture.score||"-";document.getElementById("fixtureInfo").textContent=`${data.fixture.date||""} | ${data.fixture.status||""} | ${data.fixture.venue||""}`;document.getElementById("metaText").textContent=`${data.league_name||""} | עונה ${data.season}`;document.getElementById("editorLink").href=`/editor`;document.getElementById("legend").innerHTML=data.legend.map((item)=>`<span class="badge">${escapeHtml(item.icon)} ${escapeHtml(item.label)}</span>`).join("");renderSquad(data.home_team);renderEvents(data.events||[]);}
+    init().catch((error)=>{document.getElementById("metaText").textContent=error.message;});
+  </script>
+</body>
+</html>

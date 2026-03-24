@@ -1,0 +1,17 @@
+{
+  "title": "Soccer League Management",
+  "description": "Comprehensive soccer league statistics and management system",
+  "login": "Login",
+  "register": "Register",
+  "email": "Email",
+  "password": "Password",
+  "name": "Name",
+  "submit": "Submit",
+  "logout": "Logout",
+  "admin": "Admin",
+  "standings": "League Standings",
+  "teams": "Teams",
+  "players": "Players",
+  "games": "Games",
+  "statistics": "Statistics"
+}

@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local databases and uploads
+*.sqlite3
+uploads/
+public/uploads/
+.postgres-data/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+uvicorn*.log
+
+# Coverage / caches
+coverage/
+
+# IDE / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Prisma
+prisma/dev.db*
