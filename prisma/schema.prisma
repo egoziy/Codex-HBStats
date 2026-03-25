@@ -58,6 +58,15 @@ model Season {
   competitions       CompetitionSeason[]
   playerStats        PlayerStatistics[]
   teamStats          TeamStatistics[]
+  leaderboardEntries CompetitionLeaderboardEntry[]
+  injuries           PlayerInjury[]
+  transfers          PlayerTransfer[]
+  trophies           PlayerTrophy[]
+  predictions        GamePrediction[]
+  headToHeadEntries  GameHeadToHeadEntry[]
+  oddsValues         GameOddsValue[]
+  liveSnapshots      LiveGameSnapshot[]
+  sidelinedEntries   PlayerSidelinedEntry[]
   fetchJobs          FetchJob[]
 
   @@map("seasons")
@@ -79,6 +88,12 @@ model Competition {
   standings      Standing[]
   playerStats    PlayerStatistics[]
   teamStats      TeamStatistics[]
+  leaderboardEntries CompetitionLeaderboardEntry[]
+  injuries       PlayerInjury[]
+  predictions    GamePrediction[]
+  headToHeadEntries GameHeadToHeadEntry[]
+  oddsValues     GameOddsValue[]
+  liveSnapshots  LiveGameSnapshot[]
   fetchJobs      FetchJob[]
 
   @@map("competitions")
@@ -139,6 +154,9 @@ model Team {
   awayGames       Game[]           @relation("AwayTeam")
   standings       Standing[]
   teamStats       TeamStatistics[]
+  lineupEntries   GameLineupEntry[]
+  leaderboardEntries CompetitionLeaderboardEntry[]
+  injuries        PlayerInjury[]
   fetchJobs       FetchJob[]
   homeEvents      GameEvent[]      @relation("EventTeam")
   uploads         MediaAsset[]     @relation("TeamAssets")
@@ -172,6 +190,12 @@ model Player {
   events            GameEvent[]         @relation("PrimaryPlayer")
   relatedEvents     GameEvent[]         @relation("RelatedPlayer")
   playerStats       PlayerStatistics[]
+  lineupEntries     GameLineupEntry[]
+  leaderboardEntries CompetitionLeaderboardEntry[]
+  injuries          PlayerInjury[]
+  transfers         PlayerTransfer[]
+  trophies          PlayerTrophy[]
+  sidelinedEntries  PlayerSidelinedEntry[]
   uploads           MediaAsset[]        @relation("PlayerAssets")
 
   @@unique([jerseyNumber, teamId])
@@ -205,7 +229,13 @@ model Game {
   competitionId       String?
   competition         Competition?      @relation(fields: [competitionId], references: [id], onDelete: SetNull)
   events              GameEvent[]
+  lineupEntries       GameLineupEntry[]
   gameStats           GameStatistics?
+  injuries            PlayerInjury[]
+  prediction          GamePrediction?
+  headToHeadEntries   GameHeadToHeadEntry[]
+  oddsValues          GameOddsValue[]
+  liveSnapshot        LiveGameSnapshot?
   fetchJobs           FetchJob[]
   activityLogs        ActivityLog[]
 
@@ -257,6 +287,41 @@ enum EventType {
   OWN_GOAL
   PENALTY_GOAL
   PENALTY_MISSED
+}
+
+model GameLineupEntry {
+  id               String           @id @default(cuid())
+  apiFootballId    Int?
+  role             GameLineupRole
+  participantType  LineupParticipantType @default(PLAYER)
+  participantName  String?
+  formation        String?
+  positionName     String?
+  positionGrid     String?
+  jerseyNumber     Int?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  gameId           String
+  game             Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  teamId           String
+  team             Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  playerId         String?
+  player           Player?          @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@index([gameId, teamId, role])
+  @@unique([gameId, teamId, playerId, role, positionGrid])
+  @@map("game_lineup_entries")
+}
+
+enum GameLineupRole {
+  STARTER
+  SUBSTITUTE
+  COACH
+}
+
+enum LineupParticipantType {
+  PLAYER
+  COACH
 }
 
 model Standing {
@@ -338,6 +403,38 @@ model TeamStatistics {
   @@map("team_statistics")
 }
 
+model CompetitionLeaderboardEntry {
+  id                String                    @id @default(cuid())
+  category          LeaderboardCategory
+  rank              Int
+  value             Int                       @default(0)
+  gamesPlayed       Int                       @default(0)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  seasonId          String
+  season            Season                    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  competitionId     String
+  competition       Competition               @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  teamId            String?
+  team              Team?                     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  playerId          String?
+  player            Player?                   @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  apiFootballPlayerId Int?
+  playerNameEn      String?
+  playerNameHe      String?
+  teamNameEn        String?
+  teamNameHe        String?
+
+  @@index([seasonId, competitionId, category, rank])
+  @@unique([seasonId, competitionId, category, rank])
+  @@map("competition_leaderboard_entries")
+}
+
+enum LeaderboardCategory {
+  TOP_SCORERS
+  TOP_ASSISTS
+}
+
 model GameStatistics {
   id                     String   @id @default(cuid())
   homeTeamPossession     Float?
@@ -362,6 +459,249 @@ model GameStatistics {
   game                   Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@map("game_statistics")
+}
+
+model PlayerInjury {
+  id                  String       @id @default(cuid())
+  apiFootballPlayerId Int?
+  apiFootballTeamId   Int?
+  apiFootballFixtureId Int?
+  playerNameEn        String?
+  playerNameHe        String?
+  teamNameEn          String?
+  teamNameHe          String?
+  typeEn              String?
+  typeHe              String?
+  reasonEn            String?
+  reasonHe            String?
+  fixtureDate         DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  seasonId            String
+  season              Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  competitionId       String?
+  competition         Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  teamId              String?
+  team                Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  playerId            String?
+  player              Player?      @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  gameId              String?
+  game                Game?        @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  @@index([seasonId, competitionId, teamId])
+  @@index([apiFootballFixtureId, apiFootballPlayerId])
+  @@map("player_injuries")
+}
+
+model PlayerTransfer {
+  id                       String   @id @default(cuid())
+  apiFootballPlayerId      Int?
+  playerNameEn             String?
+  playerNameHe             String?
+  transferDate             DateTime?
+  transferTypeEn           String?
+  transferTypeHe           String?
+  sourceTeamApiFootballId  Int?
+  sourceTeamNameEn         String?
+  sourceTeamNameHe         String?
+  sourceTeamLogoUrl        String?
+  destinationTeamApiFootballId Int?
+  destinationTeamNameEn    String?
+  destinationTeamNameHe    String?
+  destinationTeamLogoUrl   String?
+  sourceUpdatedAt          DateTime?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  seasonId                 String
+  season                   Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerId                 String?
+  player                   Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@index([seasonId, transferDate])
+  @@index([apiFootballPlayerId, transferDate])
+  @@map("player_transfers")
+}
+
+model PlayerTrophy {
+  id                  String   @id @default(cuid())
+  apiFootballPlayerId Int?
+  playerNameEn        String?
+  playerNameHe        String?
+  leagueNameEn        String
+  leagueNameHe        String?
+  countryEn           String?
+  countryHe           String?
+  seasonLabel         String?
+  placeEn             String?
+  placeHe             String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  seasonId            String
+  season              Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerId            String?
+  player              Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@index([seasonId, leagueNameEn])
+  @@index([apiFootballPlayerId])
+  @@map("player_trophies")
+}
+
+model GamePrediction {
+  id                    String       @id @default(cuid())
+  winnerTeamApiFootballId Int?
+  winnerTeamNameEn      String?
+  winnerTeamNameHe      String?
+  winnerCommentEn       String?
+  winnerCommentHe       String?
+  adviceEn              String?
+  adviceHe              String?
+  winOrDraw             Boolean?
+  underOver             String?
+  goalsHome             String?
+  goalsAway             String?
+  percentHome           Int?
+  percentDraw           Int?
+  percentAway           Int?
+  comparisonJson        Json?
+  rawJson               Json?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  gameId                String       @unique
+  game                  Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  seasonId              String
+  season                Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  competitionId         String?
+  competition           Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+
+  @@index([seasonId, competitionId])
+  @@map("game_predictions")
+}
+
+model GameHeadToHeadEntry {
+  id                         String       @id @default(cuid())
+  apiFootballFixtureId       Int
+  relatedCompetitionApiId    Int?
+  relatedCompetitionNameEn   String?
+  relatedCompetitionNameHe   String?
+  relatedRoundEn             String?
+  relatedRoundHe             String?
+  relatedDate                DateTime?
+  homeTeamApiFootballId      Int?
+  homeTeamNameEn             String?
+  homeTeamNameHe             String?
+  awayTeamApiFootballId      Int?
+  awayTeamNameEn             String?
+  awayTeamNameHe             String?
+  homeScore                  Int?
+  awayScore                  Int?
+  winnerTeamApiFootballId    Int?
+  rawJson                    Json?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+  gameId                     String
+  game                       Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  seasonId                   String
+  season                     Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  competitionId              String?
+  competition                Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+
+  @@unique([gameId, apiFootballFixtureId])
+  @@index([seasonId, competitionId, relatedDate])
+  @@map("game_head_to_head_entries")
+}
+
+model GameOddsValue {
+  id                    String       @id @default(cuid())
+  bookmakerApiId        Int?
+  bookmakerName         String
+  marketApiId           Int?
+  marketName            String
+  selectionValue        String
+  odd                   String
+  oddsUpdatedAt         DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  gameId                String
+  game                  Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  seasonId              String
+  season                Season       @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  competitionId         String?
+  competition           Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+
+  @@unique([gameId, bookmakerApiId, marketApiId, selectionValue])
+  @@index([seasonId, competitionId, oddsUpdatedAt])
+  @@map("game_odds_values")
+}
+
+model LiveGameSnapshot {
+  id                    String       @id @default(cuid())
+  apiFootballFixtureId  Int          @unique
+  leagueApiFootballId   Int?
+  leagueNameEn          String?
+  leagueNameHe          String?
+  roundEn               String?
+  roundHe               String?
+  statusShort           String?
+  statusLong            String?
+  elapsed               Int?
+  extra                 Int?
+  snapshotAt            DateTime     @default(now())
+  fixtureDate           DateTime?
+  homeTeamApiFootballId Int?
+  homeTeamNameEn        String?
+  homeTeamNameHe        String?
+  awayTeamApiFootballId Int?
+  awayTeamNameEn        String?
+  awayTeamNameHe        String?
+  homeScore             Int?
+  awayScore             Int?
+  eventCount            Int          @default(0)
+  rawJson               Json?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  gameId                String?      @unique
+  game                  Game?        @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  seasonId              String?
+  season                Season?      @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  competitionId         String?
+  competition           Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+
+  @@index([seasonId, competitionId, snapshotAt])
+  @@map("live_game_snapshots")
+}
+
+model CountryCatalog {
+  id         String   @id @default(cuid())
+  nameEn     String   @unique
+  nameHe     String?
+  code       String?
+  flagUrl    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([code])
+  @@map("country_catalog")
+}
+
+model PlayerSidelinedEntry {
+  id            String    @id @default(cuid())
+  apiFootballPlayerId Int?
+  playerNameEn  String?
+  playerNameHe  String?
+  typeEn        String
+  typeHe        String?
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  seasonId      String
+  season        Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  playerId      String?
+  player        Player?   @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@unique([seasonId, apiFootballPlayerId, typeEn, startDate])
+  @@index([seasonId, startDate])
+  @@map("player_sidelined_entries")
 }
 
 model ActivityLog {

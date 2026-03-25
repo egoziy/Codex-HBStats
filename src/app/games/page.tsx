@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import prisma from '@/lib/prisma';
-import { getCompetitionDisplayName, getGameScoreDisplay } from '@/lib/competition-display';
+import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,7 +163,7 @@ export default async function GamesPage({
               <option value="all">כל המחזורים</option>
               {rounds.map((round) => (
                 <option key={round} value={round}>
-                  {round}
+                  {getRoundDisplayName(round, round)}
                 </option>
               ))}
             </select>
@@ -208,7 +208,7 @@ export default async function GamesPage({
                     <div className="mt-3 text-sm font-semibold text-stone-700">
                       {getCompetitionDisplayName(game.competition)}
                     </div>
-                    <div className="mt-1 text-xs text-stone-500">{game.roundNameHe || game.roundNameEn || 'ללא מחזור'}</div>
+                    <div className="mt-1 text-xs text-stone-500">{getRoundDisplayName(game.roundNameHe, game.roundNameEn)}</div>
                     <div className="mt-1 text-xs text-stone-500">
                       {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(game.dateTime)}
                     </div>

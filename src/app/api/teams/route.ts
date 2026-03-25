@@ -114,16 +114,35 @@ export async function PUT(request: NextRequest) {
   try {
     const existingTeam = await prisma.team.findUnique({
       where: { id },
-      select: { additionalInfo: true },
+      select: { additionalInfo: true, apiFootballId: true, nameEn: true },
     });
+
+    if (!existingTeam) {
+      return NextResponse.json(
+        { error: 'Team not found' },
+        { status: 404 }
+      );
+    }
+
+    const familyWhere = existingTeam.apiFootballId
+      ? { apiFootballId: existingTeam.apiFootballId }
+      : { nameEn: existingTeam.nameEn };
+
+    if (nameHe !== undefined || shortNameHe !== undefined) {
+      await prisma.team.updateMany({
+        where: familyWhere,
+        data: {
+          ...(nameHe !== undefined && { nameHe }),
+          ...(shortNameHe !== undefined && { shortNameHe: shortNameHe || null }),
+        },
+      });
+    }
 
     const team = await prisma.team.update({
       where: { id },
       data: {
         ...(nameEn && { nameEn }),
-        ...(nameHe && { nameHe }),
         ...(shortNameEn !== undefined && { shortNameEn: shortNameEn || null }),
-        ...(shortNameHe !== undefined && { shortNameHe: shortNameHe || null }),
         ...(coach !== undefined && { coach }),
         ...(coachHe !== undefined && { coachHe: coachHe || null }),
         ...(logoUrl !== undefined && { logoUrl }),

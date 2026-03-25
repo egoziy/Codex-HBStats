@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import prisma from '@/lib/prisma';
-import { getCompetitionDisplayName, getGameScoreDisplay } from '@/lib/competition-display';
+import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
 
 const eventLabels: Record<string, string> = {
   GOAL: '⚽ שער',
@@ -43,6 +43,13 @@ export default async function GamePage({ params }: { params: { id: string } }) {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="grid flex-1 gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
               <div className="text-center md:text-left">
+                {game.homeTeam.logoUrl ? (
+                  <img
+                    src={game.homeTeam.logoUrl}
+                    alt={game.homeTeam.nameHe || game.homeTeam.nameEn}
+                    className="mx-auto mb-3 h-16 w-16 object-contain md:mx-0"
+                  />
+                ) : null}
                 <div className="text-2xl font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
                 <div className="text-sm text-stone-500">{game.homeTeam.nameEn}</div>
               </div>
@@ -56,9 +63,16 @@ export default async function GamePage({ params }: { params: { id: string } }) {
                 <div className="mt-2 text-sm font-semibold text-stone-700">
                   {getCompetitionDisplayName(game.competition)}
                 </div>
-                <div className="mt-1 text-xs text-stone-500">{game.roundNameHe || game.roundNameEn || 'ללא מחזור'}</div>
+                <div className="mt-1 text-xs text-stone-500">{getRoundDisplayName(game.roundNameHe, game.roundNameEn)}</div>
               </div>
               <div className="text-center md:text-right">
+                {game.awayTeam.logoUrl ? (
+                  <img
+                    src={game.awayTeam.logoUrl}
+                    alt={game.awayTeam.nameHe || game.awayTeam.nameEn}
+                    className="mx-auto mb-3 h-16 w-16 object-contain md:mr-0 md:ml-auto"
+                  />
+                ) : null}
                 <div className="text-2xl font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
                 <div className="text-sm text-stone-500">{game.awayTeam.nameEn}</div>
               </div>

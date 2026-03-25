@@ -15,31 +15,35 @@ type StepState = {
   key: string;
   label: string;
   status: 'pending' | 'running' | 'done' | 'failed';
+  syncedCount?: number;
+  note?: string | null;
 };
 
 const resourceDefs = [
-  { key: 'countries', label: 'מדינות' },
-  { key: 'seasons', label: 'עונות' },
-  { key: 'leagues', label: 'ליגות' },
-  { key: 'competitions', label: 'מסגרות ותחרויות' },
-  { key: 'teams', label: 'קבוצות וסגלים' },
-  { key: 'players', label: 'שחקנים וסטטיסטיקות שחקן' },
-  { key: 'fixtures', label: 'משחקים ותוצאות' },
-  { key: 'standings', label: 'טבלאות ליגה' },
-  { key: 'events', label: 'אירועי משחק' },
-  { key: 'lineups', label: 'הרכבים' },
-  { key: 'statistics', label: 'סטטיסטיקות משחק' },
-  { key: 'topScorers', label: 'מלכי שערים' },
-  { key: 'topAssists', label: 'מלכי בישולים' },
-  { key: 'injuries', label: 'פציעות' },
-  { key: 'transfers', label: 'העברות' },
-  { key: 'trophies', label: 'תארים' },
-  { key: 'sidelined', label: 'שחקנים מושבתים' },
-  { key: 'odds', label: 'יחסים' },
-  { key: 'predictions', label: 'תחזיות' },
-  { key: 'h2h', label: 'ראש בראש' },
-  { key: 'livescore', label: 'לייב' },
+  { key: 'countries', label: 'מדינות', supported: true },
+  { key: 'seasons', label: 'עונות', supported: true },
+  { key: 'leagues', label: 'ליגות', supported: true },
+  { key: 'competitions', label: 'מסגרות ותחרויות', supported: true },
+  { key: 'teams', label: 'קבוצות וסגלים', supported: true },
+  { key: 'players', label: 'שחקנים וסטטיסטיקות שחקן', supported: true },
+  { key: 'fixtures', label: 'משחקים ותוצאות', supported: true },
+  { key: 'standings', label: 'טבלאות ליגה', supported: true },
+  { key: 'events', label: 'אירועי משחק', supported: true },
+  { key: 'lineups', label: 'הרכבים', supported: true },
+  { key: 'statistics', label: 'סטטיסטיקות משחק', supported: true },
+  { key: 'topScorers', label: 'מלכי שערים', supported: true },
+  { key: 'topAssists', label: 'מלכי בישולים', supported: true },
+  { key: 'injuries', label: 'פציעות', supported: true },
+  { key: 'transfers', label: 'העברות', supported: true },
+  { key: 'trophies', label: 'תארים', supported: true },
+  { key: 'sidelined', label: 'שחקנים מושבתים', supported: true },
+  { key: 'odds', label: 'יחסים', supported: true },
+  { key: 'predictions', label: 'תחזיות', supported: true },
+  { key: 'h2h', label: 'ראש בראש', supported: true },
+  { key: 'livescore', label: 'לייב', supported: true },
 ];
+
+const supportedResourceKeys = resourceDefs.filter((resource) => resource.supported).map((resource) => resource.key);
 
 export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
   const router = useRouter();
@@ -55,6 +59,7 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
     'players',
     'fixtures',
     'standings',
+    'events',
   ]);
   const [steps, setSteps] = useState<StepState[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -70,6 +75,11 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
     const done = steps.filter((step) => step.status === 'done').length;
     return Math.round((done / steps.length) * 100);
   }, [steps]);
+
+  const allSupportedSelected = useMemo(
+    () => supportedResourceKeys.every((key) => selectedResources.includes(key)),
+    [selectedResources]
+  );
 
   useEffect(() => {
     if (!loading || steps.length === 0) {
@@ -172,9 +182,13 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
       }
 
       setJobId(payload.jobId || null);
-      setSteps((current) => current.map((step) => ({ ...step, status: 'done' })));
+      setSteps(
+        Array.isArray(payload.steps)
+          ? payload.steps
+          : selectedStepStates.map((step) => ({ ...step, status: 'done' as const }))
+      );
       setResult(
-        `המשיכה הסתיימה. נוספו או עודכנו ${payload.teamsAdded} קבוצות, ${payload.playersAdded} שחקנים, ${payload.gamesAdded} משחקים ו-${payload.standingsUpdated} שורות טבלה.`
+        `המשיכה הסתיימה. סונכרנו ${payload.countriesSaved || 0} מדינות, ${payload.seasonsSaved || 0} עונות, ${payload.leaguesSaved || 0} ליגות, נוספו או עודכנו ${payload.teamsAdded} קבוצות, ${payload.playersAdded} שחקנים, ${payload.sidelinedSaved || 0} שחקנים מושבתים, ${payload.gamesAdded} משחקים, ${payload.standingsUpdated} שורות טבלה, ${payload.eventsSaved || 0} אירועים, ${payload.injuriesSaved || 0} פציעות, ${payload.transfersSaved || 0} העברות, ${payload.trophiesSaved || 0} תארים, ${payload.predictionsSaved || 0} תחזיות, ${payload.h2hSaved || 0} רשומות ראש בראש, ${payload.oddsSaved || 0} יחסים ו-${payload.livescoreSaved || 0} משחקי לייב.`
       );
       router.refresh();
     } catch {
@@ -189,6 +203,20 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
     setSelectedResources((current) =>
       current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
     );
+  }
+
+  function toggleAllSupported() {
+    setSelectedResources((current) => {
+      if (supportedResourceKeys.every((key) => current.includes(key))) {
+        return current.filter((key) => !supportedResourceKeys.includes(key));
+      }
+
+      const next = new Set(current);
+      for (const key of supportedResourceKeys) {
+        next.add(key);
+      }
+      return Array.from(next);
+    });
   }
 
   return (
@@ -253,19 +281,39 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
       </div>
 
       <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-4">
-        <div className="mb-3 font-bold text-stone-900">מה למשוך?</div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="font-bold text-stone-900">מה למשוך?</div>
+          <button
+            type="button"
+            onClick={toggleAllSupported}
+            className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-700 transition hover:border-stone-400 hover:bg-stone-100"
+          >
+            {allSupportedSelected ? 'נקה בחירה' : 'בחר הכל'}
+          </button>
+        </div>
+        <div className="mb-3 text-xs text-stone-500">
+          ממומש כרגע בפועל: מדינות, עונות, ליגות, מסגרות, קבוצות, שחקנים, שחקנים מושבתים, משחקים, טבלה, אירועים, הרכבים, סטטיסטיקות משחק, מלכי שערים/בישולים, פציעות, העברות, תארים, תחזיות, ראש בראש, יחסים ולייב.
+        </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {resourceDefs.map((resource) => (
             <label
               key={resource.key}
-              className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3"
+              className={`flex items-center gap-3 rounded-2xl border px-4 py-3 ${
+                resource.supported
+                  ? 'border-stone-200 bg-white'
+                  : 'border-stone-200 bg-stone-100 text-stone-400'
+              }`}
             >
               <input
                 type="checkbox"
                 checked={selectedResources.includes(resource.key)}
+                disabled={!resource.supported}
                 onChange={() => toggleResource(resource.key)}
               />
-              <span className="font-semibold text-stone-700">{resource.label}</span>
+              <span className={`font-semibold ${resource.supported ? 'text-stone-700' : 'text-stone-400'}`}>
+                {resource.label}
+                {!resource.supported ? ' (בקרוב)' : ''}
+              </span>
             </label>
           ))}
         </div>
@@ -295,10 +343,13 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
           <div className="mt-4 space-y-2">
             {steps.map((step) => (
               <div key={step.key} className="flex items-center justify-between rounded-xl bg-white px-4 py-3 text-sm">
-                <span className="font-semibold text-stone-700">{step.label}</span>
-                <span className="font-bold">
+                <div>
+                  <span className="font-semibold text-stone-700">{step.label}</span>
+                  {step.note ? <div className="mt-1 text-xs text-stone-500">{step.note}</div> : null}
+                </div>
+                <span className="text-left font-bold">
                   {step.status === 'done'
-                    ? 'הושלם'
+                    ? `הושלם${typeof step.syncedCount === 'number' ? ` | ${step.syncedCount} סונכרנו` : ''}`
                     : step.status === 'running'
                       ? 'בתהליך'
                       : step.status === 'failed'

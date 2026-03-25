@@ -1,5 +1,13 @@
 import { getCompetitionById } from '@/lib/competitions';
 
+const ROUND_TRANSLATIONS: Record<string, string> = {
+  'Quarter-finals': 'רבע גמר',
+  'Semi-finals': 'חצי גמר',
+  Final: 'גמר',
+  'Round of 16': 'שמינית גמר',
+  'Round of 32': 'סיבוב 32 האחרונות',
+};
+
 export function getCompetitionDisplayName(competition?: {
   apiFootballId?: number | null;
   nameHe?: string | null;
@@ -31,4 +39,26 @@ export function getGameScoreDisplay(game: {
   }
 
   return 'טרם שוחק';
+}
+
+export function getRoundDisplayName(roundHe?: string | null, roundEn?: string | null) {
+  const rawRound = (roundHe || roundEn || '').trim();
+  if (!rawRound) return 'ללא מחזור';
+
+  const regularSeasonMatch = rawRound.match(/^Regular Season\s*-\s*(\d+)$/i);
+  if (regularSeasonMatch) {
+    return `מחזור ${regularSeasonMatch[1]}`;
+  }
+
+  const championshipRoundMatch = rawRound.match(/^Championship Round\s*-\s*(\d+)$/i);
+  if (championshipRoundMatch) {
+    return `פלייאוף עליון - מחזור ${championshipRoundMatch[1]}`;
+  }
+
+  const relegationRoundMatch = rawRound.match(/^Relegation Round\s*-\s*(\d+)$/i);
+  if (relegationRoundMatch) {
+    return `פלייאוף תחתון - מחזור ${relegationRoundMatch[1]}`;
+  }
+
+  return ROUND_TRANSLATIONS[rawRound] || rawRound;
 }
