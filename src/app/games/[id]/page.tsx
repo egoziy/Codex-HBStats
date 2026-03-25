@@ -1,15 +1,16 @@
 import { notFound } from 'next/navigation';
 import prisma from '@/lib/prisma';
+import { getCompetitionDisplayName, getGameScoreDisplay } from '@/lib/competition-display';
 
 const eventLabels: Record<string, string> = {
   GOAL: '⚽ שער',
-  ASSIST: '🅰 בישול',
-  YELLOW_CARD: '🟨 צהוב',
-  RED_CARD: '🟥 אדום',
-  SUBSTITUTION_IN: '⬆ חילוף נכנס',
-  SUBSTITUTION_OUT: '⬇ חילוף יוצא',
-  OWN_GOAL: '🎯 עצמי',
-  PENALTY_GOAL: '⭕ פנדל',
+  ASSIST: '🎯 בישול',
+  YELLOW_CARD: '🟨 כרטיס צהוב',
+  RED_CARD: '🟥 כרטיס אדום',
+  SUBSTITUTION_IN: '🔁 חילוף נכנס',
+  SUBSTITUTION_OUT: '🔁 חילוף יוצא',
+  OWN_GOAL: '🥅 שער עצמי',
+  PENALTY_GOAL: '• פנדל',
   PENALTY_MISSED: '❌ פנדל מוחמץ',
 };
 
@@ -19,6 +20,7 @@ export default async function GamePage({ params }: { params: { id: string } }) {
     include: {
       homeTeam: true,
       awayTeam: true,
+      competition: true,
       gameStats: true,
       events: {
         include: {
@@ -41,29 +43,29 @@ export default async function GamePage({ params }: { params: { id: string } }) {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="grid flex-1 gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
               <div className="text-center md:text-left">
-                <div className="text-2xl font-black text-stone-900">{game.homeTeam.nameHe}</div>
+                <div className="text-2xl font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
                 <div className="text-sm text-stone-500">{game.homeTeam.nameEn}</div>
               </div>
               <div className="text-center">
                 <div className="inline-flex rounded-full bg-stone-900 px-5 py-3 text-2xl font-black text-white">
-                  {game.homeScore ?? 0} - {game.awayScore ?? 0}
+                  {getGameScoreDisplay(game)}
                 </div>
                 <div className="mt-2 text-xs text-stone-500">
                   {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(game.dateTime)}
                 </div>
+                <div className="mt-2 text-sm font-semibold text-stone-700">
+                  {getCompetitionDisplayName(game.competition)}
+                </div>
+                <div className="mt-1 text-xs text-stone-500">{game.roundNameHe || game.roundNameEn || 'ללא מחזור'}</div>
               </div>
               <div className="text-center md:text-right">
-                <div className="text-2xl font-black text-stone-900">{game.awayTeam.nameHe}</div>
+                <div className="text-2xl font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
                 <div className="text-sm text-stone-500">{game.awayTeam.nameEn}</div>
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button className="rounded-full border border-stone-300 px-5 py-3 font-bold text-stone-700">
-                ייצוא PDF
-              </button>
-              <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">
-                🖨️ הדפס
-              </button>
+              <button className="rounded-full border border-stone-300 px-5 py-3 font-bold text-stone-700">ייצוא PDF</button>
+              <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">🖨️ הדפס</button>
             </div>
           </div>
         </section>
@@ -99,13 +101,17 @@ export default async function GamePage({ params }: { params: { id: string } }) {
                     </div>
                   </div>
                   <div className="mt-2 text-sm text-stone-600">
-                    {event.player?.nameHe || 'שחקן לא משויך'}
-                    {event.relatedPlayer ? ` | ${event.relatedPlayer.nameHe}` : ''}
+                    {event.player?.nameHe || event.player?.nameEn || 'שחקן לא משויך'}
+                    {event.relatedPlayer ? ` | ${event.relatedPlayer.nameHe || event.relatedPlayer.nameEn}` : ''}
                   </div>
                   {event.notesHe ? <div className="mt-1 text-xs text-stone-500">{event.notesHe}</div> : null}
                 </article>
               ))}
-              {game.events.length === 0 ? <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-stone-500">אין אירועים שמורים למשחק זה.</div> : null}
+              {game.events.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-stone-500">
+                  אין אירועים שמורים למשחק זה.
+                </div>
+              ) : null}
             </div>
           </div>
         </section>

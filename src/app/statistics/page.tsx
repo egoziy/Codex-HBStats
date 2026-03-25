@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma';
+import { sortStandings } from '@/lib/standings';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,14 +19,14 @@ export default async function StatisticsPage({
   const teams = selectedSeason
     ? await prisma.team.findMany({
         where: { seasonId: selectedSeason.id },
-        orderBy: { nameHe: 'asc' },
+        orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
       })
     : [];
 
   const selectedTeamId = searchParams?.teamId || 'all';
   const selectedTeam = teams.find((team) => team.id === selectedTeamId) || null;
 
-  const [standings, games, players] = await Promise.all([
+  const [rawStandings, games, players] = await Promise.all([
     selectedSeason
       ? prisma.standing.findMany({
           where: {
@@ -53,13 +54,14 @@ export default async function StatisticsPage({
       ? prisma.player.findMany({
           where: { teamId: selectedTeam.id },
           include: { playerStats: true },
-          orderBy: { nameHe: 'asc' },
+          orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
         })
       : [],
   ]);
 
-  let totalGoals = 0;
+  const standings = sortStandings(rawStandings);
 
+  let totalGoals = 0;
   for (const game of games) {
     totalGoals += (game.homeScore ?? 0) + (game.awayScore ?? 0);
   }
@@ -111,11 +113,11 @@ export default async function StatisticsPage({
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard title="עונה נבחרת" value={selectedSeason?.name || '-'} subtitle="סינון הנתונים הנוכחי" />
           <StatsCard title="משחקים" value={String(completedGames)} subtitle="במסגרת הסינון הנוכחי" />
-          <StatsCard title="סה״כ שערים" value={String(totalGoals)} subtitle={`ממוצע למשחק: ${averageGoals}`} />
+          <StatsCard title='סה"כ שערים' value={String(totalGoals)} subtitle={`ממוצע למשחק: ${averageGoals}`} />
           <StatsCard
             title="מובילה בנקודות"
             value={pointsLeader ? pointsLeader.team.nameHe || pointsLeader.team.nameEn : '-'}
-            subtitle={pointsLeader ? `${pointsLeader.points} נקודות` : 'אין נתונים'}
+            subtitle={pointsLeader ? `${pointsLeader.adjustedPoints} נקודות` : 'אין נתונים'}
           />
         </section>
 
@@ -126,10 +128,20 @@ export default async function StatisticsPage({
               <p className="mt-2 text-sm text-stone-600">סגל הקבוצה בעונה הנבחרת ומאפייני הביצועים שלה.</p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <StatsCard title="שחקנים בסגל" value={String(totalPlayers)} subtitle="לפי הנתונים שנשמרו" />
               <StatsCard title="ניצחונות" value={String(standings[0]?.wins ?? 0)} subtitle="בטבלת העונה הנבחרת" />
-              <StatsCard title="שערי זכות" value={String(standings[0]?.goalsFor ?? 0)} subtitle="במסגרת הליגה" />
+              <StatsCard title="שערי זכות" value={String(standings[0]?.goalsFor ?? 0)} subtitle="במסגרת הסינון" />
+              <StatsCard
+                title="נקודות אחרי תיקון"
+                value={String(standings[0]?.adjustedPoints ?? 0)}
+                subtitle={
+                  standings[0]?.pointsAdjustmentNoteHe ||
+                  (standings[0]?.pointsAdjustment
+                    ? `תיקון: ${standings[0].pointsAdjustment > 0 ? `+${standings[0].pointsAdjustment}` : standings[0].pointsAdjustment}`
+                    : 'ללא תיקון נקודות')
+                }
+              />
             </div>
 
             <div className="mt-6 overflow-x-auto">
@@ -173,7 +185,7 @@ export default async function StatisticsPage({
         ) : (
           <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-black text-stone-900">תמונת מצב לכל הקבוצות</h2>
-            <p className="mt-2 text-sm text-stone-600">כאן מוצגים נתוני הטבלה והביצועים עבור כל הקבוצות בעונה שבחרת.</p>
+            <p className="mt-2 text-sm text-stone-600">כאן מוצגים נתוני הטבלה עבור כל הקבוצות בעונה שבחרת.</p>
 
             <div className="mt-6 overflow-x-auto">
               <table className="min-w-full text-right">
@@ -182,6 +194,7 @@ export default async function StatisticsPage({
                     <th className="px-3 py-3">קבוצה</th>
                     <th className="px-3 py-3">מיקום</th>
                     <th className="px-3 py-3">נקודות</th>
+                    <th className="px-3 py-3">תיקון</th>
                     <th className="px-3 py-3">ניצחונות</th>
                     <th className="px-3 py-3">הפרש שערים</th>
                   </tr>
@@ -190,10 +203,19 @@ export default async function StatisticsPage({
                   {standings.map((row) => (
                     <tr key={row.id} className="border-b border-stone-100 text-sm">
                       <td className="px-3 py-3 font-semibold">{row.team.nameHe || row.team.nameEn}</td>
-                      <td className="px-3 py-3">{row.position}</td>
-                      <td className="px-3 py-3">{row.points}</td>
+                      <td className="px-3 py-3">{row.displayPosition}</td>
+                      <td className="px-3 py-3">{row.adjustedPoints}</td>
+                      <td className="px-3 py-3">
+                        {row.pointsAdjustment !== 0 ? (
+                          <span className={row.pointsAdjustment < 0 ? 'font-bold text-red-700' : 'font-bold text-emerald-700'}>
+                            {row.pointsAdjustment > 0 ? `+${row.pointsAdjustment}` : row.pointsAdjustment}
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
                       <td className="px-3 py-3">{row.wins}</td>
-                      <td className="px-3 py-3">{row.goalsFor - row.goalsAgainst}</td>
+                      <td className="px-3 py-3">{row.goalDifference}</td>
                     </tr>
                   ))}
                 </tbody>

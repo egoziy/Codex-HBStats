@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import prisma from '@/lib/prisma';
+import { sortStandings } from '@/lib/standings';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export default async function HomePage() {
     orderBy: { year: 'desc' },
   });
 
-  const [games, standings, activities] = await Promise.all([
+  const [games, rawStandings, activities] = await Promise.all([
     prisma.game.findMany({
       where: latestSeason ? { seasonId: latestSeason.id } : undefined,
       include: {
@@ -24,13 +25,15 @@ export default async function HomePage() {
         team: true,
       },
       orderBy: [{ position: 'asc' }, { points: 'desc' }],
-      take: 8,
+      take: 20,
     }),
     prisma.activityLog.findMany({
       orderBy: { timestamp: 'desc' },
       take: 10,
     }),
   ]);
+
+  const standings = sortStandings(rawStandings).slice(0, 8);
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)]">
@@ -40,14 +43,14 @@ export default async function HomePage() {
             <div className="grid gap-8 px-6 py-8 lg:grid-cols-[1.15fr_0.85fr] lg:px-10 lg:py-10">
               <div>
                 <div className="mb-4 inline-flex items-center rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-amber-200">
-                  ⚽ הדופק של טרנר, במספרים.
+                  כדורגל, נתונים וניתוח במקום אחד
                 </div>
                 <h1 className="max-w-3xl text-4xl font-black leading-tight md:text-6xl">
-                  כל הסטטיסטיקות של הפועל באר שבע במקום אחד
+                  ליגת הסטטיסטיקות של הפועל באר שבע
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-white/85">
-                  אתר דו-לשוני לניתוח קבוצות, שחקנים, משחקים, טבלאות וגרפים. כולל אזור אדמין למשיכת
-                  נתונים מ-API-Football ושמירה מלאה באנגלית ובעברית.
+                  אתר דו-לשוני לניתוח קבוצות, שחקנים, משחקים, טבלאות וגרפים. כולל אזור אדמין למשיכת נתונים
+                  מ-API-Football ושמירה מלאה באנגלית ובעברית.
                 </p>
                 {latestSeason ? (
                   <div className="mt-4 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white">
@@ -58,18 +61,18 @@ export default async function HomePage() {
                   <Link href="/standings" className="rounded-full bg-white px-5 py-3 font-bold text-stone-900">
                     טבלת ליגה
                   </Link>
+                  <Link href="/games" className="rounded-full border border-white/20 bg-white/10 px-5 py-3 font-bold">
+                    משחקים
+                  </Link>
                   <Link href="/statistics" className="rounded-full border border-white/20 bg-white/10 px-5 py-3 font-bold">
                     סטטיסטיקות
-                  </Link>
-                  <Link href="/compare" className="rounded-full border border-white/20 bg-white/10 px-5 py-3 font-bold">
-                    השוואת עונות
                   </Link>
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-1">
                 <HighlightCard title="משחקים" value={String(games.length)} subtitle="מוצגים בדף הבית כרגע" />
-                <HighlightCard title="קבוצות בטבלה" value={String(standings.length)} subtitle="מבט מהיר על עונה אחת" />
+                <HighlightCard title="קבוצות בטבלה" value={String(standings.length)} subtitle="מבט מהיר על העונה הפעילה" />
                 <HighlightCard title="פעולות אחרונות" value={String(activities.length)} subtitle="שינויים, משיכות ועדכונים" />
               </div>
             </div>
@@ -103,15 +106,20 @@ export default async function HomePage() {
                 <tbody>
                   {standings.map((row) => (
                     <tr key={row.id} className="border-b border-stone-100 text-sm">
-                      <td className="px-3 py-3 font-bold">{row.position}</td>
+                      <td className="px-3 py-3 font-bold">{row.displayPosition}</td>
                       <td className="px-3 py-3">
                         <Link href={`/teams/${row.teamId}`} className="font-semibold text-stone-900 hover:text-red-800">
                           {row.team.nameHe || row.team.nameEn}
                         </Link>
+                        {row.pointsAdjustment !== 0 ? (
+                          <div className="mt-1 text-xs font-medium text-red-700">
+                            תיקון נקודות: {row.pointsAdjustment > 0 ? `+${row.pointsAdjustment}` : row.pointsAdjustment}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-3">{row.played}</td>
-                      <td className="px-3 py-3">{row.goalsFor - row.goalsAgainst}</td>
-                      <td className="px-3 py-3 font-black">{row.points}</td>
+                      <td className="px-3 py-3">{row.goalDifference}</td>
+                      <td className="px-3 py-3 font-black">{row.adjustedPoints}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -126,6 +134,9 @@ export default async function HomePage() {
                 <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-700">Matches</p>
                 <h2 className="text-2xl font-black text-stone-900">משחקים אחרונים</h2>
               </div>
+              <Link href="/games" className="text-sm font-bold text-red-800">
+                לכל המשחקים
+              </Link>
             </div>
             <div className="grid gap-4">
               {games.map((game) => (

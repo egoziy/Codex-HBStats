@@ -103,6 +103,11 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
+    const existingPlayer = await prisma.player.findUnique({
+      where: { id },
+      select: { additionalInfo: true },
+    });
+
     const player = await prisma.player.update({
       where: { id },
       data: {
@@ -115,6 +120,7 @@ export async function PUT(request: NextRequest) {
         ...(photoUrl !== undefined && { photoUrl }),
         ...(notesHe !== undefined && {
           additionalInfo: {
+            ...((existingPlayer?.additionalInfo as Record<string, unknown> | null) || {}),
             notesHe: notesHe || null,
           },
         }),

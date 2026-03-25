@@ -21,6 +21,7 @@ type Viewer = {
 const navLinks = [
   { href: '/', label: 'ראשי' },
   { href: '/standings', label: 'טבלאות' },
+  { href: '/games', label: 'משחקים' },
   { href: '/statistics', label: 'סטטיסטיקות' },
   { href: '/compare', label: 'השוואת עונות' },
   { href: '/admin', label: 'אדמין' },
@@ -92,9 +93,7 @@ export default function Navbar() {
       <div className="mx-auto max-w-7xl px-4 py-4">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-300">
-              Data Ball Israel
-            </div>
+            <div className="text-xs font-semibold uppercase tracking-[0.35em] text-amber-300">Data Ball Israel</div>
             <div className="truncate text-xl font-black md:text-2xl">הדופק של טרנר, במספרים.</div>
           </Link>
 
@@ -104,7 +103,7 @@ export default function Navbar() {
             onClick={() => setMenuOpen((value) => !value)}
             aria-label="פתח תפריט"
           >
-            {menuOpen ? '✕' : '☰'}
+            ☰
           </button>
 
           <div className="hidden flex-1 items-center justify-end gap-4 md:flex">
@@ -167,9 +166,7 @@ function NavLink({
     <Link
       href={href}
       className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-        active
-          ? 'bg-amber-300 text-stone-900'
-          : 'border border-white/20 bg-white/10 hover:bg-white/20'
+        active ? 'bg-amber-300 text-stone-900' : 'border border-white/20 bg-white/10 hover:bg-white/20'
       } ${block ? 'text-center' : ''}`}
     >
       {children}

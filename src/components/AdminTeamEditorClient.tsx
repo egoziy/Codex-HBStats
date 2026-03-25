@@ -32,6 +32,13 @@ type Team = {
   seasonId: string;
 };
 
+type Standing = {
+  id: string;
+  points: number;
+  pointsAdjustment: number;
+  pointsAdjustmentNoteHe: string | null;
+};
+
 type SeasonOption = {
   id: string;
   name: string;
@@ -41,10 +48,12 @@ type SeasonOption = {
 export default function AdminTeamEditorClient({
   teamKey,
   selectedTeam,
+  currentStanding,
   seasonOptions,
 }: {
   teamKey: string;
   selectedTeam: Team;
+  currentStanding: Standing | null;
   seasonOptions: SeasonOption[];
 }) {
   const [teamForm, setTeamForm] = useState({
@@ -57,6 +66,10 @@ export default function AdminTeamEditorClient({
     logoUrl: selectedTeam.logoUrl || '',
     notesHe: selectedTeam.additionalInfo?.notesHe || '',
   });
+  const [standingForm, setStandingForm] = useState({
+    pointsAdjustment: String(currentStanding?.pointsAdjustment ?? 0),
+    pointsAdjustmentNoteHe: currentStanding?.pointsAdjustmentNoteHe || '',
+  });
   const [players, setPlayers] = useState(
     selectedTeam.players.map((player) => ({
       ...player,
@@ -68,6 +81,8 @@ export default function AdminTeamEditorClient({
   );
   const [teamSaving, setTeamSaving] = useState(false);
   const [teamMessage, setTeamMessage] = useState('');
+  const [standingSaving, setStandingSaving] = useState(false);
+  const [standingMessage, setStandingMessage] = useState('');
 
   const seasonHref = useMemo(
     () => (seasonId: string) => `/admin/teams/${teamKey}?season=${seasonId}`,
@@ -97,6 +112,33 @@ export default function AdminTeamEditorClient({
     const payload = await response.json();
     setTeamSaving(false);
     setTeamMessage(response.ok ? 'פרטי הקבוצה נשמרו.' : payload.error || 'שמירת הקבוצה נכשלה.');
+  }
+
+  async function saveStanding() {
+    setStandingSaving(true);
+    setStandingMessage('');
+
+    const response = await fetch('/api/standings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teamId: selectedTeam.id,
+        seasonId: selectedTeam.seasonId,
+        pointsAdjustment: Number(standingForm.pointsAdjustment || 0),
+        pointsAdjustmentNoteHe: standingForm.pointsAdjustmentNoteHe,
+      }),
+    });
+
+    const payload = await response.json();
+    setStandingSaving(false);
+    setStandingMessage(response.ok ? 'תיקון הנקודות נשמר.' : payload.error || 'שמירת תיקון הנקודות נכשלה.');
+
+    if (response.ok) {
+      setStandingForm({
+        pointsAdjustment: String(payload.pointsAdjustment ?? 0),
+        pointsAdjustmentNoteHe: payload.pointsAdjustmentNoteHe || '',
+      });
+    }
   }
 
   async function savePlayer(playerId: string) {
@@ -133,12 +175,15 @@ export default function AdminTeamEditorClient({
               ...player,
               saving: false,
               saved: response.ok,
-              error: response.ok ? '' : payload.error || 'השמירה נכשלה.',
+              error: response.ok ? '' : payload.error || 'שמירת השחקן נכשלה.',
             }
           : player
       )
     );
   }
+
+  const basePoints = currentStanding?.points ?? 0;
+  const adjustedPoints = basePoints + Number(standingForm.pointsAdjustment || 0);
 
   return (
     <div className="space-y-6">
@@ -148,7 +193,7 @@ export default function AdminTeamEditorClient({
             חזרה לאדמין
           </Link>
           <h1 className="mt-2 text-3xl font-black text-stone-900">{selectedTeam.nameHe || selectedTeam.nameEn}</h1>
-          <p className="mt-2 text-sm text-stone-600">עריכת פרטי קבוצה ושחקנים לפי עונה.</p>
+          <p className="mt-2 text-sm text-stone-600">עריכת פרטי קבוצה, שחקנים ותיקון נקודות לפי עונה.</p>
         </div>
       </div>
 
@@ -174,7 +219,7 @@ export default function AdminTeamEditorClient({
       <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
         <div className="mb-4">
           <h2 className="text-xl font-black text-stone-900">פרטי קבוצה</h2>
-          <p className="mt-2 text-sm text-stone-600">כאן אפשר לעדכן את השם בעברית, שם קצר, לוגו והערות.</p>
+          <p className="mt-2 text-sm text-stone-600">כאן אפשר לעדכן שם בעברית, לוגו, אצטדיון והערות מערכת.</p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -210,8 +255,52 @@ export default function AdminTeamEditorClient({
 
       <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
         <div className="mb-4">
+          <h2 className="text-xl font-black text-stone-900">הורדה או הוספת נקודות לעונה</h2>
+          <p className="mt-2 text-sm text-stone-600">אפשר להזין מספר שלילי להורדת נקודות או מספר חיובי להוספת נקודות חריגה.</p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field
+            label="תיקון נקודות"
+            value={standingForm.pointsAdjustment}
+            onChange={(value) => setStandingForm((current) => ({ ...current, pointsAdjustment: value }))}
+            type="number"
+          />
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="text-sm font-semibold text-amber-900">נקודות בסיס</div>
+            <div className="mt-1 text-2xl font-black text-amber-950">{basePoints}</div>
+            <div className="mt-3 text-sm font-semibold text-amber-900">נקודות מוצגות אחרי תיקון</div>
+            <div className="mt-1 text-2xl font-black text-amber-950">{adjustedPoints}</div>
+          </div>
+          <label className="block md:col-span-2">
+            <span className="mb-2 block text-sm font-bold text-stone-700">סיבה או הערה</span>
+            <textarea
+              value={standingForm.pointsAdjustmentNoteHe}
+              onChange={(event) =>
+                setStandingForm((current) => ({ ...current, pointsAdjustmentNoteHe: event.target.value }))
+              }
+              className="min-h-[100px] w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 outline-none transition focus:border-red-500"
+            />
+          </label>
+        </div>
+
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={saveStanding}
+            disabled={standingSaving}
+            className="rounded-full bg-red-800 px-5 py-3 font-bold text-white disabled:bg-red-400"
+          >
+            {standingSaving ? 'שומר...' : 'שמור תיקון נקודות'}
+          </button>
+          {standingMessage ? <span className="text-sm font-medium text-stone-600">{standingMessage}</span> : null}
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
+        <div className="mb-4">
           <h2 className="text-xl font-black text-stone-900">שחקנים בעונה הנבחרת</h2>
-          <p className="mt-2 text-sm text-stone-600">אפשר לתרגם שמות לעברית, לעדכן תמונה ולהוסיף הערות לכל שחקן.</p>
+          <p className="mt-2 text-sm text-stone-600">אפשר לתרגם שמות לעברית, לעדכן תמונה, מספר חולצה והערות לכל שחקן.</p>
         </div>
 
         <div className="space-y-4">
@@ -254,6 +343,7 @@ export default function AdminTeamEditorClient({
                       )
                     )
                   }
+                  type="number"
                 />
                 <Field
                   label="שם פרטי בעברית"
@@ -321,15 +411,18 @@ function Field({
   label,
   value,
   onChange,
+  type = 'text',
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  type?: 'text' | 'number';
 }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-bold text-stone-700">{label}</span>
       <input
+        type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none transition focus:border-red-500"

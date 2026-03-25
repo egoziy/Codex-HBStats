@@ -269,6 +269,8 @@ model Standing {
   goalsFor        Int          @default(0)
   goalsAgainst    Int          @default(0)
   points          Int          @default(0)
+  pointsAdjustment Int         @default(0)
+  pointsAdjustmentNoteHe String?
   cleanSheets     Int          @default(0)
   form            String?
   createdAt       DateTime     @default(now())

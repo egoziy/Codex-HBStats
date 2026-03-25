@@ -25,6 +25,7 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
           : undefined,
     include: {
       season: true,
+      standings: true,
       players: {
         orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
       },
@@ -45,6 +46,7 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
         <AdminTeamEditorClient
           teamKey={params.teamKey}
           selectedTeam={selectedTeam}
+          currentStanding={selectedTeam.standings[0] || null}
           seasonOptions={teamFamily.map((team) => ({
             id: team.season.id,
             name: team.season.name,

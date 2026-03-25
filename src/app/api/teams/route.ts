@@ -112,6 +112,11 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
+    const existingTeam = await prisma.team.findUnique({
+      where: { id },
+      select: { additionalInfo: true },
+    });
+
     const team = await prisma.team.update({
       where: { id },
       data: {
@@ -127,6 +132,7 @@ export async function PUT(request: NextRequest) {
         ...(stadiumHe !== undefined && { stadiumHe: stadiumHe || null }),
         ...(notesHe !== undefined && {
           additionalInfo: {
+            ...((existingTeam?.additionalInfo as Record<string, unknown> | null) || {}),
             notesHe: notesHe || null,
           },
         }),
