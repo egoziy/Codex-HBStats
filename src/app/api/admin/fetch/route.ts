@@ -5,6 +5,7 @@ import { getRequestUser } from '@/lib/auth';
 import { logActivity } from '@/lib/activity';
 import { apiFootballFetch } from '@/lib/api-football';
 import { getCompetitionById } from '@/lib/competitions';
+import { derivePlayerDeepStats, deriveTeamDeepStats } from '@/lib/deep-stats';
 import { storePlayerPhotoLocally, storeTeamLogoLocally } from '@/lib/media-storage';
 
 type FetchBody = {
@@ -342,85 +343,55 @@ async function syncDerivedStatistics({
         homeScore: true,
         awayScore: true,
         status: true,
+        events: {
+          select: {
+            minute: true,
+            extraMinute: true,
+            type: true,
+            playerId: true,
+            relatedPlayerId: true,
+            teamId: true,
+          },
+        },
+        lineupEntries: {
+          select: {
+            playerId: true,
+            role: true,
+            teamId: true,
+          },
+        },
+        gameStats: {
+          select: {
+            homeTeamPossession: true,
+            awayTeamPossession: true,
+            homeShotsOnTarget: true,
+            awayShotsOnTarget: true,
+            homeShotsTotal: true,
+            awayShotsTotal: true,
+            homeCorners: true,
+            awayCorners: true,
+            homeFouls: true,
+            awayFouls: true,
+            homeOffsides: true,
+            awayOffsides: true,
+            homeYellowCards: true,
+            awayYellowCards: true,
+            homeRedCards: true,
+            awayRedCards: true,
+          },
+        },
       },
     }),
   ]);
 
-  const gameIds = games.map((game) => game.id);
-  const events = gameIds.length
-    ? await prisma.gameEvent.findMany({
-        where: {
-          gameId: { in: gameIds },
-        },
-        select: {
-          gameId: true,
-          type: true,
-          playerId: true,
-          relatedPlayerId: true,
-        },
-      })
-    : [];
-
-  const playerStatsMap = new Map<
-    string,
-    {
-      goals: number;
-      assists: number;
-      yellowCards: number;
-      redCards: number;
-      games: Set<string>;
-    }
-  >();
-
-  for (const event of events) {
-    if (event.playerId) {
-      const bucket =
-        playerStatsMap.get(event.playerId) || {
-          goals: 0,
-          assists: 0,
-          yellowCards: 0,
-          redCards: 0,
-          games: new Set<string>(),
-        };
-
-      if (event.type === 'GOAL' || event.type === 'PENALTY_GOAL') bucket.goals += 1;
-      if (event.type === 'YELLOW_CARD') bucket.yellowCards += 1;
-      if (event.type === 'RED_CARD') bucket.redCards += 1;
-      bucket.games.add(event.gameId);
-      playerStatsMap.set(event.playerId, bucket);
-    }
-
-    if (event.relatedPlayerId && (event.type === 'GOAL' || event.type === 'PENALTY_GOAL')) {
-      const bucket =
-        playerStatsMap.get(event.relatedPlayerId) || {
-          goals: 0,
-          assists: 0,
-          yellowCards: 0,
-          redCards: 0,
-          games: new Set<string>(),
-        };
-
-      bucket.assists += 1;
-      bucket.games.add(event.gameId);
-      playerStatsMap.set(event.relatedPlayerId, bucket);
-    }
-  }
-
   for (const team of teams) {
-    let totalGoals = 0;
+    const teamGames = games.filter((game) => game.homeTeamId === team.id || game.awayTeamId === team.id);
+    const teamDerived = deriveTeamDeepStats(team.id, teamGames);
     let totalAssists = 0;
 
     for (const player of team.players) {
-      const derived = playerStatsMap.get(player.id) || {
-        goals: 0,
-        assists: 0,
-        yellowCards: 0,
-        redCards: 0,
-        games: new Set<string>(),
-      };
-
-      totalGoals += derived.goals;
-      totalAssists += derived.assists;
+      const playerDerived = derivePlayerDeepStats(player.id, teamGames);
+      totalAssists += playerDerived.assists;
 
       await prisma.playerStatistics.upsert({
         where: {
@@ -431,31 +402,34 @@ async function syncDerivedStatistics({
           },
         },
         update: {
-          goals: derived.goals,
-          assists: derived.assists,
-          yellowCards: derived.yellowCards,
-          redCards: derived.redCards,
-          gamesPlayed: derived.games.size,
+          goals: playerDerived.goals,
+          assists: playerDerived.assists,
+          yellowCards: playerDerived.yellowCards,
+          redCards: playerDerived.redCards,
+          gamesPlayed: playerDerived.gamesPlayed,
+          minutesPlayed: playerDerived.minutesPlayed,
+          starts: playerDerived.starts,
+          substituteAppearances: playerDerived.substituteAppearances,
+          timesSubbedOff: playerDerived.timesSubbedOff,
         },
         create: {
           playerId: player.id,
           seasonId,
           competitionId,
-          goals: derived.goals,
-          assists: derived.assists,
-          yellowCards: derived.yellowCards,
-          redCards: derived.redCards,
-          gamesPlayed: derived.games.size,
+          goals: playerDerived.goals,
+          assists: playerDerived.assists,
+          yellowCards: playerDerived.yellowCards,
+          redCards: playerDerived.redCards,
+          gamesPlayed: playerDerived.gamesPlayed,
+          minutesPlayed: playerDerived.minutesPlayed,
+          starts: playerDerived.starts,
+          substituteAppearances: playerDerived.substituteAppearances,
+          timesSubbedOff: playerDerived.timesSubbedOff,
         },
       });
     }
 
     const standing = team.standings[0] || null;
-    const teamGames = games.filter((game) => game.homeTeamId === team.id || game.awayTeamId === team.id);
-    const cleanSheets = teamGames.filter((game) => {
-      const conceded = game.homeTeamId === team.id ? game.awayScore : game.homeScore;
-      return game.status === 'COMPLETED' && conceded === 0;
-    }).length;
 
     await prisma.teamStatistics.upsert({
       where: {
@@ -466,10 +440,19 @@ async function syncDerivedStatistics({
         },
       },
       update: {
-        totalGoals,
+        matchesPlayed: teamDerived.matchesPlayed,
+        totalGoals: teamDerived.goalsFor,
         totalAssists,
-        goalsConceded: standing?.goalsAgainst ?? 0,
-        cleanSheets,
+        goalsConceded: teamDerived.goalsAgainst,
+        cleanSheets: teamDerived.cleanSheets,
+        yellowCards: teamDerived.yellowCards,
+        redCards: teamDerived.redCards,
+        shotsOnTarget: teamDerived.shotsOnTarget,
+        shotsTotal: teamDerived.shotsTotal,
+        corners: teamDerived.corners,
+        fouls: teamDerived.fouls,
+        offsides: teamDerived.offsides,
+        averagePossession: teamDerived.averagePossession,
         wins: standing?.wins ?? 0,
         draws: standing?.draws ?? 0,
         losses: standing?.losses ?? 0,
@@ -479,10 +462,19 @@ async function syncDerivedStatistics({
         teamId: team.id,
         seasonId,
         competitionId,
-        totalGoals,
+        matchesPlayed: teamDerived.matchesPlayed,
+        totalGoals: teamDerived.goalsFor,
         totalAssists,
-        goalsConceded: standing?.goalsAgainst ?? 0,
-        cleanSheets,
+        goalsConceded: teamDerived.goalsAgainst,
+        cleanSheets: teamDerived.cleanSheets,
+        yellowCards: teamDerived.yellowCards,
+        redCards: teamDerived.redCards,
+        shotsOnTarget: teamDerived.shotsOnTarget,
+        shotsTotal: teamDerived.shotsTotal,
+        corners: teamDerived.corners,
+        fouls: teamDerived.fouls,
+        offsides: teamDerived.offsides,
+        averagePossession: teamDerived.averagePossession,
         wins: standing?.wins ?? 0,
         draws: standing?.draws ?? 0,
         losses: standing?.losses ?? 0,

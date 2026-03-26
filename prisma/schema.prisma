@@ -361,6 +361,8 @@ model PlayerStatistics {
   gamesPlayed     Int          @default(0)
   minutesPlayed   Int          @default(0)
   starts          Int          @default(0)
+  substituteAppearances Int    @default(0)
+  timesSubbedOff  Int          @default(0)
   shots           Int          @default(0)
   keyPasses       Int          @default(0)
   seasonLabelEn   String?
@@ -381,10 +383,19 @@ model PlayerStatistics {
 
 model TeamStatistics {
   id                String       @id @default(cuid())
+  matchesPlayed     Int          @default(0)
   totalGoals        Int          @default(0)
   totalAssists      Int          @default(0)
   goalsConceded     Int          @default(0)
   cleanSheets       Int          @default(0)
+  yellowCards       Int          @default(0)
+  redCards          Int          @default(0)
+  shotsOnTarget     Int          @default(0)
+  shotsTotal        Int          @default(0)
+  corners           Int          @default(0)
+  fouls             Int          @default(0)
+  offsides          Int          @default(0)
+  averagePossession Float        @default(0)
   wins              Int          @default(0)
   draws             Int          @default(0)
   losses            Int          @default(0)
@@ -772,6 +783,8 @@ model MediaAsset {
   filePath       String
   mimeType       String?
   sizeBytes      Int?
+  isPrimary      Boolean         @default(false)
+  displayOrder   Int             @default(0)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   teamId         String?

@@ -13,6 +13,14 @@ type Player = {
   photoUrl: string | null;
   position: string | null;
   additionalInfo: any;
+  uploads: Upload[];
+};
+
+type Upload = {
+  id: string;
+  filePath: string;
+  title: string | null;
+  isPrimary: boolean;
 };
 
 type Team = {
@@ -29,6 +37,7 @@ type Team = {
   stadiumHe: string | null;
   additionalInfo: any;
   players: Player[];
+  uploads: Upload[];
   seasonId: string;
 };
 
@@ -74,6 +83,9 @@ export default function AdminTeamEditorClient({
     selectedTeam.players.map((player) => ({
       ...player,
       notesHe: player.additionalInfo?.notesHe || '',
+      uploadTitle: '',
+      uploadFile: null as File | null,
+      uploadSaving: false,
       saving: false,
       saved: false,
       error: '',
@@ -83,6 +95,10 @@ export default function AdminTeamEditorClient({
   const [teamMessage, setTeamMessage] = useState('');
   const [standingSaving, setStandingSaving] = useState(false);
   const [standingMessage, setStandingMessage] = useState('');
+  const [teamUploadTitle, setTeamUploadTitle] = useState('');
+  const [teamUploadFile, setTeamUploadFile] = useState<File | null>(null);
+  const [teamUploadSaving, setTeamUploadSaving] = useState(false);
+  const [teamUploadMessage, setTeamUploadMessage] = useState('');
 
   const seasonHref = useMemo(
     () => (seasonId: string) => `/admin/teams/${teamKey}?season=${seasonId}`,
@@ -182,6 +198,90 @@ export default function AdminTeamEditorClient({
     );
   }
 
+  async function uploadTeamImage(makePrimary: boolean) {
+    if (!teamUploadFile) {
+      setTeamUploadMessage('יש לבחור קובץ תמונה.');
+      return;
+    }
+
+    setTeamUploadSaving(true);
+    setTeamUploadMessage('');
+    const formData = new FormData();
+    formData.set('entityType', 'team');
+    formData.set('entityId', selectedTeam.id);
+    formData.set('title', teamUploadTitle);
+    formData.set('isPrimary', String(makePrimary));
+    formData.set('file', teamUploadFile);
+
+    const response = await fetch('/api/media', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const payload = await response.json();
+    setTeamUploadSaving(false);
+
+    if (!response.ok) {
+      setTeamUploadMessage(payload.error || 'העלאת התמונה נכשלה.');
+      return;
+    }
+
+    setTeamUploadMessage(makePrimary ? 'התמונה הועלתה והוגדרה כלוגו ראשי.' : 'התמונה הועלתה לגלריית הקבוצה.');
+    setTeamUploadTitle('');
+    setTeamUploadFile(null);
+    window.location.reload();
+  }
+
+  async function uploadPlayerImage(playerId: string, makePrimary: boolean) {
+    const currentPlayer = players.find((player) => player.id === playerId);
+    if (!currentPlayer?.uploadFile) {
+      setPlayers((current) =>
+        current.map((player) =>
+          player.id === playerId ? { ...player, error: 'יש לבחור קובץ תמונה להעלאה.' } : player
+        )
+      );
+      return;
+    }
+
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId ? { ...player, uploadSaving: true, error: '' } : player
+      )
+    );
+
+    const formData = new FormData();
+    formData.set('entityType', 'player');
+    formData.set('entityId', playerId);
+    formData.set('title', currentPlayer.uploadTitle || '');
+    formData.set('isPrimary', String(makePrimary));
+    formData.set('file', currentPlayer.uploadFile);
+
+    const response = await fetch('/api/media', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const payload = await response.json();
+
+    setPlayers((current) =>
+      current.map((player) =>
+        player.id === playerId
+          ? {
+              ...player,
+              uploadSaving: false,
+              uploadTitle: '',
+              uploadFile: null,
+              error: response.ok ? '' : payload.error || 'העלאת התמונה נכשלה.',
+            }
+          : player
+      )
+    );
+
+    if (response.ok) {
+      window.location.reload();
+    }
+  }
+
   const basePoints = currentStanding?.points ?? 0;
   const adjustedPoints = basePoints + Number(standingForm.pointsAdjustment || 0);
 
@@ -250,6 +350,52 @@ export default function AdminTeamEditorClient({
             {teamSaving ? 'שומר...' : 'שמור קבוצה'}
           </button>
           {teamMessage ? <span className="text-sm font-medium text-stone-600">{teamMessage}</span> : null}
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+          <h3 className="text-lg font-black text-stone-900">תמונות קבוצה</h3>
+          <p className="mt-2 text-sm text-stone-600">אפשר להעלות לוגו ראשי או תמונות נוספות לגלריה של הקבוצה.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto_auto]">
+            <Field label="כותרת לתמונה" value={teamUploadTitle} onChange={setTeamUploadTitle} />
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-stone-700">קובץ תמונה</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => setTeamUploadFile(event.target.files?.[0] || null)}
+                className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => uploadTeamImage(true)}
+              disabled={teamUploadSaving}
+              className="self-end rounded-full bg-stone-900 px-5 py-3 font-bold text-white disabled:bg-stone-400"
+            >
+              לוגו ראשי
+            </button>
+            <button
+              type="button"
+              onClick={() => uploadTeamImage(false)}
+              disabled={teamUploadSaving}
+              className="self-end rounded-full border border-stone-300 bg-white px-5 py-3 font-bold text-stone-800 disabled:bg-stone-100"
+            >
+              הוסף לגלריה
+            </button>
+          </div>
+          {teamUploadMessage ? <div className="mt-3 text-sm font-medium text-stone-600">{teamUploadMessage}</div> : null}
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {selectedTeam.uploads.map((upload) => (
+              <div key={upload.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                <img src={upload.filePath} alt={upload.title || selectedTeam.nameEn} className="h-32 w-full object-cover" />
+                <div className="p-3 text-xs text-stone-600">
+                  <div className="font-semibold text-stone-900">{upload.title || 'ללא כותרת'}</div>
+                  <div className="mt-1 break-all">{upload.filePath}</div>
+                  {upload.isPrimary ? <div className="mt-2 font-bold text-red-700">תמונה ראשית</div> : null}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -381,6 +527,30 @@ export default function AdminTeamEditorClient({
                     )
                   }
                 />
+                <Field
+                  label="כותרת לתמונה חדשה"
+                  value={player.uploadTitle || ''}
+                  onChange={(value) =>
+                    setPlayers((current) =>
+                      current.map((row) => (row.id === player.id ? { ...row, uploadTitle: value } : row))
+                    )
+                  }
+                />
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold text-stone-700">העלאת תמונה</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) =>
+                      setPlayers((current) =>
+                        current.map((row) =>
+                          row.id === player.id ? { ...row, uploadFile: event.target.files?.[0] || null } : row
+                        )
+                      )
+                    }
+                    className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3"
+                  />
+                </label>
                 <label className="block md:col-span-2">
                   <span className="mb-2 block text-sm font-bold text-stone-700">הערות</span>
                   <textarea
@@ -396,6 +566,39 @@ export default function AdminTeamEditorClient({
                   />
                 </label>
               </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => uploadPlayerImage(player.id, true)}
+                  disabled={player.uploadSaving}
+                  className="rounded-full bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:bg-stone-400"
+                >
+                  העלה כראשית
+                </button>
+                <button
+                  type="button"
+                  onClick={() => uploadPlayerImage(player.id, false)}
+                  disabled={player.uploadSaving}
+                  className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-bold text-stone-800 disabled:bg-stone-100"
+                >
+                  הוסף לגלריה
+                </button>
+              </div>
+
+              {player.uploads.length > 0 ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  {player.uploads.map((upload) => (
+                    <div key={upload.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+                      <img src={upload.filePath} alt={upload.title || player.nameEn} className="h-28 w-full object-cover" />
+                      <div className="p-3 text-xs text-stone-600">
+                        <div className="font-semibold text-stone-900">{upload.title || 'ללא כותרת'}</div>
+                        {upload.isPrimary ? <div className="mt-2 font-bold text-red-700">תמונה ראשית</div> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
               {player.error ? <div className="mt-3 text-sm font-medium text-red-700">{player.error}</div> : null}
               {player.saved ? <div className="mt-3 text-sm font-medium text-emerald-700">השחקן נשמר בהצלחה.</div> : null}

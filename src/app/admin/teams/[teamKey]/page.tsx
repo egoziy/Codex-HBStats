@@ -47,9 +47,17 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
           : undefined,
     include: {
       season: true,
+      uploads: {
+        orderBy: [{ createdAt: 'asc' }],
+      },
       standings: true,
       players: {
         orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+        include: {
+          uploads: {
+            orderBy: [{ createdAt: 'asc' }],
+          },
+        },
       },
     },
     orderBy: { season: { year: 'desc' } },

@@ -22,6 +22,7 @@ const navLinks = [
   { href: '/', label: 'ראשי' },
   { href: '/standings', label: 'טבלאות' },
   { href: '/games', label: 'משחקים' },
+  { href: '/players', label: 'שחקנים' },
   { href: '/statistics', label: 'סטטיסטיקות' },
   { href: '/compare', label: 'השוואת עונות' },
   { href: '/admin', label: 'אדמין' },
