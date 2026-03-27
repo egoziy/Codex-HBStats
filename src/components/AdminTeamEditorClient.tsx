@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { formatCoachName, getLatestCoachAssignment } from '@/lib/coach-display';
+import { formatPlayerName } from '@/lib/player-display';
 
 type Player = {
   id: string;
@@ -32,6 +34,7 @@ type Team = {
   logoUrl: string | null;
   coach: string | null;
   coachHe: string | null;
+  coachAssignments: CoachAssignment[];
   countryHe: string | null;
   cityHe: string | null;
   stadiumHe: string | null;
@@ -39,6 +42,15 @@ type Team = {
   players: Player[];
   uploads: Upload[];
   seasonId: string;
+};
+
+type CoachAssignment = {
+  id: string;
+  coachNameEn: string;
+  coachNameHe: string | null;
+  startDate: string | Date | null;
+  endDate: string | Date | null;
+  createdAt?: string | Date;
 };
 
 type Standing = {
@@ -65,32 +77,13 @@ export default function AdminTeamEditorClient({
   currentStanding: Standing | null;
   seasonOptions: SeasonOption[];
 }) {
-  const [teamForm, setTeamForm] = useState({
-    nameHe: selectedTeam.nameHe || '',
-    shortNameHe: selectedTeam.shortNameHe || '',
-    coachHe: selectedTeam.coachHe || '',
-    countryHe: selectedTeam.countryHe || '',
-    cityHe: selectedTeam.cityHe || '',
-    stadiumHe: selectedTeam.stadiumHe || '',
-    logoUrl: selectedTeam.logoUrl || '',
-    notesHe: selectedTeam.additionalInfo?.notesHe || '',
-  });
+  const latestCoachAssignment = getLatestCoachAssignment(selectedTeam.coachAssignments || []);
+  const [teamForm, setTeamForm] = useState(() => buildTeamForm(selectedTeam, latestCoachAssignment));
   const [standingForm, setStandingForm] = useState({
     pointsAdjustment: String(currentStanding?.pointsAdjustment ?? 0),
     pointsAdjustmentNoteHe: currentStanding?.pointsAdjustmentNoteHe || '',
   });
-  const [players, setPlayers] = useState(
-    selectedTeam.players.map((player) => ({
-      ...player,
-      notesHe: player.additionalInfo?.notesHe || '',
-      uploadTitle: '',
-      uploadFile: null as File | null,
-      uploadSaving: false,
-      saving: false,
-      saved: false,
-      error: '',
-    }))
-  );
+  const [players, setPlayers] = useState(() => buildPlayersState(selectedTeam.players));
   const [teamSaving, setTeamSaving] = useState(false);
   const [teamMessage, setTeamMessage] = useState('');
   const [standingSaving, setStandingSaving] = useState(false);
@@ -105,6 +98,17 @@ export default function AdminTeamEditorClient({
     [teamKey]
   );
 
+  useEffect(() => {
+    setTeamForm(buildTeamForm(selectedTeam, latestCoachAssignment));
+    setStandingForm({
+      pointsAdjustment: String(currentStanding?.pointsAdjustment ?? 0),
+      pointsAdjustmentNoteHe: currentStanding?.pointsAdjustmentNoteHe || '',
+    });
+    setPlayers(buildPlayersState(selectedTeam.players));
+    setTeamMessage('');
+    setStandingMessage('');
+  }, [selectedTeam, latestCoachAssignment, currentStanding]);
+
   async function saveTeam() {
     setTeamSaving(true);
     setTeamMessage('');
@@ -116,7 +120,9 @@ export default function AdminTeamEditorClient({
         id: selectedTeam.id,
         nameHe: teamForm.nameHe,
         shortNameHe: teamForm.shortNameHe,
+        coach: teamForm.coach,
         coachHe: teamForm.coachHe,
+        coachAssignmentId: teamForm.coachAssignmentId || null,
         countryHe: teamForm.countryHe,
         cityHe: teamForm.cityHe,
         stadiumHe: teamForm.stadiumHe,
@@ -330,6 +336,7 @@ export default function AdminTeamEditorClient({
           <Field label="עיר בעברית" value={teamForm.cityHe} onChange={(value) => setTeamForm((current) => ({ ...current, cityHe: value }))} />
           <Field label="אצטדיון בעברית" value={teamForm.stadiumHe} onChange={(value) => setTeamForm((current) => ({ ...current, stadiumHe: value }))} />
           <Field label="כתובת לוגו" value={teamForm.logoUrl} onChange={(value) => setTeamForm((current) => ({ ...current, logoUrl: value }))} />
+          <Field label="Coach (EN)" value={teamForm.coach} onChange={(value) => setTeamForm((current) => ({ ...current, coach: value }))} />
           <label className="block md:col-span-2">
             <span className="mb-2 block text-sm font-bold text-stone-700">הערות קבוצה</span>
             <textarea
@@ -351,6 +358,28 @@ export default function AdminTeamEditorClient({
           </button>
           {teamMessage ? <span className="text-sm font-medium text-stone-600">{teamMessage}</span> : null}
         </div>
+
+        {selectedTeam.coachAssignments.length > 0 ? (
+          <div className="mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+            <h3 className="text-lg font-black text-stone-900">היסטוריית מאמנים בעונה</h3>
+            <div className="mt-3 space-y-2 text-sm text-stone-700">
+              {selectedTeam.coachAssignments.map((assignment) => (
+                <div key={assignment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
+                  <div className="font-bold text-stone-900">{formatCoachName(assignment)}</div>
+                  <div className="text-xs text-stone-500">
+                    {(assignment.startDate
+                      ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(new Date(assignment.startDate))
+                      : 'לא ידוע')}
+                    {' - '}
+                    {(assignment.endDate
+                      ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(new Date(assignment.endDate))
+                      : 'פעיל')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-8 rounded-2xl border border-stone-200 bg-stone-50 p-4">
           <h3 className="text-lg font-black text-stone-900">תמונות קבוצה</h3>
@@ -454,7 +483,8 @@ export default function AdminTeamEditorClient({
             <article key={player.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="font-bold text-stone-900">{player.nameEn}</div>
+                  <div className="font-bold text-stone-900">{formatPlayerName(player)}</div>
+                  {formatPlayerName(player) !== player.nameEn ? <div className="text-xs text-stone-400">{player.nameEn}</div> : null}
                   <div className="text-sm text-stone-500">{player.position || 'ללא עמדה'}</div>
                 </div>
                 <button
@@ -590,7 +620,7 @@ export default function AdminTeamEditorClient({
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
                   {player.uploads.map((upload) => (
                     <div key={upload.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-white">
-                      <img src={upload.filePath} alt={upload.title || player.nameEn} className="h-28 w-full object-cover" />
+                      <img src={upload.filePath} alt={upload.title || formatPlayerName(player)} className="h-28 w-full object-cover" />
                       <div className="p-3 text-xs text-stone-600">
                         <div className="font-semibold text-stone-900">{upload.title || 'ללא כותרת'}</div>
                         {upload.isPrimary ? <div className="mt-2 font-bold text-red-700">תמונה ראשית</div> : null}
@@ -632,4 +662,32 @@ function Field({
       />
     </label>
   );
+}
+
+function buildPlayersState(players: Player[]) {
+  return players.map((player) => ({
+    ...player,
+    notesHe: player.additionalInfo?.notesHe || '',
+    uploadTitle: '',
+    uploadFile: null as File | null,
+    uploadSaving: false,
+    saving: false,
+    saved: false,
+    error: '',
+  }));
+}
+
+function buildTeamForm(team: Team, latestCoachAssignment: CoachAssignment | null) {
+  return {
+    nameHe: team.nameHe || '',
+    shortNameHe: team.shortNameHe || '',
+    coach: latestCoachAssignment?.coachNameEn || team.coach || '',
+    coachHe: latestCoachAssignment?.coachNameHe || team.coachHe || '',
+    coachAssignmentId: latestCoachAssignment?.id || '',
+    countryHe: team.countryHe || '',
+    cityHe: team.cityHe || '',
+    stadiumHe: team.stadiumHe || '',
+    logoUrl: team.logoUrl || '',
+    notesHe: team.additionalInfo?.notesHe || '',
+  };
 }

@@ -56,6 +56,9 @@ export default async function AdminPage({
         include: {
           teams: {
             include: {
+              coachAssignments: {
+                orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+              },
               players: {
                 orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
               },

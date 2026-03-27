@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { derivePlayerDeepStats } from '@/lib/deep-stats';
+import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -139,18 +140,19 @@ export default async function PlayersPage({
               seasonGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)
             );
             const displayPhoto = player.photoUrl || player.uploads[0]?.filePath || null;
+            const playerDisplayName = formatPlayerName(player);
 
             return (
               <Link
                 key={player.id}
-                href={`/players/${player.id}`}
+                href={`/players/${player.canonicalPlayerId || player.id}`}
                 className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm transition hover:border-red-300"
               >
                 <div className="flex items-center gap-4">
                   {displayPhoto ? (
                     <img
                       src={displayPhoto}
-                      alt={player.nameHe || player.nameEn}
+                      alt={playerDisplayName}
                       className="h-20 w-20 rounded-full border border-stone-200 bg-stone-50 object-cover"
                     />
                   ) : (
@@ -159,7 +161,7 @@ export default async function PlayersPage({
                     </div>
                   )}
                   <div>
-                    <h2 className="text-xl font-black text-stone-900">{player.nameHe || player.nameEn}</h2>
+                    <h2 className="text-xl font-black text-stone-900">{playerDisplayName}</h2>
                     <div className="mt-1 text-sm text-stone-500">{player.team.nameHe || player.team.nameEn}</div>
                     <div className="mt-1 text-sm text-stone-500">
                       {player.position || 'ללא עמדה'} | #{player.jerseyNumber ?? '-'}
@@ -167,13 +169,15 @@ export default async function PlayersPage({
                   </div>
                 </div>
 
-                <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+                <div className="mt-5 grid grid-cols-4 gap-3 text-center">
                   <PlayerMetric label="שערים" value={String(stat?.goals ?? 0)} />
                   <PlayerMetric label="בישולים" value={String(stat?.assists ?? 0)} />
                   <PlayerMetric label="דקות" value={String(stat.minutesPlayed)} />
                   <PlayerMetric label="פתיחות" value={String(stat.starts)} />
+                  <PlayerMetric label="נרשם כמחליף" value={String(stat.benchAppearances)} />
                   <PlayerMetric label="מחליף" value={String(stat.substituteAppearances)} />
                   <PlayerMetric label="צהובים" value={String(stat.yellowCards)} />
+                  <PlayerMetric label="אדומים" value={String(stat.redCards)} />
                 </div>
               </Link>
             );

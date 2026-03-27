@@ -20,6 +20,7 @@ type JobStep = {
   label: string;
   status: 'pending' | 'running' | 'done' | 'failed';
   syncedCount?: number;
+  fetchedCount?: number;
   note?: string;
 };
 
@@ -257,6 +258,103 @@ function overlapsSeasonRange(
   return startDate <= season.endDate && effectiveEnd >= season.startDate;
 }
 
+function formatSeasonLabel(year: number) {
+  return `${year}-${year + 1}`;
+}
+
+async function findCanonicalPlayerMatch(apiFootballId: number | null, nameEn: string | null) {
+  const matchedPlayer =
+    (apiFootballId
+      ? await prisma.player.findFirst({
+          where: { apiFootballId },
+          orderBy: [{ canonicalPlayerId: 'asc' }, { createdAt: 'asc' }],
+        })
+      : null) ||
+    (nameEn
+      ? await prisma.player.findFirst({
+          where: { nameEn },
+          orderBy: [{ canonicalPlayerId: 'asc' }, { createdAt: 'asc' }],
+        })
+      : null);
+
+  if (!matchedPlayer) return null;
+
+  if (matchedPlayer.canonicalPlayerId) {
+  return prisma.player.findUnique({ where: { id: matchedPlayer.canonicalPlayerId } });
+  }
+
+  return matchedPlayer;
+}
+
+async function syncTeamCoachAssignment({
+  teamId,
+  seasonId,
+  apiFootballCoachId,
+  coachNameEn,
+  coachNameHe,
+  fixtureDate,
+}: {
+  teamId: string;
+  seasonId: string;
+  apiFootballCoachId: number | null;
+  coachNameEn: string;
+  coachNameHe: string | null;
+  fixtureDate: Date | null;
+}) {
+  const existingAssignment =
+    (apiFootballCoachId
+      ? await prisma.teamCoachAssignment.findFirst({
+          where: {
+            teamId,
+            seasonId,
+            apiFootballCoachId,
+          },
+          orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+        })
+      : null) ||
+    (await prisma.teamCoachAssignment.findFirst({
+      where: {
+        teamId,
+        seasonId,
+        coachNameEn,
+      },
+      orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+    }));
+
+  if (existingAssignment) {
+    const nextStartDate =
+      fixtureDate && (!existingAssignment.startDate || fixtureDate < existingAssignment.startDate)
+        ? fixtureDate
+        : existingAssignment.startDate;
+    const nextEndDate =
+      fixtureDate && (!existingAssignment.endDate || fixtureDate > existingAssignment.endDate)
+        ? fixtureDate
+        : existingAssignment.endDate;
+
+    return prisma.teamCoachAssignment.update({
+      where: { id: existingAssignment.id },
+      data: {
+        apiFootballCoachId: apiFootballCoachId || existingAssignment.apiFootballCoachId,
+        coachNameHe: existingAssignment.coachNameHe || coachNameHe,
+        startDate: nextStartDate,
+        endDate: nextEndDate,
+      },
+    });
+  }
+
+  return prisma.teamCoachAssignment.create({
+    data: {
+      teamId,
+      seasonId,
+      apiFootballCoachId,
+      coachNameEn,
+      coachNameHe,
+      startDate: fixtureDate,
+      endDate: fixtureDate,
+    },
+  });
+}
+
 async function getOrCreateSeason(year: number) {
   const existing = await prisma.season.findUnique({ where: { year } });
   if (existing) return existing;
@@ -264,11 +362,28 @@ async function getOrCreateSeason(year: number) {
   return prisma.season.create({
     data: {
       year,
-      name: `${year}/${year + 1}`,
+      name: formatSeasonLabel(year),
       startDate: new Date(`${year}-07-01T00:00:00.000Z`),
       endDate: new Date(`${year + 1}-06-30T23:59:59.999Z`),
     },
   });
+}
+
+async function fetchSeasonPlayers(teamApiFootballId: number, seasonYear: number) {
+  const rows: any[] = [];
+
+  for (let page = 1; page <= 20; page += 1) {
+    const pageRows = await apiFootballFetch(`/players?team=${teamApiFootballId}&season=${seasonYear}&page=${page}`);
+    if (!pageRows.length) break;
+
+    rows.push(...pageRows);
+
+    if (pageRows.length < 20) {
+      break;
+    }
+  }
+
+  return rows;
 }
 
 async function updateFetchJob(jobId: string, steps: JobStep[], status?: FetchJobStatus) {
@@ -289,13 +404,20 @@ function markStep(steps: JobStep[], key: string, status: JobStep['status']) {
   return steps.map((step) => (step.key === key ? { ...step, status } : step));
 }
 
-function completeStep(steps: JobStep[], key: string, syncedCount: number, note?: string): JobStep[] {
+function completeStep(
+  steps: JobStep[],
+  key: string,
+  syncedCount: number,
+  note?: string,
+  fetchedCount?: number
+): JobStep[] {
   return steps.map((step) =>
     step.key === key
       ? {
           ...step,
           status: 'done' as const,
           syncedCount,
+          ...(fetchedCount !== undefined ? { fetchedCount } : {}),
           ...(note !== undefined ? { note } : {}),
         }
       : step
@@ -511,7 +633,7 @@ export async function POST(request: NextRequest) {
 
   const job = await prisma.fetchJob.create({
     data: {
-      labelHe: `משיכת נתוני ${selectedCompetitionMeta?.nameHe || LEAGUE_NAMES[leagueId] || leagueId} לעונת ${seasonYear}`,
+      labelHe: `משיכת נתוני ${selectedCompetitionMeta?.nameHe || LEAGUE_NAMES[leagueId] || leagueId} לעונת ${formatSeasonLabel(seasonYear)}`,
       status: FetchJobStatus.RUNNING,
       requestPayload: body as any,
       progressPercent: 5,
@@ -608,6 +730,7 @@ export async function POST(request: NextRequest) {
       if (selectedTeamName) return row?.team?.name === selectedTeamName;
       return true;
     });
+    const teamsFetched = relevantTeams.filter((row: any) => !!row?.team?.name).length;
 
     let teamsAdded = 0;
     let playersAdded = 0;
@@ -629,6 +752,22 @@ export async function POST(request: NextRequest) {
     let h2hSaved = 0;
     let oddsSaved = 0;
     let livescoreSaved = 0;
+    let playersFetched = 0;
+    let fixturesFetched = 0;
+    let standingsFetched = 0;
+    let eventsFetched = 0;
+    let statisticsFetched = 0;
+    let lineupsFetched = 0;
+    let topScorersFetched = 0;
+    let topAssistsFetched = 0;
+    let injuriesFetched = 0;
+    let transfersFetched = 0;
+    let trophiesFetched = 0;
+    let sidelinedFetched = 0;
+    let predictionsFetched = 0;
+    let h2hFetched = 0;
+    let oddsFetched = 0;
+    let livescoreFetched = 0;
 
     const teamMap = new Map<string, any>();
     const existingSeasonTeams = await prisma.team.findMany({
@@ -646,6 +785,7 @@ export async function POST(request: NextRequest) {
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
       const countryRows = await apiFootballFetch('/countries');
+      const countriesFetched = countryRows.filter((row: any) => !!row?.name).length;
 
       for (const row of countryRows) {
         if (!row?.name) continue;
@@ -669,7 +809,7 @@ export async function POST(request: NextRequest) {
         countriesSaved += 1;
       }
 
-      steps = completeStep(steps, 'countries', countriesSaved, 'קטלוג גלובלי');
+      steps = completeStep(steps, 'countries', countriesSaved, 'קטלוג גלובלי', countriesFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -678,6 +818,7 @@ export async function POST(request: NextRequest) {
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
       const availableSeasonYears = await apiFootballFetch('/leagues/seasons');
+      const seasonsFetched = availableSeasonYears.filter((value: unknown) => Number.isInteger(Number(value))).length;
 
       for (const value of availableSeasonYears) {
         const year = Number(value);
@@ -686,7 +827,7 @@ export async function POST(request: NextRequest) {
         seasonsSaved += 1;
       }
 
-      steps = completeStep(steps, 'seasons', seasonsSaved, 'ממלא את טבלת העונות המקומית');
+      steps = completeStep(steps, 'seasons', seasonsSaved, 'ממלא את טבלת העונות המקומית', seasonsFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -698,6 +839,7 @@ export async function POST(request: NextRequest) {
       const leagueRows = await apiFootballFetch(
         `/leagues?country=${encodeURIComponent(countryName)}&season=${seasonYear}`
       );
+      const leaguesFetched = leagueRows.filter((row: any) => !!row?.league?.name).length;
 
       for (const row of leagueRows) {
         if (!row?.league?.name) continue;
@@ -755,7 +897,7 @@ export async function POST(request: NextRequest) {
         leaguesSaved += 1;
       }
 
-      steps = completeStep(steps, 'leagues', leaguesSaved, 'לפי מדינת ברירת המחדל של המערכת');
+      steps = completeStep(steps, 'leagues', leaguesSaved, 'לפי מדינת ברירת המחדל של המערכת', leaguesFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -797,6 +939,8 @@ export async function POST(request: NextRequest) {
           nameEn: apiTeam.name,
           nameHe: translateName(apiTeam.name),
           logoUrl: localLogoUrl || apiTeam.logo || null,
+          coach: existing?.coach || null,
+          coachHe: existing?.coachHe || null,
           code: apiTeam.code || null,
           countryEn: apiTeam.country || null,
           countryHe: translateName(apiTeam.country),
@@ -818,7 +962,7 @@ export async function POST(request: NextRequest) {
         teamMap.set(apiTeam.name, team);
       }
 
-      steps = completeStep(steps, 'teams', teamsAdded);
+      steps = completeStep(steps, 'teams', teamsAdded, undefined, teamsFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -831,11 +975,30 @@ export async function POST(request: NextRequest) {
         const dbTeam = teamMap.get(apiTeam?.name);
         if (!apiTeam?.id || !dbTeam) continue;
 
-        const squadRows = await apiFootballFetch(`/players/squads?team=${apiTeam.id}`);
+        const seasonPlayerRows = await fetchSeasonPlayers(apiTeam.id, seasonYear);
+        const importedApiPlayerIds = new Set<number>();
+        const importedPlayerNames = new Set<string>();
 
-        for (const squad of squadRows) {
-          for (const playerRow of squad.players || []) {
-            const jerseyNumber = typeof playerRow.number === 'number' ? playerRow.number : null;
+        for (const playerEntry of seasonPlayerRows) {
+          const playerRow = playerEntry?.player;
+          const playerStatistic = Array.isArray(playerEntry?.statistics)
+            ? playerEntry.statistics.find((stat: any) => stat?.team?.id === apiTeam.id) || playerEntry.statistics[0]
+            : null;
+          if (!playerRow?.name) continue;
+
+          importedPlayerNames.add(playerRow.name);
+          if (typeof playerRow.id === 'number') {
+            importedApiPlayerIds.add(playerRow.id);
+          }
+
+            playersFetched += 1;
+            const jerseyNumber =
+              typeof playerStatistic?.games?.number === 'number'
+                ? playerStatistic.games.number
+                : typeof playerRow.number === 'number'
+                  ? playerRow.number
+                  : null;
+            const canonicalPlayer = await findCanonicalPlayerMatch(playerRow.id || null, playerRow.name || null);
 
             const existingPlayer =
               (playerRow.id
@@ -863,6 +1026,21 @@ export async function POST(request: NextRequest) {
                 },
               }));
 
+            const canonicalPlayerId =
+              canonicalPlayer && canonicalPlayer.id !== existingPlayer?.id ? canonicalPlayer.id : existingPlayer?.canonicalPlayerId || null;
+            const resolvedNameHe =
+              existingPlayer?.nameHe ||
+              canonicalPlayer?.nameHe ||
+              translateName(playerRow.name);
+            const resolvedFirstNameHe =
+              existingPlayer?.firstNameHe ||
+              canonicalPlayer?.firstNameHe ||
+              null;
+            const resolvedLastNameHe =
+              existingPlayer?.lastNameHe ||
+              canonicalPlayer?.lastNameHe ||
+              null;
+
             const playerData = {
               photoUrl:
                 (await storePlayerPhotoLocally({
@@ -876,30 +1054,78 @@ export async function POST(request: NextRequest) {
                 null,
               apiFootballId: playerRow.id || null,
               nameEn: playerRow.name,
-              nameHe: translateName(playerRow.name),
+              nameHe: resolvedNameHe,
+              firstNameHe: resolvedFirstNameHe,
+              lastNameHe: resolvedLastNameHe,
               jerseyNumber,
-              position: playerRow.position || null,
+              position: playerStatistic?.games?.position || playerRow.position || null,
               teamId: dbTeam.id,
+              canonicalPlayerId,
             };
 
             if (!existingPlayer) {
               playersAdded += 1;
-              await prisma.player.create({ data: playerData });
+              const createdPlayer = await prisma.player.create({ data: playerData });
+
+              if (!canonicalPlayer && (resolvedFirstNameHe || resolvedLastNameHe || resolvedNameHe)) {
+                await prisma.player.update({
+                  where: { id: createdPlayer.id },
+                  data: {
+                    canonicalPlayerId: null,
+                    nameHe: resolvedNameHe,
+                    firstNameHe: resolvedFirstNameHe,
+                    lastNameHe: resolvedLastNameHe,
+                  },
+                });
+              }
             } else {
               await prisma.player.update({
                 where: { id: existingPlayer.id },
                 data: {
                   ...playerData,
                   apiFootballId: playerRow.id || existingPlayer.apiFootballId,
+                  nameHe: existingPlayer.nameHe || playerData.nameHe,
+                  firstNameHe: existingPlayer.firstNameHe || playerData.firstNameHe,
+                  lastNameHe: existingPlayer.lastNameHe || playerData.lastNameHe,
                   jerseyNumber: jerseyNumber ?? existingPlayer.jerseyNumber,
+                  canonicalPlayerId:
+                    canonicalPlayer && canonicalPlayer.id !== existingPlayer.id
+                      ? canonicalPlayer.id
+                      : existingPlayer.canonicalPlayerId,
                 },
               });
             }
-          }
+        }
+
+        if (seasonPlayerRows.length > 0) {
+          await prisma.player.deleteMany({
+            where: {
+              teamId: dbTeam.id,
+              OR: [
+                importedApiPlayerIds.size
+                  ? {
+                      apiFootballId: {
+                        notIn: Array.from(importedApiPlayerIds),
+                      },
+                    }
+                  : {
+                      apiFootballId: {
+                        not: null,
+                      },
+                    },
+                {
+                  apiFootballId: null,
+                  nameEn: {
+                    notIn: Array.from(importedPlayerNames),
+                  },
+                },
+              ],
+            },
+          });
         }
       }
 
-      steps = completeStep(steps, 'players', playersAdded);
+      steps = completeStep(steps, 'players', playersAdded, undefined, playersFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -935,6 +1161,7 @@ export async function POST(request: NextRequest) {
         if (!player.apiFootballId) continue;
 
         const sidelinedRows = await apiFootballFetch(`/sidelined?player=${player.apiFootballId}`);
+        sidelinedFetched += sidelinedRows.length;
 
         for (const row of sidelinedRows) {
           const startDate = row?.start ? new Date(row.start) : null;
@@ -958,7 +1185,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'sidelined', sidelinedSaved, 'רשומות שחופפות לעונה בלבד');
+      steps = completeStep(steps, 'sidelined', sidelinedSaved, 'רשומות שחופפות לעונה בלבד', sidelinedFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -971,6 +1198,7 @@ export async function POST(request: NextRequest) {
         const awayName = fixture?.teams?.away?.name;
         if (!homeName || !awayName) continue;
         if (selectedTeamName && homeName !== selectedTeamName && awayName !== selectedTeamName) continue;
+        fixturesFetched += 1;
 
         const homeTeam = teamMap.get(homeName);
         const awayTeam = teamMap.get(awayName);
@@ -1020,7 +1248,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'fixtures', gamesAdded);
+      steps = completeStep(steps, 'fixtures', gamesAdded, undefined, fixturesFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1035,6 +1263,7 @@ export async function POST(request: NextRequest) {
             const teamName = row?.team?.name;
             if (!teamName) continue;
             if (selectedTeamName && teamName !== selectedTeamName) continue;
+            standingsFetched += 1;
 
             const dbTeam = teamMap.get(teamName);
             if (!dbTeam) continue;
@@ -1078,7 +1307,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'standings', standingsUpdated);
+      steps = completeStep(steps, 'standings', standingsUpdated, undefined, standingsFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1097,6 +1326,7 @@ export async function POST(request: NextRequest) {
         if (!game) continue;
 
         const eventRows = await apiFootballFetch(`/fixtures/events?fixture=${fixtureId}`);
+        eventsFetched += eventRows.length;
         await prisma.gameEvent.deleteMany({ where: { gameId: game.id } });
 
         for (const [eventIndex, event] of eventRows.entries()) {
@@ -1142,7 +1372,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'events', eventsSaved);
+      steps = completeStep(steps, 'events', eventsSaved, undefined, eventsFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1161,6 +1391,9 @@ export async function POST(request: NextRequest) {
         if (!game) continue;
 
         const statisticsRows = await apiFootballFetch(`/fixtures/statistics?fixture=${fixtureId}`);
+        if (statisticsRows.length) {
+          statisticsFetched += 1;
+        }
         const mappedStats = mapFixtureStatistics(statisticsRows);
 
         await prisma.gameStatistics.upsert({
@@ -1175,7 +1408,7 @@ export async function POST(request: NextRequest) {
         statisticsSaved += 1;
       }
 
-      steps = completeStep(steps, 'statistics', statisticsSaved);
+      steps = completeStep(steps, 'statistics', statisticsSaved, undefined, statisticsFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1194,6 +1427,7 @@ export async function POST(request: NextRequest) {
         if (!game) continue;
 
         const lineupRows = await apiFootballFetch(`/fixtures/lineups?fixture=${fixtureId}`);
+        const fixtureDate = fixture?.fixture?.date ? new Date(fixture.fixture.date) : null;
         await prisma.gameLineupEntry.deleteMany({ where: { gameId: game.id } });
 
         for (const lineupRow of lineupRows) {
@@ -1211,6 +1445,7 @@ export async function POST(request: NextRequest) {
           if (!dbTeam) continue;
 
           const formation = lineupRow?.formation || null;
+          lineupsFetched += (lineupRow?.startXI?.length || 0) + (lineupRow?.substitutes?.length || 0) + (lineupRow?.coach?.name ? 1 : 0);
 
           for (const starter of lineupRow?.startXI || []) {
             const playerPayload = starter?.player;
@@ -1271,12 +1506,24 @@ export async function POST(request: NextRequest) {
           }
 
           if (lineupRow?.coach?.name) {
+            const coachNameEn = lineupRow.coach.name;
+            const coachNameHe = translateName(coachNameEn);
+
+            await syncTeamCoachAssignment({
+              teamId: dbTeam.id,
+              seasonId: season.id,
+              apiFootballCoachId: lineupRow.coach.id || null,
+              coachNameEn,
+              coachNameHe,
+              fixtureDate,
+            });
+
             await prisma.gameLineupEntry.create({
               data: {
                 apiFootballId: lineupRow.coach.id || null,
                 role: mapLineupRole('coach'),
                 participantType: 'COACH',
-                participantName: lineupRow.coach.name,
+                participantName: coachNameEn,
                 formation,
                 gameId: game.id,
                 teamId: dbTeam.id,
@@ -1287,7 +1534,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'lineups', lineupsSaved);
+      steps = completeStep(steps, 'lineups', lineupsSaved, undefined, lineupsFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1308,6 +1555,8 @@ export async function POST(request: NextRequest) {
           ? `/players/topscorers?league=${leagueId}&season=${seasonYear}`
           : `/players/topassists?league=${leagueId}&season=${seasonYear}`;
       const leaderboardRows = await apiFootballFetch(endpoint);
+      if (leaderboardResource === 'topScorers') topScorersFetched = leaderboardRows.length;
+      if (leaderboardResource === 'topAssists') topAssistsFetched = leaderboardRows.length;
 
       await prisma.competitionLeaderboardEntry.deleteMany({
         where: {
@@ -1388,7 +1637,13 @@ export async function POST(request: NextRequest) {
       if (leaderboardResource === 'topScorers') topScorersSaved = leaderboardSaved;
       if (leaderboardResource === 'topAssists') topAssistsSaved = leaderboardSaved;
 
-      steps = completeStep(steps, leaderboardResource, leaderboardSaved);
+      steps = completeStep(
+        steps,
+        leaderboardResource,
+        leaderboardSaved,
+        undefined,
+        leaderboardResource === 'topScorers' ? topScorersFetched : topAssistsFetched
+      );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1401,6 +1656,7 @@ export async function POST(request: NextRequest) {
           ? `/injuries?league=${leagueId}&season=${seasonYear}&team=${selectedDbTeam?.apiFootballId || selectedApiTeamId}`
           : `/injuries?league=${leagueId}&season=${seasonYear}`;
       const injuryRows = await apiFootballFetch(injuriesEndpoint);
+      injuriesFetched = injuryRows.length;
 
       await prisma.playerInjury.deleteMany({
         where: {
@@ -1494,7 +1750,7 @@ export async function POST(request: NextRequest) {
         injuriesSaved += 1;
       }
 
-      steps = completeStep(steps, 'injuries', injuriesSaved);
+      steps = completeStep(steps, 'injuries', injuriesSaved, undefined, injuriesFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1534,6 +1790,10 @@ export async function POST(request: NextRequest) {
         if (!dbTeam.apiFootballId) continue;
 
         const transferRows = await apiFootballFetch(`/transfers?team=${dbTeam.apiFootballId}`);
+        transfersFetched += transferRows.reduce(
+          (sum: number, row: any) => sum + (Array.isArray(row?.transfers) ? row.transfers.length : 0),
+          0
+        );
 
         for (const row of transferRows) {
           const apiPlayerId = row?.player?.id || null;
@@ -1587,7 +1847,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'transfers', transfersSaved);
+      steps = completeStep(steps, 'transfers', transfersSaved, undefined, transfersFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1623,6 +1883,7 @@ export async function POST(request: NextRequest) {
         if (!player.apiFootballId) continue;
 
         const trophyRows = await apiFootballFetch(`/trophies?player=${player.apiFootballId}`);
+        trophiesFetched += trophyRows.length;
 
         for (const trophy of trophyRows) {
           if (!matchesTrophySeasonLabel(trophy?.season || null, seasonYear)) continue;
@@ -1648,7 +1909,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'trophies', trophiesSaved);
+      steps = completeStep(steps, 'trophies', trophiesSaved, undefined, trophiesFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1688,6 +1949,7 @@ export async function POST(request: NextRequest) {
         if (!game.apiFootballId) continue;
 
         const predictionRows = await apiFootballFetch(`/predictions?fixture=${game.apiFootballId}`);
+        predictionsFetched += predictionRows.length;
         const payload = predictionRows[0];
         if (!payload?.predictions) continue;
 
@@ -1722,7 +1984,8 @@ export async function POST(request: NextRequest) {
         steps,
         'predictions',
         predictionsSaved,
-        scopedUpcomingGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים עתידיים או חיים לסנכרון'
+        scopedUpcomingGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים עתידיים או חיים לסנכרון',
+        predictionsFetched
       );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
@@ -1745,6 +2008,7 @@ export async function POST(request: NextRequest) {
         const h2hRows = await apiFootballFetch(
           `/fixtures/headtohead?h2h=${game.homeTeam.apiFootballId}-${game.awayTeam.apiFootballId}&last=5`
         );
+        h2hFetched += h2hRows.length;
 
         for (const row of h2hRows) {
           await prisma.gameHeadToHeadEntry.create({
@@ -1784,7 +2048,8 @@ export async function POST(request: NextRequest) {
         steps,
         'h2h',
         h2hSaved,
-        scopedUpcomingGames.length ? '5 מפגשים אחרונים לכל משחק עתידי או חי' : 'אין משחקים עתידיים או חיים לסנכרון'
+        scopedUpcomingGames.length ? '5 מפגשים אחרונים לכל משחק עתידי או חי' : 'אין משחקים עתידיים או חיים לסנכרון',
+        h2hFetched
       );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
@@ -1805,6 +2070,17 @@ export async function POST(request: NextRequest) {
         if (!game.apiFootballId) continue;
 
         const oddsRows = await apiFootballFetch(`/odds?fixture=${game.apiFootballId}`);
+        oddsFetched += oddsRows.reduce((sum: number, row: any) => {
+          return (
+            sum +
+            (row?.bookmakers || []).reduce((bookmakerSum: number, bookmaker: any) => {
+              return (
+                bookmakerSum +
+                (bookmaker?.bets || []).reduce((betSum: number, bet: any) => betSum + (bet?.values?.length || 0), 0)
+              );
+            }, 0)
+          );
+        }, 0);
 
         for (const row of oddsRows) {
           for (const bookmaker of row?.bookmakers || []) {
@@ -1836,7 +2112,8 @@ export async function POST(request: NextRequest) {
         steps,
         'odds',
         oddsSaved,
-        scopedUpcomingGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים עתידיים או חיים לסנכרון'
+        scopedUpcomingGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים עתידיים או חיים לסנכרון',
+        oddsFetched
       );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
@@ -1864,6 +2141,7 @@ export async function POST(request: NextRequest) {
           homeApiId === selectedDbTeam.apiFootballId ||
           awayApiId === selectedDbTeam.apiFootballId;
         if (!matchesSelectedTeam) continue;
+        livescoreFetched += 1;
 
         const localGame =
           row?.fixture?.id
@@ -1905,7 +2183,7 @@ export async function POST(request: NextRequest) {
         livescoreSaved += 1;
       }
 
-      steps = completeStep(steps, 'livescore', livescoreSaved, 'צילום מצב נוכחי של משחקים חיים');
+      steps = completeStep(steps, 'livescore', livescoreSaved, 'צילום מצב נוכחי של משחקים חיים', livescoreFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1924,7 +2202,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (effectiveResources.includes('competitions')) {
-      steps = completeStep(steps, 'competitions', 1);
+      steps = completeStep(steps, 'competitions', 1, undefined, 1);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1957,7 +2235,14 @@ export async function POST(request: NextRequest) {
       oddsSaved,
       livescoreSaved,
       resourceCounts: Object.fromEntries(
-        steps.map((step) => [step.key, { syncedCount: step.syncedCount || 0, note: step.note || null }])
+        steps.map((step) => [
+          step.key,
+          {
+            syncedCount: step.syncedCount || 0,
+            fetchedCount: step.fetchedCount || 0,
+            note: step.note || null,
+          },
+        ])
       ),
     };
 
@@ -1976,7 +2261,7 @@ export async function POST(request: NextRequest) {
     await logActivity({
       entityType: ActivityEntityType.FETCH_JOB,
       entityId: job.id,
-      actionHe: `הושלמה משיכת נתונים עבור ${selectedCompetitionMeta?.nameHe || LEAGUE_NAMES[leagueId] || leagueId} עונת ${seasonYear}`,
+      actionHe: `הושלמה משיכת נתונים עבור ${selectedCompetitionMeta?.nameHe || LEAGUE_NAMES[leagueId] || leagueId} עונת ${formatSeasonLabel(seasonYear)}`,
       userId: viewer.id,
       details: resultPayload,
     });

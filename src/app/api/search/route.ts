@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
           { nameEn: { contains: query, mode: 'insensitive' } },
         ],
       },
-      include: { team: true },
+      include: { team: true, canonicalPlayer: true },
       take: 5,
     }),
     prisma.game.findMany({
@@ -56,9 +57,9 @@ export async function GET(request: NextRequest) {
     ...players.map((player) => ({
       id: player.id,
       type: 'player',
-      label: player.nameHe || player.nameEn,
+      label: formatPlayerName(player),
       subtitle: player.team?.nameHe || player.team?.nameEn || undefined,
-      href: `/players/${player.id}`,
+      href: `/players/${player.canonicalPlayerId || player.id}`,
     })),
     ...games.map((game) => ({
       id: game.id,

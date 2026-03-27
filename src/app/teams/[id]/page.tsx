@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { derivePlayerDeepStats, deriveTeamDeepStats } from '@/lib/deep-stats';
+import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
 
@@ -22,6 +23,9 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
       },
       standings: true,
       teamStats: true,
+      coachAssignments: {
+        orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+      },
       uploads: {
         orderBy: [{ createdAt: 'asc' }],
       },
@@ -92,14 +96,15 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
   const seasonTeamStat = team.teamStats.find((stat) => stat.seasonId === team.seasonId) || team.teamStats[0] || null;
   const topScorers = team.players
     .map((player) => {
-      const totals = derivePlayerDeepStats(player.id, teamGames);
+        const totals = derivePlayerDeepStats(player.id, teamGames);
 
-      return {
-        id: player.id,
-        name: player.nameHe || player.nameEn,
-        goals: totals.goals,
-        assists: totals.assists,
-        minutes: totals.minutesPlayed,
+        return {
+          id: player.id,
+          canonicalPlayerId: player.canonicalPlayerId,
+          name: formatPlayerName(player),
+          goals: totals.goals,
+          assists: totals.assists,
+          minutes: totals.minutesPlayed,
         photo: player.photoUrl || player.uploads[0]?.filePath || null,
       };
     })
@@ -182,7 +187,7 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
             {topScorers.map((player) => (
               <Link
                 key={player.id}
-                href={`/players/${player.id}`}
+                href={`/players/${player.canonicalPlayerId || player.id}`}
                 className="rounded-2xl border border-stone-200 bg-stone-50 p-4 transition hover:border-red-300"
               >
                 <div className="flex items-center gap-3">
@@ -214,12 +219,12 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
                   {player.photoUrl || player.uploads[0]?.filePath ? (
                     <img
                       src={player.photoUrl || player.uploads[0]?.filePath || ''}
-                      alt={player.nameHe || player.nameEn}
+                      alt={formatPlayerName(player)}
                       className="h-14 w-14 rounded-full bg-white object-cover"
                     />
                   ) : null}
                   <div>
-                    <div className="font-bold text-stone-900">{player.nameHe || player.nameEn}</div>
+                    <div className="font-bold text-stone-900">{formatPlayerName(player)}</div>
                     <div className="mt-1 text-sm text-stone-500">{player.position || 'ללא עמדה'}</div>
                     <div className="mt-2 text-xs text-stone-400">#{player.jerseyNumber ?? '-'}</div>
                   </div>

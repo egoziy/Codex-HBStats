@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import ApiFetchForm from '@/components/ApiFetchForm';
+import { formatCoachName, getLatestCoachAssignment } from '@/lib/coach-display';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
+import { formatPlayerName } from '@/lib/player-display';
 
 type TeamGroup = {
   key: string;
@@ -79,6 +81,14 @@ type RawTeam = {
   logoUrl: string | null;
   coachHe: string | null;
   coach: string | null;
+  coachAssignments: {
+    id: string;
+    coachNameEn: string;
+    coachNameHe: string | null;
+    startDate: string | Date | null;
+    endDate: string | Date | null;
+    createdAt?: string | Date;
+  }[];
   players: RawPlayer[];
   standings: RawStanding[];
 };
@@ -698,15 +708,19 @@ function RawTeamsView({ rawData }: { rawData: RawData }) {
             </tr>
           </thead>
           <tbody>
-            {rawData.teams.map((team) => (
-              <tr key={team.id} className="border-b border-stone-100">
-                <td className="px-3 py-3 font-semibold text-stone-900">{team.nameHe || team.nameEn}</td>
-                <td className="px-3 py-3 text-stone-600">{team.nameEn}</td>
-                <td className="px-3 py-3">{team.apiFootballId ?? '-'}</td>
-                <td className="px-3 py-3">{team.coachHe || team.coach || '-'}</td>
-                <td className="px-3 py-3">{team.players.length}</td>
-              </tr>
-            ))}
+            {rawData.teams.map((team) => {
+              const latestCoachAssignment = getLatestCoachAssignment(team.coachAssignments || []);
+
+              return (
+                <tr key={team.id} className="border-b border-stone-100">
+                  <td className="px-3 py-3 font-semibold text-stone-900">{team.nameHe || team.nameEn}</td>
+                  <td className="px-3 py-3 text-stone-600">{team.nameEn}</td>
+                  <td className="px-3 py-3">{team.apiFootballId ?? '-'}</td>
+                  <td className="px-3 py-3">{formatCoachName(latestCoachAssignment) || team.coachHe || team.coach || '-'}</td>
+                  <td className="px-3 py-3">{team.players.length}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -736,7 +750,7 @@ function RawPlayersView({
           <tbody>
             {rawPlayers.map((player) => (
               <tr key={player.id} className="border-b border-stone-100">
-                <td className="px-3 py-3 font-semibold text-stone-900">{player.nameHe || player.nameEn}</td>
+                <td className="px-3 py-3 font-semibold text-stone-900">{formatPlayerName(player)}</td>
                 <td className="px-3 py-3 text-stone-600">{player.nameEn}</td>
                 <td className="px-3 py-3">{player.teamNameHe || player.teamNameEn}</td>
                 <td className="px-3 py-3">{player.position || '-'}</td>
@@ -829,8 +843,8 @@ function RawEventsView({
                   {event.extraMinute ? `+${event.extraMinute}` : ''}
                 </td>
                 <td className="px-3 py-3">{RAW_EVENT_LABELS[event.type] || event.type}</td>
-                <td className="px-3 py-3">{event.player?.nameHe || event.player?.nameEn || '-'}</td>
-                <td className="px-3 py-3">{event.relatedPlayer?.nameHe || event.relatedPlayer?.nameEn || '-'}</td>
+                <td className="px-3 py-3">{event.player ? formatPlayerName(event.player) : '-'}</td>
+                <td className="px-3 py-3">{event.relatedPlayer ? formatPlayerName(event.relatedPlayer) : '-'}</td>
                 <td className="px-3 py-3">{event.eventTeam?.nameHe || event.team || '-'}</td>
                 <td className="px-3 py-3 text-stone-600">{event.notesHe || event.notesEn || '-'}</td>
               </tr>
@@ -875,7 +889,7 @@ function RawLineupsView({
                 <td className="px-3 py-3 font-semibold text-stone-900">{entry.gameLabel}</td>
                 <td className="px-3 py-3">{entry.team.nameHe || entry.team.nameEn}</td>
                 <td className="px-3 py-3">{RAW_LINEUP_ROLE_LABELS[entry.role] || entry.role}</td>
-                <td className="px-3 py-3">{entry.player?.nameHe || entry.player?.nameEn || entry.participantName || '-'}</td>
+                <td className="px-3 py-3">{entry.player ? formatPlayerName(entry.player) : entry.participantName || '-'}</td>
                 <td className="px-3 py-3">{entry.positionName || '-'}</td>
                 <td className="px-3 py-3">{entry.positionGrid || '-'}</td>
                 <td className="px-3 py-3">{entry.jerseyNumber ?? '-'}</td>
@@ -951,7 +965,7 @@ function RawPlayerStatsView({ rawData }: { rawData: RawData }) {
           <tbody>
             {rawData.playerStats.map((stat) => (
               <tr key={stat.id} className="border-b border-stone-100">
-                <td className="px-3 py-3 font-semibold text-stone-900">{stat.player.nameHe || stat.player.nameEn}</td>
+                <td className="px-3 py-3 font-semibold text-stone-900">{formatPlayerName(stat.player)}</td>
                 <td className="px-3 py-3">{stat.player.team.nameHe || stat.player.team.nameEn}</td>
                 <td className="px-3 py-3">{getCompetitionDisplayName(stat.competition)}</td>
                 <td className="px-3 py-3">{stat.gamesPlayed}</td>
@@ -1034,7 +1048,7 @@ function RawLeaderboardsView({ rawData }: { rawData: RawData }) {
                 <td className="px-3 py-3">{RAW_LEADERBOARD_LABELS[entry.category] || entry.category}</td>
                 <td className="px-3 py-3 font-bold">{entry.rank}</td>
                 <td className="px-3 py-3 font-semibold text-stone-900">
-                  {entry.player?.nameHe || entry.playerNameHe || entry.player?.nameEn || entry.playerNameEn || '-'}
+                  {formatPlayerName(entry.player, entry.playerNameHe, entry.playerNameEn)}
                 </td>
                 <td className="px-3 py-3">
                   {entry.team?.nameHe || entry.teamNameHe || entry.team?.nameEn || entry.teamNameEn || '-'}
@@ -1072,7 +1086,7 @@ function RawInjuriesView({ rawData }: { rawData: RawData }) {
             {rawData.injuries.map((entry) => (
               <tr key={entry.id} className="border-b border-stone-100">
                 <td className="px-3 py-3 font-semibold text-stone-900">
-                  {entry.player?.nameHe || entry.playerNameHe || entry.player?.nameEn || entry.playerNameEn || '-'}
+                  {formatPlayerName(entry.player, entry.playerNameHe, entry.playerNameEn)}
                 </td>
                 <td className="px-3 py-3">
                   {entry.team?.nameHe || entry.teamNameHe || entry.team?.nameEn || entry.teamNameEn || '-'}
@@ -1118,7 +1132,7 @@ function RawTransfersView({ rawData }: { rawData: RawData }) {
             {rawData.transfers.map((entry) => (
               <tr key={entry.id} className="border-b border-stone-100">
                 <td className="px-3 py-3 font-semibold text-stone-900">
-                  {entry.player?.nameHe || entry.playerNameHe || entry.player?.nameEn || entry.playerNameEn || '-'}
+                  {formatPlayerName(entry.player, entry.playerNameHe, entry.playerNameEn)}
                 </td>
                 <td className="px-3 py-3 text-stone-600">
                   {entry.transferDate
@@ -1156,7 +1170,7 @@ function RawTrophiesView({ rawData }: { rawData: RawData }) {
             {rawData.trophies.map((entry) => (
               <tr key={entry.id} className="border-b border-stone-100">
                 <td className="px-3 py-3 font-semibold text-stone-900">
-                  {entry.player?.nameHe || entry.playerNameHe || entry.player?.nameEn || entry.playerNameEn || '-'}
+                  {formatPlayerName(entry.player, entry.playerNameHe, entry.playerNameEn)}
                 </td>
                 <td className="px-3 py-3">{entry.leagueNameHe || entry.leagueNameEn}</td>
                 <td className="px-3 py-3">{entry.countryHe || entry.countryEn || '-'}</td>

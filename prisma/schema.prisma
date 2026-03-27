@@ -68,6 +68,8 @@ model Season {
   liveSnapshots      LiveGameSnapshot[]
   sidelinedEntries   PlayerSidelinedEntry[]
   fetchJobs          FetchJob[]
+  mediaAssets        MediaAsset[]
+  coachAssignments   TeamCoachAssignment[]
 
   @@map("seasons")
 }
@@ -160,6 +162,7 @@ model Team {
   fetchJobs       FetchJob[]
   homeEvents      GameEvent[]      @relation("EventTeam")
   uploads         MediaAsset[]     @relation("TeamAssets")
+  coachAssignments TeamCoachAssignment[]
 
   @@unique([nameEn, seasonId])
   @@unique([apiFootballId, seasonId])
@@ -167,8 +170,29 @@ model Team {
   @@map("teams")
 }
 
+model TeamCoachAssignment {
+  id               String   @id @default(cuid())
+  apiFootballCoachId Int?
+  coachNameEn      String
+  coachNameHe      String?
+  startDate        DateTime?
+  endDate          DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  teamId           String
+  team             Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  seasonId         String
+  season           Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, seasonId, startDate])
+  @@index([seasonId, coachNameEn])
+  @@unique([teamId, seasonId, coachNameEn, startDate])
+  @@map("team_coach_assignments")
+}
+
 model Player {
   id                String              @id @default(cuid())
+  canonicalPlayerId String?
   apiFootballId     Int?
   nameEn            String
   nameHe            String
@@ -187,6 +211,8 @@ model Player {
   updatedAt         DateTime            @updatedAt
   teamId            String
   team              Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  canonicalPlayer   Player?             @relation("CanonicalPlayer", fields: [canonicalPlayerId], references: [id], onDelete: SetNull)
+  seasonEntries     Player[]            @relation("CanonicalPlayer")
   events            GameEvent[]         @relation("PrimaryPlayer")
   relatedEvents     GameEvent[]         @relation("RelatedPlayer")
   playerStats       PlayerStatistics[]
@@ -200,6 +226,7 @@ model Player {
 
   @@unique([jerseyNumber, teamId])
   @@unique([apiFootballId, teamId])
+  @@index([canonicalPlayerId])
   @@index([teamId])
   @@map("players")
 }
@@ -787,11 +814,14 @@ model MediaAsset {
   displayOrder   Int             @default(0)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  seasonId       String?
+  season         Season?         @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   teamId         String?
   team           Team?           @relation("TeamAssets", fields: [teamId], references: [id], onDelete: SetNull)
   playerId       String?
   player         Player?         @relation("PlayerAssets", fields: [playerId], references: [id], onDelete: SetNull)
 
+  @@index([seasonId])
   @@map("media_assets")
 }
 

@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
   const player = await prisma.player.findUnique({
     where: { id: entityId },
     include: {
+      canonicalPlayer: true,
       team: {
         include: { season: true },
       },
@@ -86,17 +87,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Player not found.' }, { status: 404 });
   }
 
+  const canonicalPlayerId = player.canonicalPlayerId || player.id;
+
   const filePath = await storeUploadedImage({
     file,
     entityType: 'players',
     seasonYear: player.team.season.year,
     folderName: player.team.nameEn,
-    entityId: player.id,
+    entityId: canonicalPlayerId,
     label: title || player.nameEn,
   });
 
   const currentCount = await prisma.mediaAsset.count({
-    where: { playerId: player.id },
+    where: { playerId: canonicalPlayerId },
   });
 
   const asset = await prisma.mediaAsset.create({
@@ -109,7 +112,7 @@ export async function POST(request: NextRequest) {
       sizeBytes: file.size,
       isPrimary,
       displayOrder: currentCount,
-      playerId: player.id,
+      playerId: canonicalPlayerId,
     },
   });
 

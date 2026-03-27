@@ -16,6 +16,7 @@ type StepState = {
   label: string;
   status: 'pending' | 'running' | 'done' | 'failed';
   syncedCount?: number;
+  fetchedCount?: number;
   note?: string | null;
 };
 
@@ -45,9 +46,19 @@ const resourceDefs = [
 
 const supportedResourceKeys = resourceDefs.filter((resource) => resource.supported).map((resource) => resource.key);
 
+function getDefaultSeasonYear() {
+  const now = new Date();
+  return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function formatSeasonLabel(yearValue: string) {
+  const year = Number(yearValue);
+  return Number.isFinite(year) ? `${year}-${year + 1}` : yearValue;
+}
+
 export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
   const router = useRouter();
-  const [season, setSeason] = useState('2025');
+  const [season, setSeason] = useState(String(getDefaultSeasonYear()));
   const [leagueId, setLeagueId] = useState('383');
   const [teamSelection, setTeamSelection] = useState('all');
   const [availableTeams, setAvailableTeams] = useState<TeamOption[]>(teams);
@@ -67,7 +78,10 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
-  const seasons = useMemo(() => Array.from({ length: 11 }, (_, index) => String(2025 - index)), []);
+  const seasons = useMemo(() => {
+    const defaultSeasonYear = getDefaultSeasonYear();
+    return Array.from({ length: 11 }, (_, index) => String(defaultSeasonYear - index));
+  }, []);
   const selectedCompetition = SUPPORTED_COMPETITIONS.find((competition) => competition.id === leagueId) || null;
 
   const progressPercent = useMemo(() => {
@@ -238,7 +252,7 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
           >
             {seasons.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {formatSeasonLabel(value)}
               </option>
             ))}
           </select>
@@ -347,7 +361,8 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
                   <span className="font-semibold text-stone-700">{step.label}</span>
                   {step.note ? <div className="mt-1 text-xs text-stone-500">{step.note}</div> : null}
                 </div>
-                <span className="text-left font-bold">
+                <div className="text-left">
+                  <span className="font-bold">
                   {step.status === 'done'
                     ? `הושלם${typeof step.syncedCount === 'number' ? ` | ${step.syncedCount} סונכרנו` : ''}`
                     : step.status === 'running'
@@ -355,7 +370,11 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
                       : step.status === 'failed'
                         ? 'נכשל'
                         : 'ממתין'}
-                </span>
+                  </span>
+                  {typeof step.fetchedCount === 'number' ? (
+                    <div className="mt-1 text-xs font-medium text-stone-500">{`נמצאו ${step.fetchedCount}`}</div>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>

@@ -1,3 +1,4 @@
+import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
 
@@ -169,7 +170,7 @@ export default async function StatisticsPage({
 
                     return (
                       <tr key={player.id} className="border-b border-stone-100 text-sm">
-                        <td className="px-3 py-3 font-semibold">{player.nameHe || player.nameEn}</td>
+                        <td className="px-3 py-3 font-semibold">{formatPlayerName(player)}</td>
                         <td className="px-3 py-3">{player.jerseyNumber ?? '-'}</td>
                         <td className="px-3 py-3">{player.position || '-'}</td>
                         <td className="px-3 py-3">{totals.gamesPlayed}</td>

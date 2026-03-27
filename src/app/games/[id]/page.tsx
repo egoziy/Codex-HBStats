@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
-import prisma from '@/lib/prisma';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
+import { formatPlayerName } from '@/lib/player-display';
+import prisma from '@/lib/prisma';
 
 const eventLabels: Record<string, string> = {
   GOAL: '⚽ שער',
@@ -35,6 +36,9 @@ export default async function GamePage({ params }: { params: { id: string } }) {
   if (!game) {
     notFound();
   }
+
+  const hasDetailedStats = hasDetailedGameStats(game.gameStats);
+  const eventSummary = buildEventSummary(game);
 
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
@@ -87,17 +91,37 @@ export default async function GamePage({ params }: { params: { id: string } }) {
         <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-black text-stone-900">סטטיסטיקות משחק</h2>
-            {game.gameStats ? (
+            {hasDetailedStats && game.gameStats ? (
               <div className="mt-4 space-y-3">
-                <StatRow label="אחזקת כדור בית" value={`${game.gameStats.homeTeamPossession ?? 0}%`} />
-                <StatRow label="אחזקת כדור חוץ" value={`${game.gameStats.awayTeamPossession ?? 0}%`} />
-                <StatRow label="בעיטות למסגרת בית" value={String(game.gameStats.homeShotsOnTarget ?? 0)} />
-                <StatRow label="בעיטות למסגרת חוץ" value={String(game.gameStats.awayShotsOnTarget ?? 0)} />
-                <StatRow label="קרנות בית" value={String(game.gameStats.homeCorners ?? 0)} />
-                <StatRow label="קרנות חוץ" value={String(game.gameStats.awayCorners ?? 0)} />
+                <StatRow label="אחזקת כדור בית" value={formatPercent(game.gameStats.homeTeamPossession)} />
+                <StatRow label="אחזקת כדור חוץ" value={formatPercent(game.gameStats.awayTeamPossession)} />
+                <StatRow label="בעיטות למסגרת בית" value={formatNumber(game.gameStats.homeShotsOnTarget)} />
+                <StatRow label="בעיטות למסגרת חוץ" value={formatNumber(game.gameStats.awayShotsOnTarget)} />
+                <StatRow label="בעיטות בית" value={formatNumber(game.gameStats.homeShotsTotal)} />
+                <StatRow label="בעיטות חוץ" value={formatNumber(game.gameStats.awayShotsTotal)} />
+                <StatRow label="קרנות בית" value={formatNumber(game.gameStats.homeCorners)} />
+                <StatRow label="קרנות חוץ" value={formatNumber(game.gameStats.awayCorners)} />
+                <StatRow label="עבירות בית" value={formatNumber(game.gameStats.homeFouls)} />
+                <StatRow label="עבירות חוץ" value={formatNumber(game.gameStats.awayFouls)} />
+                <StatRow label="נבדלים בית" value={formatNumber(game.gameStats.homeOffsides)} />
+                <StatRow label="נבדלים חוץ" value={formatNumber(game.gameStats.awayOffsides)} />
+                <StatRow label="צהובים בית" value={formatNumber(game.gameStats.homeYellowCards)} />
+                <StatRow label="צהובים חוץ" value={formatNumber(game.gameStats.awayYellowCards)} />
+                <StatRow label="אדומים בית" value={formatNumber(game.gameStats.homeRedCards)} />
+                <StatRow label="אדומים חוץ" value={formatNumber(game.gameStats.awayRedCards)} />
               </div>
             ) : (
-              <p className="mt-4 text-stone-500">אין עדיין סטטיסטיקות משחק מפורטות.</p>
+              <div className="mt-4 space-y-3">
+                <p className="text-sm text-stone-500">אין כרגע סטטיסטיקת API מפורטת למשחק הזה. מוצג סיכום שנגזר מהאירועים שנשמרו.</p>
+                <StatRow label="שערי בית" value={String(eventSummary.homeGoals)} />
+                <StatRow label="שערי חוץ" value={String(eventSummary.awayGoals)} />
+                <StatRow label="צהובים בית" value={String(eventSummary.homeYellowCards)} />
+                <StatRow label="צהובים חוץ" value={String(eventSummary.awayYellowCards)} />
+                <StatRow label="אדומים בית" value={String(eventSummary.homeRedCards)} />
+                <StatRow label="אדומים חוץ" value={String(eventSummary.awayRedCards)} />
+                <StatRow label="חילופים בית" value={String(eventSummary.homeSubstitutions)} />
+                <StatRow label="חילופים חוץ" value={String(eventSummary.awaySubstitutions)} />
+              </div>
             )}
           </div>
 
@@ -115,8 +139,8 @@ export default async function GamePage({ params }: { params: { id: string } }) {
                     </div>
                   </div>
                   <div className="mt-2 text-sm text-stone-600">
-                    {event.player?.nameHe || event.player?.nameEn || 'שחקן לא משויך'}
-                    {event.relatedPlayer ? ` | ${event.relatedPlayer.nameHe || event.relatedPlayer.nameEn}` : ''}
+                    {event.player ? formatPlayerName(event.player) : 'שחקן לא משויך'}
+                    {event.relatedPlayer ? ` | ${formatPlayerName(event.relatedPlayer)}` : ''}
                   </div>
                   {event.notesHe ? <div className="mt-1 text-xs text-stone-500">{event.notesHe}</div> : null}
                 </article>
@@ -141,4 +165,80 @@ function StatRow({ label, value }: { label: string; value: string }) {
       <span className="font-black text-stone-900">{value}</span>
     </div>
   );
+}
+
+function hasDetailedGameStats(
+  stats:
+    | {
+        homeTeamPossession: number | null;
+        awayTeamPossession: number | null;
+        homeShotsOnTarget: number | null;
+        awayShotsOnTarget: number | null;
+        homeShotsTotal: number | null;
+        awayShotsTotal: number | null;
+        homeCorners: number | null;
+        awayCorners: number | null;
+        homeFouls: number | null;
+        awayFouls: number | null;
+        homeOffsides: number | null;
+        awayOffsides: number | null;
+        homeYellowCards: number | null;
+        awayYellowCards: number | null;
+        homeRedCards: number | null;
+        awayRedCards: number | null;
+      }
+    | null
+) {
+  if (!stats) return false;
+
+  return [
+    stats.homeTeamPossession,
+    stats.awayTeamPossession,
+    stats.homeShotsOnTarget,
+    stats.awayShotsOnTarget,
+    stats.homeShotsTotal,
+    stats.awayShotsTotal,
+    stats.homeCorners,
+    stats.awayCorners,
+    stats.homeFouls,
+    stats.awayFouls,
+    stats.homeOffsides,
+    stats.awayOffsides,
+    stats.homeYellowCards,
+    stats.awayYellowCards,
+    stats.homeRedCards,
+    stats.awayRedCards,
+  ].some((value) => value !== null);
+}
+
+function formatNumber(value: number | null) {
+  return value === null ? '—' : String(value);
+}
+
+function formatPercent(value: number | null) {
+  return value === null ? '—' : `${value}%`;
+}
+
+function buildEventSummary(
+  game: {
+    homeTeamId: string;
+    awayTeamId: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    events: Array<{ teamId: string | null; type: string }>;
+  }
+) {
+  const countEvents = (teamId: string, types: string[]) =>
+    game.events.filter((event) => event.teamId === teamId && types.includes(event.type)).length;
+
+  return {
+    homeGoals: game.homeScore ?? countEvents(game.homeTeamId, ['GOAL', 'PENALTY_GOAL', 'OWN_GOAL']),
+    awayGoals: game.awayScore ?? countEvents(game.awayTeamId, ['GOAL', 'PENALTY_GOAL', 'OWN_GOAL']),
+    homeYellowCards: countEvents(game.homeTeamId, ['YELLOW_CARD']),
+    awayYellowCards: countEvents(game.awayTeamId, ['YELLOW_CARD']),
+    homeRedCards: countEvents(game.homeTeamId, ['RED_CARD']),
+    awayRedCards: countEvents(game.awayTeamId, ['RED_CARD']),
+    homeSubstitutions: countEvents(game.homeTeamId, ['SUBSTITUTION_IN']),
+    awaySubstitutions: countEvents(game.awayTeamId, ['SUBSTITUTION_IN']),
+  };
 }

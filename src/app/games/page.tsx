@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import prisma from '@/lib/prisma';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
+import { formatPlayerName } from '@/lib/player-display';
 
 export const dynamic = 'force-dynamic';
 
@@ -241,9 +242,9 @@ export default async function GamesPage({
                                 </div>
                               </div>
                               <div className="mt-2 text-sm text-stone-600">
-                                {event.player?.nameHe || event.player?.nameEn || 'שחקן לא משויך'}
+                                {event.player ? formatPlayerName(event.player) : 'שחקן לא משויך'}
                                 {event.relatedPlayer
-                                  ? ` | ${event.relatedPlayer.nameHe || event.relatedPlayer.nameEn}`
+                                  ? ` | ${formatPlayerName(event.relatedPlayer)}`
                                   : ''}
                               </div>
                               {event.notesHe ? <div className="mt-1 text-xs text-stone-500">{event.notesHe}</div> : null}

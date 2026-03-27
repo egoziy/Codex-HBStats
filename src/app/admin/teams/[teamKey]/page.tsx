@@ -47,6 +47,9 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
           : undefined,
     include: {
       season: true,
+      coachAssignments: {
+        orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+      },
       uploads: {
         orderBy: [{ createdAt: 'asc' }],
       },
