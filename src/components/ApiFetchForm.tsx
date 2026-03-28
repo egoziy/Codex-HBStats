@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SUPPORTED_COMPETITIONS } from '@/lib/competitions';
 
+const COMPETITION_GROUP_LABELS = {
+  ISRAEL: 'ישראל',
+  EUROPE: 'אירופה',
+} as const;
+
 type TeamOption = {
   id: string;
   nameEn: string;
@@ -20,7 +25,14 @@ type StepState = {
   note?: string | null;
 };
 
-const resourceDefs = [
+type ResourceDef = {
+  key: string;
+  label: string;
+  supported: boolean;
+  requiresAllTeams?: boolean;
+};
+
+const resourceDefs: ResourceDef[] = [
   { key: 'countries', label: 'מדינות', supported: true },
   { key: 'seasons', label: 'עונות', supported: true },
   { key: 'leagues', label: 'ליגות', supported: true },
@@ -32,8 +44,8 @@ const resourceDefs = [
   { key: 'events', label: 'אירועי משחק', supported: true },
   { key: 'lineups', label: 'הרכבים', supported: true },
   { key: 'statistics', label: 'סטטיסטיקות משחק', supported: true },
-  { key: 'topScorers', label: 'מלכי שערים', supported: true },
-  { key: 'topAssists', label: 'מלכי בישולים', supported: true },
+  { key: 'topScorers', label: 'מלכי שערים', supported: true, requiresAllTeams: true },
+  { key: 'topAssists', label: 'מלכי בישולים', supported: true, requiresAllTeams: true },
   { key: 'injuries', label: 'פציעות', supported: true },
   { key: 'transfers', label: 'העברות', supported: true },
   { key: 'trophies', label: 'תארים', supported: true },
@@ -44,7 +56,16 @@ const resourceDefs = [
   { key: 'livescore', label: 'לייב', supported: true },
 ];
 
-const supportedResourceKeys = resourceDefs.filter((resource) => resource.supported).map((resource) => resource.key);
+const ALL_TEAMS_ONLY_RESOURCE_NOTE = 'זמין רק בבחירה של כל הקבוצות';
+const RESOURCE_HELP_TEXT: Record<string, string> = {
+  odds: 'זמין עבור משחקים עתידיים או חיים שכבר יובאו למערכת.',
+  predictions: 'זמין עבור משחקים עתידיים או חיים שכבר יובאו למערכת.',
+  h2h: 'זמין עבור משחקים עתידיים או חיים שכבר יובאו למערכת.',
+  livescore: 'זמין רק כשיש כרגע משחקים חיים בליגה שנבחרה.',
+};
+
+resourceDefs.push({ key: 'globalLivescore', label: 'לייב גלובלי', supported: true, requiresAllTeams: true });
+RESOURCE_HELP_TEXT.globalLivescore = 'שומר פיד לייב מכל המדינות עבור דף הבית, בלי לשנות את נתוני ישראל הקיימים.';
 
 function getDefaultSeasonYear() {
   const now = new Date();
@@ -54,6 +75,22 @@ function getDefaultSeasonYear() {
 function formatSeasonLabel(yearValue: string) {
   const year = Number(yearValue);
   return Number.isFinite(year) ? `${year}-${year + 1}` : yearValue;
+}
+
+function getMinimumSeasonYearForCompetition(competitionId: string) {
+  const minimumYears: Record<string, number> = {
+    '2': 2011,
+    '3': 2011,
+    '382': 2016,
+    '383': 2016,
+    '496': 2016,
+    '384': 2018,
+    '385': 2019,
+    '659': 2020,
+    '848': 2021,
+  };
+
+  return minimumYears[competitionId] || null;
 }
 
 export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
@@ -80,9 +117,47 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
 
   const seasons = useMemo(() => {
     const defaultSeasonYear = getDefaultSeasonYear();
-    return Array.from({ length: 11 }, (_, index) => String(defaultSeasonYear - index));
-  }, []);
+    const minimumSeasonYear = getMinimumSeasonYearForCompetition(leagueId) || defaultSeasonYear - 10;
+    return Array.from({ length: 11 }, (_, index) => String(defaultSeasonYear - index)).filter(
+      (value) => Number(value) >= minimumSeasonYear
+    );
+  }, [leagueId]);
+
   const selectedCompetition = SUPPORTED_COMPETITIONS.find((competition) => competition.id === leagueId) || null;
+  const minimumSeasonYear = getMinimumSeasonYearForCompetition(leagueId);
+  const isTeamScoped = teamSelection !== 'all';
+  const competitionGroups = useMemo(() => {
+    return Object.entries(COMPETITION_GROUP_LABELS)
+      .map(([region, label]) => ({
+        region,
+        label,
+        competitions: SUPPORTED_COMPETITIONS.filter((competition) => competition.region === region),
+      }))
+      .filter((group) => group.competitions.length > 0);
+  }, []);
+
+  const availableResourceDefs = useMemo(
+    () =>
+      resourceDefs.map((resource) => {
+        const disabledForScope = Boolean(resource.requiresAllTeams && isTeamScoped);
+        return {
+          ...resource,
+          disabled: !resource.supported || disabledForScope,
+          disabledReason: disabledForScope ? ALL_TEAMS_ONLY_RESOURCE_NOTE : null,
+        };
+      }),
+    [isTeamScoped]
+  );
+
+  const selectableResourceKeys = useMemo(
+    () => availableResourceDefs.filter((resource) => !resource.disabled).map((resource) => resource.key),
+    [availableResourceDefs]
+  );
+
+  const enabledSelectedResources = useMemo(
+    () => selectedResources.filter((key) => selectableResourceKeys.includes(key)),
+    [selectedResources, selectableResourceKeys]
+  );
 
   const progressPercent = useMemo(() => {
     if (!steps.length) return 0;
@@ -91,9 +166,20 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
   }, [steps]);
 
   const allSupportedSelected = useMemo(
-    () => supportedResourceKeys.every((key) => selectedResources.includes(key)),
-    [selectedResources]
+    () => selectableResourceKeys.length > 0 && selectableResourceKeys.every((key) => selectedResources.includes(key)),
+    [selectableResourceKeys, selectedResources]
   );
+
+  useEffect(() => {
+    setSelectedResources((current) => current.filter((key) => selectableResourceKeys.includes(key)));
+  }, [selectableResourceKeys]);
+
+  useEffect(() => {
+    if (!minimumSeasonYear) return;
+    if (Number(season) < minimumSeasonYear) {
+      setSeason(String(minimumSeasonYear));
+    }
+  }, [minimumSeasonYear, season]);
 
   useEffect(() => {
     if (!loading || steps.length === 0) {
@@ -169,9 +255,9 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
     setResult(null);
     setJobId(null);
 
-    const selectedStepStates = resourceDefs
-      .filter((resource) => selectedResources.includes(resource.key))
-      .map((resource) => ({ ...resource, status: 'pending' as const }));
+    const selectedStepStates = availableResourceDefs
+      .filter((resource) => enabledSelectedResources.includes(resource.key))
+      .map((resource) => ({ key: resource.key, label: resource.label, status: 'pending' as const }));
 
     setSteps(selectedStepStates);
 
@@ -183,7 +269,7 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
           season,
           leagueId,
           teamSelection,
-          resources: selectedResources,
+          resources: enabledSelectedResources,
         }),
       });
 
@@ -214,6 +300,8 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
   }
 
   function toggleResource(key: string) {
+    if (!selectableResourceKeys.includes(key)) return;
+
     setSelectedResources((current) =>
       current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
     );
@@ -221,12 +309,12 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
 
   function toggleAllSupported() {
     setSelectedResources((current) => {
-      if (supportedResourceKeys.every((key) => current.includes(key))) {
-        return current.filter((key) => !supportedResourceKeys.includes(key));
+      if (selectableResourceKeys.every((key) => current.includes(key))) {
+        return current.filter((key) => !selectableResourceKeys.includes(key));
       }
 
       const next = new Set(current);
-      for (const key of supportedResourceKeys) {
+      for (const key of selectableResourceKeys) {
         next.add(key);
       }
       return Array.from(next);
@@ -256,6 +344,11 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
               </option>
             ))}
           </select>
+          {minimumSeasonYear ? (
+            <span className="mt-2 block text-xs text-stone-500">
+              העונה המוקדמת ביותר הזמינה ב-API לתחרות זו היא {formatSeasonLabel(String(minimumSeasonYear))}
+            </span>
+          ) : null}
         </Field>
 
         <Field label="ליגה">
@@ -264,10 +357,14 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
             onChange={(event) => setLeagueId(event.target.value)}
             className="w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3"
           >
-            {SUPPORTED_COMPETITIONS.map((competition) => (
-              <option key={competition.id} value={competition.id}>
-                {competition.nameHe}
-              </option>
+            {competitionGroups.map((group) => (
+              <optgroup key={group.region} label={group.label}>
+                {group.competitions.map((competition) => (
+                  <option key={competition.id} value={competition.id}>
+                    {competition.nameHe}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           {selectedCompetition?.notes ? (
@@ -306,28 +403,41 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
           </button>
         </div>
         <div className="mb-3 text-xs text-stone-500">
-          ממומש כרגע בפועל: מדינות, עונות, ליגות, מסגרות, קבוצות, שחקנים, שחקנים מושבתים, משחקים, טבלה, אירועים, הרכבים, סטטיסטיקות משחק, מלכי שערים/בישולים, פציעות, העברות, תארים, תחזיות, ראש בראש, יחסים ולייב.
+          ממומש כרגע בפועל: מדינות, עונות, ליגות, מסגרות, קבוצות, שחקנים, שחקנים מושבתים, משחקים, טבלאות,
+          אירועים, הרכבים, סטטיסטיקות משחק, מלכי שערים/בישולים, פציעות, העברות, תארים, תחזיות, ראש בראש,
+          יחסים ולייב.
         </div>
+        {isTeamScoped ? (
+          <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            בבחירת קבוצה ספציפית סעיפים שזמינים רק בייבוא של כל הקבוצות ננעלים אוטומטית.
+          </div>
+        ) : null}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {resourceDefs.map((resource) => (
+          {availableResourceDefs.map((resource) => (
             <label
               key={resource.key}
               className={`flex items-center gap-3 rounded-2xl border px-4 py-3 ${
-                resource.supported
-                  ? 'border-stone-200 bg-white'
-                  : 'border-stone-200 bg-stone-100 text-stone-400'
+                resource.disabled ? 'border-stone-200 bg-stone-100 text-stone-400' : 'border-stone-200 bg-white'
               }`}
             >
               <input
                 type="checkbox"
                 checked={selectedResources.includes(resource.key)}
-                disabled={!resource.supported}
+                disabled={resource.disabled}
                 onChange={() => toggleResource(resource.key)}
               />
-              <span className={`font-semibold ${resource.supported ? 'text-stone-700' : 'text-stone-400'}`}>
-                {resource.label}
-                {!resource.supported ? ' (בקרוב)' : ''}
-              </span>
+              <div>
+                <span className={`font-semibold ${resource.disabled ? 'text-stone-400' : 'text-stone-700'}`}>
+                  {resource.label}
+                  {!resource.supported ? ' (בקרוב)' : ''}
+                  {resource.disabledReason ? ` (${resource.disabledReason})` : ''}
+                </span>
+                {RESOURCE_HELP_TEXT[resource.key] ? (
+                  <div className={`mt-1 text-xs ${resource.disabled ? 'text-stone-400' : 'text-stone-500'}`}>
+                    {RESOURCE_HELP_TEXT[resource.key]}
+                  </div>
+                ) : null}
+              </div>
             </label>
           ))}
         </div>
@@ -337,7 +447,7 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
         <button
           type="button"
           onClick={handleFetch}
-          disabled={loading || loadingTeams || selectedResources.length === 0}
+          disabled={loading || loadingTeams || enabledSelectedResources.length === 0}
           className="rounded-full bg-stone-900 px-6 py-3 font-bold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-400"
         >
           {loading ? 'מושך נתונים...' : 'התחלת משיכה'}
@@ -363,13 +473,13 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
                 </div>
                 <div className="text-left">
                   <span className="font-bold">
-                  {step.status === 'done'
-                    ? `הושלם${typeof step.syncedCount === 'number' ? ` | ${step.syncedCount} סונכרנו` : ''}`
-                    : step.status === 'running'
-                      ? 'בתהליך'
-                      : step.status === 'failed'
-                        ? 'נכשל'
-                        : 'ממתין'}
+                    {step.status === 'done'
+                      ? `הושלם${typeof step.syncedCount === 'number' ? ` | ${step.syncedCount} סונכרנו` : ''}`
+                      : step.status === 'running'
+                        ? 'בתהליך'
+                        : step.status === 'failed'
+                          ? 'נכשל'
+                          : 'ממתין'}
                   </span>
                   {typeof step.fetchedCount === 'number' ? (
                     <div className="mt-1 text-xs font-medium text-stone-500">{`נמצאו ${step.fetchedCount}`}</div>

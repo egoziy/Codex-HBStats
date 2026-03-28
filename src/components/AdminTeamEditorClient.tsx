@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { formatCoachName, getLatestCoachAssignment } from '@/lib/coach-display';
 import { formatPlayerName } from '@/lib/player-display';
@@ -77,6 +78,7 @@ export default function AdminTeamEditorClient({
   currentStanding: Standing | null;
   seasonOptions: SeasonOption[];
 }) {
+  const router = useRouter();
   const latestCoachAssignment = getLatestCoachAssignment(selectedTeam.coachAssignments || []);
   const [teamForm, setTeamForm] = useState(() => buildTeamForm(selectedTeam, latestCoachAssignment));
   const [standingForm, setStandingForm] = useState({
@@ -134,6 +136,10 @@ export default function AdminTeamEditorClient({
     const payload = await response.json();
     setTeamSaving(false);
     setTeamMessage(response.ok ? 'פרטי הקבוצה נשמרו.' : payload.error || 'שמירת הקבוצה נכשלה.');
+
+    if (response.ok) {
+      router.refresh();
+    }
   }
 
   async function saveStanding() {

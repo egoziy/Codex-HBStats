@@ -177,7 +177,9 @@ export async function PUT(request: NextRequest) {
       where: { id },
       data: {
         ...(nameEn && { nameEn }),
+        ...(nameHe !== undefined && { nameHe }),
         ...(shortNameEn !== undefined && { shortNameEn: shortNameEn || null }),
+        ...(shortNameHe !== undefined && { shortNameHe: shortNameHe || null }),
         ...(coach !== undefined && { coach: nextCoachNameEn }),
         ...(coachHe !== undefined && { coachHe: nextCoachNameHe }),
         ...(logoUrl !== undefined && { logoUrl }),
@@ -220,7 +222,16 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(team);
+    const refreshedTeam = await prisma.team.findUnique({
+      where: { id: team.id },
+      include: {
+        coachAssignments: {
+          orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+        },
+      },
+    });
+
+    return NextResponse.json(refreshedTeam || team);
   } catch (error: any) {
     return NextResponse.json(
       { error: 'Failed to update team', details: error.message },

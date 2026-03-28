@@ -201,6 +201,9 @@ export default async function AdminPage({
             orderBy: [{ oddsUpdatedAt: 'desc' }, { bookmakerName: 'asc' }],
           },
           liveSnapshots: {
+            where: {
+              feedScope: 'LOCAL',
+            },
             orderBy: [{ snapshotAt: 'desc' }],
           },
         },

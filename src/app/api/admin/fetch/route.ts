@@ -6,6 +6,7 @@ import { logActivity } from '@/lib/activity';
 import { apiFootballFetch } from '@/lib/api-football';
 import { getCompetitionById } from '@/lib/competitions';
 import { derivePlayerDeepStats, deriveTeamDeepStats } from '@/lib/deep-stats';
+import { cleanupFutureSeasons } from '@/lib/home-live';
 import { storePlayerPhotoLocally, storeTeamLogoLocally } from '@/lib/media-storage';
 
 type FetchBody = {
@@ -81,6 +82,12 @@ const IMPLEMENTED_RESOURCES = new Set([
   'livescore',
 ]);
 
+const ALL_TEAMS_ONLY_RESOURCES = new Set(['topScorers', 'topAssists']);
+
+RESOURCE_LABELS.globalLivescore = 'לייב גלובלי';
+IMPLEMENTED_RESOURCES.add('globalLivescore');
+ALL_TEAMS_ONLY_RESOURCES.add('globalLivescore');
+
 const NAME_TRANSLATIONS: Record<string, string> = {
   'Hapoel Beer Sheva': 'הפועל באר שבע',
   'Maccabi Tel Aviv': 'מכבי תל אביב',
@@ -124,7 +131,7 @@ function mapEventType(eventType: string | undefined, detail: string | undefined)
     if (detail === 'Red Card' || detail === 'Second Yellow card') return 'RED_CARD';
   }
 
-  if (eventType === 'subst') return 'SUBSTITUTION_IN';
+  if (eventType === 'subst') return 'SUBSTITUTION_OUT';
 
   return 'ASSIST';
 }
@@ -619,9 +626,16 @@ export async function POST(request: NextRequest) {
   const selectedCompetitionMeta = getCompetitionById(leagueId);
   const teamSelection = body.teamSelection || 'all';
   const resources = Array.isArray(body.resources) ? body.resources : [];
-  const effectiveResources = resources.length
+  const requestedResources = resources.length
     ? resources
     : ['competitions', 'teams', 'players', 'fixtures', 'standings', 'events'];
+  const effectiveResources = requestedResources.filter(
+    (resource) => teamSelection === 'all' || !ALL_TEAMS_ONLY_RESOURCES.has(resource)
+  );
+
+  if (!effectiveResources.length) {
+    return NextResponse.json({ error: 'לא נבחרו סעיפים זמינים למשיכה עבור החתך שנבחר.' }, { status: 400 });
+  }
 
   const initialSteps: JobStep[] = effectiveResources.map((key) => ({
     key,
@@ -752,6 +766,7 @@ export async function POST(request: NextRequest) {
     let h2hSaved = 0;
     let oddsSaved = 0;
     let livescoreSaved = 0;
+    let globalLivescoreSaved = 0;
     let playersFetched = 0;
     let fixturesFetched = 0;
     let standingsFetched = 0;
@@ -768,6 +783,7 @@ export async function POST(request: NextRequest) {
     let h2hFetched = 0;
     let oddsFetched = 0;
     let livescoreFetched = 0;
+    let globalLivescoreFetched = 0;
 
     const teamMap = new Map<string, any>();
     const existingSeasonTeams = await prisma.team.findMany({
@@ -1040,6 +1056,22 @@ export async function POST(request: NextRequest) {
               existingPlayer?.lastNameHe ||
               canonicalPlayer?.lastNameHe ||
               null;
+            const jerseyConflict =
+              jerseyNumber !== null
+                ? await prisma.player.findUnique({
+                    where: {
+                      jerseyNumber_teamId: {
+                        jerseyNumber,
+                        teamId: dbTeam.id,
+                      },
+                    },
+                    select: {
+                      id: true,
+                    },
+                  })
+                : null;
+            const safeJerseyNumber =
+              jerseyConflict && jerseyConflict.id !== existingPlayer?.id ? null : jerseyNumber;
 
             const playerData = {
               photoUrl:
@@ -1057,7 +1089,7 @@ export async function POST(request: NextRequest) {
               nameHe: resolvedNameHe,
               firstNameHe: resolvedFirstNameHe,
               lastNameHe: resolvedLastNameHe,
-              jerseyNumber,
+              jerseyNumber: safeJerseyNumber,
               position: playerStatistic?.games?.position || playerRow.position || null,
               teamId: dbTeam.id,
               canonicalPlayerId,
@@ -1087,7 +1119,7 @@ export async function POST(request: NextRequest) {
                   nameHe: existingPlayer.nameHe || playerData.nameHe,
                   firstNameHe: existingPlayer.firstNameHe || playerData.firstNameHe,
                   lastNameHe: existingPlayer.lastNameHe || playerData.lastNameHe,
-                  jerseyNumber: jerseyNumber ?? existingPlayer.jerseyNumber,
+                  jerseyNumber: safeJerseyNumber ?? existingPlayer.jerseyNumber,
                   canonicalPlayerId:
                     canonicalPlayer && canonicalPlayer.id !== existingPlayer.id
                       ? canonicalPlayer.id
@@ -1162,24 +1194,54 @@ export async function POST(request: NextRequest) {
 
         const sidelinedRows = await apiFootballFetch(`/sidelined?player=${player.apiFootballId}`);
         sidelinedFetched += sidelinedRows.length;
+        const seenSidelinedKeys = new Set<string>();
 
         for (const row of sidelinedRows) {
           const startDate = row?.start ? new Date(row.start) : null;
           const endDate = row?.end ? new Date(row.end) : null;
           if (!overlapsSeasonRange(startDate, endDate, season)) continue;
+          const typeEn = row?.type || 'Unknown';
+          const startDateKey = startDate ? startDate.toISOString() : 'null';
+          const dedupeKey = `${player.apiFootballId}:${typeEn}:${startDateKey}`;
+          if (seenSidelinedKeys.has(dedupeKey)) continue;
+          seenSidelinedKeys.add(dedupeKey);
+
+          const existingEntry = await prisma.playerSidelinedEntry.findFirst({
+            where: {
+              seasonId: season.id,
+              apiFootballPlayerId: player.apiFootballId,
+              typeEn,
+              startDate,
+            },
+            select: {
+              id: true,
+            },
+          });
+
+          const sidelinedData = {
+            apiFootballPlayerId: player.apiFootballId,
+            playerNameEn: player.nameEn,
+            playerNameHe: translateName(player.nameEn),
+            typeEn,
+            typeHe: translateName(row?.type),
+            startDate,
+            endDate,
+            seasonId: season.id,
+            playerId: player.id,
+          };
+
+          if (existingEntry) {
+            await prisma.playerSidelinedEntry.update({
+              where: {
+                id: existingEntry.id,
+              },
+              data: sidelinedData,
+            });
+            continue;
+          }
 
           await prisma.playerSidelinedEntry.create({
-            data: {
-              apiFootballPlayerId: player.apiFootballId,
-              playerNameEn: player.nameEn,
-              playerNameHe: translateName(player.nameEn),
-              typeEn: row?.type || 'Unknown',
-              typeHe: translateName(row?.type),
-              startDate,
-              endDate,
-              seasonId: season.id,
-              playerId: player.id,
-            },
+            data: sidelinedData,
           });
           sidelinedSaved += 1;
         }
@@ -2126,6 +2188,7 @@ export async function POST(request: NextRequest) {
 
       await prisma.liveGameSnapshot.deleteMany({
         where: {
+          feedScope: 'LOCAL',
           competitionId: competition.id,
           ...(season.id ? { seasonId: season.id } : {}),
         },
@@ -2153,6 +2216,7 @@ export async function POST(request: NextRequest) {
         await prisma.liveGameSnapshot.create({
           data: {
             apiFootballFixtureId: row?.fixture?.id,
+            feedScope: 'LOCAL',
             leagueApiFootballId: row?.league?.id || null,
             leagueNameEn: row?.league?.name || null,
             leagueNameHe: translateName(row?.league?.name),
@@ -2187,6 +2251,64 @@ export async function POST(request: NextRequest) {
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
+    if (effectiveResources.includes('globalLivescore')) {
+      steps = markStep(steps, 'globalLivescore', 'running');
+      await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
+
+      const liveRows = await apiFootballFetch('/fixtures?live=all');
+
+      await prisma.liveGameSnapshot.deleteMany({
+        where: {
+          feedScope: 'GLOBAL_HOMEPAGE',
+        },
+      });
+
+      for (const row of liveRows) {
+        if (!row?.fixture?.id) continue;
+        globalLivescoreFetched += 1;
+
+        const localGame = await prisma.game.findUnique({
+          where: { apiFootballId: row.fixture.id },
+        });
+
+        await prisma.liveGameSnapshot.create({
+          data: {
+            apiFootballFixtureId: row.fixture.id,
+            feedScope: 'GLOBAL_HOMEPAGE',
+            leagueApiFootballId: row?.league?.id || null,
+            leagueNameEn: row?.league?.name || null,
+            leagueNameHe: translateName(row?.league?.name),
+            roundEn: row?.league?.round || null,
+            roundHe: translateName(row?.league?.round),
+            statusShort: row?.fixture?.status?.short || null,
+            statusLong: row?.fixture?.status?.long || null,
+            elapsed: row?.fixture?.status?.elapsed ?? null,
+            extra: row?.fixture?.status?.extra ?? null,
+            snapshotAt: new Date(),
+            fixtureDate: row?.fixture?.date ? new Date(row.fixture.date) : null,
+            homeTeamApiFootballId: row?.teams?.home?.id || null,
+            homeTeamNameEn: row?.teams?.home?.name || null,
+            homeTeamNameHe: translateName(row?.teams?.home?.name),
+            awayTeamApiFootballId: row?.teams?.away?.id || null,
+            awayTeamNameEn: row?.teams?.away?.name || null,
+            awayTeamNameHe: translateName(row?.teams?.away?.name),
+            homeScore: row?.goals?.home ?? null,
+            awayScore: row?.goals?.away ?? null,
+            eventCount: Array.isArray(row?.events) ? row.events.length : 0,
+            rawJson: row as any,
+            gameId: localGame?.id || null,
+            seasonId: localGame?.seasonId || null,
+            competitionId: localGame?.competitionId || null,
+          },
+        });
+
+        globalLivescoreSaved += 1;
+      }
+
+      steps = completeStep(steps, 'globalLivescore', globalLivescoreSaved, 'פיד לייב גלובלי לדף הבית', globalLivescoreFetched);
+      await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
+    }
+
     const scopedTeams = await prisma.team.findMany({
       where: {
         seasonId: season.id,
@@ -2200,6 +2322,8 @@ export async function POST(request: NextRequest) {
       competitionId: competition.id,
       teamIds: scopedTeams.map((team) => team.id),
     });
+
+    const futureSeasonsCleanup = await cleanupFutureSeasons();
 
     if (effectiveResources.includes('competitions')) {
       steps = completeStep(steps, 'competitions', 1, undefined, 1);
@@ -2234,6 +2358,8 @@ export async function POST(request: NextRequest) {
       h2hSaved,
       oddsSaved,
       livescoreSaved,
+      globalLivescoreSaved,
+      futureSeasonsDeleted: futureSeasonsCleanup.count,
       resourceCounts: Object.fromEntries(
         steps.map((step) => [
           step.key,

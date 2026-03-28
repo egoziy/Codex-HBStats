@@ -45,10 +45,12 @@ type GameLike = {
 };
 
 export const MINUTE_BUCKETS = [
-  { key: '1-20', label: '1-20', start: 0, end: 20 },
-  { key: '21-45', label: '21-45', start: 20, end: 45 },
-  { key: '46-65', label: '46-65', start: 45, end: 65 },
-  { key: '66-90', label: '66-90', start: 65, end: 90 },
+  { key: '0-15', label: "0 - 15'", start: 0, end: 15 },
+  { key: '15-30', label: "15 - 30'", start: 15, end: 30 },
+  { key: '30-45', label: "30 - 45'", start: 30, end: 45 },
+  { key: '45-60', label: "45 - 60'", start: 45, end: 60 },
+  { key: '60-75', label: "60 - 75'", start: 60, end: 75 },
+  { key: '75-90', label: "75 - 90'", start: 75, end: 90 },
 ] as const;
 
 export type MinuteBucketKey = (typeof MINUTE_BUCKETS)[number]['key'];
@@ -108,10 +110,12 @@ function addMinutesToBuckets(
 }
 
 function getBucketKeyByMinute(minute: number): MinuteBucketKey {
-  if (minute <= 20) return '1-20';
-  if (minute <= 45) return '21-45';
-  if (minute <= 65) return '46-65';
-  return '66-90';
+  if (minute < 15) return '0-15';
+  if (minute < 30) return '15-30';
+  if (minute < 45) return '30-45';
+  if (minute < 60) return '45-60';
+  if (minute < 75) return '60-75';
+  return '75-90';
 }
 
 function inferPlayedWindow(playerId: string, game: GameLike) {
@@ -119,10 +123,18 @@ function inferPlayedWindow(playerId: string, game: GameLike) {
   const isStarter = playerLineups.some((entry) => entry.role === 'STARTER');
   const onBench = playerLineups.some((entry) => entry.role === 'SUBSTITUTE');
   const substitutionIn = game.events
-    .filter((event) => event.type === 'SUBSTITUTION_IN' && event.playerId === playerId)
+    .filter(
+      (event) =>
+        (event.type === 'SUBSTITUTION_IN' || event.type === 'SUBSTITUTION_OUT') &&
+        event.relatedPlayerId === playerId
+    )
     .sort((left, right) => eventMinute(left) - eventMinute(right))[0];
   const substitutedOff = game.events
-    .filter((event) => event.type === 'SUBSTITUTION_IN' && event.relatedPlayerId === playerId)
+    .filter(
+      (event) =>
+        (event.type === 'SUBSTITUTION_IN' || event.type === 'SUBSTITUTION_OUT') &&
+        event.playerId === playerId
+    )
     .sort((left, right) => eventMinute(left) - eventMinute(right))[0];
 
   if (!isStarter && !substitutionIn) {

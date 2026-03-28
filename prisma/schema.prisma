@@ -262,7 +262,7 @@ model Game {
   prediction          GamePrediction?
   headToHeadEntries   GameHeadToHeadEntry[]
   oddsValues          GameOddsValue[]
-  liveSnapshot        LiveGameSnapshot?
+  liveSnapshots       LiveGameSnapshot[]
   fetchJobs           FetchJob[]
   activityLogs        ActivityLog[]
 
@@ -673,7 +673,8 @@ model GameOddsValue {
 
 model LiveGameSnapshot {
   id                    String       @id @default(cuid())
-  apiFootballFixtureId  Int          @unique
+  apiFootballFixtureId  Int
+  feedScope             String       @default("LOCAL")
   leagueApiFootballId   Int?
   leagueNameEn          String?
   leagueNameHe          String?
@@ -697,13 +698,16 @@ model LiveGameSnapshot {
   rawJson               Json?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
-  gameId                String?      @unique
+  gameId                String?
   game                  Game?        @relation(fields: [gameId], references: [id], onDelete: SetNull)
   seasonId              String?
   season                Season?      @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   competitionId         String?
   competition           Competition? @relation(fields: [competitionId], references: [id], onDelete: SetNull)
 
+  @@unique([apiFootballFixtureId, feedScope])
+  @@unique([gameId, feedScope])
+  @@index([feedScope, snapshotAt])
   @@index([seasonId, competitionId, snapshotAt])
   @@map("live_game_snapshots")
 }

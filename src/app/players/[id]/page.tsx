@@ -19,6 +19,8 @@ type AggregatedStatRow = {
   gamesPlayed: number;
 };
 
+type PlayerGameFilter = 'all' | 'starts' | 'bench' | 'sub-in' | 'sub-off';
+
 type PlayerSeasonEntry = {
   id: string;
   team: {
@@ -58,7 +60,13 @@ type PlayerGameDetail = {
   }>;
 };
 
-export default async function PlayerPage({ params }: { params: { id: string } }) {
+export default async function PlayerPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { view?: string; season?: string };
+}) {
   const matchedPlayer = await prisma.player.findFirst({
     where: {
       OR: [{ id: params.id }, { canonicalPlayerId: params.id }],
@@ -107,9 +115,31 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   const latestSeasonEntry = [...linkedPlayers].sort(
     (left, right) => right.team.season.year - left.team.season.year || +new Date(right.updatedAt) - +new Date(left.updatedAt)
   )[0];
-  const teamIds = Array.from(new Set(linkedPlayers.map((player) => player.teamId)));
+  const availableSeasons = Array.from(
+    linkedPlayers
+      .map((player) => ({
+        id: player.team.season.id,
+        name: player.team.season.name,
+        year: player.team.season.year,
+      }))
+      .reduce((map, season) => map.set(season.id, season), new Map<string, { id: string; name: string; year: number }>())
+      .values()
+  ).sort((left, right) => right.year - left.year);
+  const selectedSeasonId =
+    searchParams?.season && availableSeasons.some((season) => season.id === searchParams.season)
+      ? searchParams.season
+      : latestSeasonEntry.team.season.id;
+  const selectedSeason = availableSeasons.find((season) => season.id === selectedSeasonId) || availableSeasons[0];
+  const seasonPlayers = linkedPlayers.filter((player) => player.team.season.id === selectedSeasonId);
+  const displayPlayerEntry =
+    seasonPlayers.find((player) => player.id === matchedPlayer.id) ||
+    seasonPlayers.find((player) => player.id === canonicalPlayerId) ||
+    seasonPlayers[0] ||
+    latestSeasonEntry;
+  const teamIds = Array.from(new Set(seasonPlayers.map((player) => player.teamId)));
   const allGames = await prisma.game.findMany({
     where: {
+      seasonId: selectedSeasonId,
       OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }],
     },
     include: {
@@ -157,7 +187,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
     orderBy: { dateTime: 'desc' },
   });
 
-  const derivedTotals = linkedPlayers.reduce(
+  const derivedTotals = seasonPlayers.reduce(
     (acc, player) => {
       const playerGames = allGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId);
       const derived = derivePlayerDeepStats(player.id, playerGames);
@@ -190,7 +220,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   );
 
   const aggregatedStats = Array.from(
-    linkedPlayers
+    seasonPlayers
       .flatMap((player) => player.playerStats)
       .reduce((map, stat) => {
         const key = `${stat.seasonId || 'all'}-${stat.competitionId || 'all'}`;
@@ -233,13 +263,14 @@ export default async function PlayerPage({ params }: { params: { id: string } })
     .flatMap((player) => player.uploads)
     .sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary) || +new Date(left.createdAt) - +new Date(right.createdAt));
   const displayPhoto =
-    latestSeasonEntry.photoUrl ||
+    displayPlayerEntry.photoUrl ||
     uploads.find((upload) => upload.isPrimary)?.filePath ||
     uploads[0]?.filePath ||
     null;
   const playerDisplayName = formatPlayerName(canonicalPlayer);
   const primarySeasonStats = aggregatedStats[0] || null;
-  const playerGameRows = linkedPlayers
+  const activeGameFilter = normalizeGameFilter(searchParams?.view);
+  const playerGameRows = seasonPlayers
     .flatMap((player) =>
       allGames
         .filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)
@@ -247,6 +278,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
         .filter((row): row is NonNullable<typeof row> => Boolean(row))
     )
     .sort((left, right) => +new Date(right.dateTime) - +new Date(left.dateTime));
+  const filteredPlayerGameRows = playerGameRows.filter((row) => matchesGameFilter(row, activeGameFilter));
 
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
@@ -261,16 +293,33 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                 <h1 className="text-3xl font-black text-stone-900">{playerDisplayName}</h1>
                 {playerDisplayName !== canonicalPlayer.nameEn ? <p className="mt-1 text-stone-500">{canonicalPlayer.nameEn}</p> : null}
                 <p className="mt-2 text-sm text-stone-600">
-                  {latestSeasonEntry.team.nameHe || latestSeasonEntry.team.nameEn} | עונה {latestSeasonEntry.team.season.name}
+                  {displayPlayerEntry.team.nameHe || displayPlayerEntry.team.nameEn} | עונה {selectedSeason?.name}
                 </p>
                 <p className="mt-1 text-sm text-stone-600">
-                  {latestSeasonEntry.position || 'ללא עמדה'} | מספר {latestSeasonEntry.jerseyNumber ?? '-'}
+                  {displayPlayerEntry.position || 'ללא עמדה'} | מספר {displayPlayerEntry.jerseyNumber ?? '-'}
                 </p>
               </div>
             </div>
-            <Link href={`/players/${canonicalPlayerId}/charts`} className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">
-              גרפים עונתיים
-            </Link>
+            <div className="flex flex-col gap-3 sm:items-end">
+              <form action={`/players/${canonicalPlayerId}`} className="flex flex-wrap items-center gap-3">
+                <input type="hidden" name="view" value={activeGameFilter === 'all' ? '' : activeGameFilter} />
+                <select
+                  name="season"
+                  defaultValue={selectedSeasonId}
+                  className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+                >
+                  {availableSeasons.map((season) => (
+                    <option key={season.id} value={season.id}>
+                      {season.name}
+                    </option>
+                  ))}
+                </select>
+                <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">הצג עונה</button>
+              </form>
+              <Link href={`/players/${canonicalPlayerId}/charts`} className="rounded-full border border-stone-300 bg-white px-5 py-3 font-bold text-stone-900">
+                גרפים עונתיים
+              </Link>
+            </div>
           </div>
         </section>
 
@@ -279,10 +328,10 @@ export default async function PlayerPage({ params }: { params: { id: string } })
           <StatCard label="בישולים" value={String(derivedTotals.assists)} />
           <StatCard label="דקות" value={String(derivedTotals.minutesPlayed)} />
           <StatCard label="משחקים" value={String(derivedTotals.gamesPlayed)} />
-          <StatCard label="פתיחות" value={String(derivedTotals.starts)} />
-          <StatCard label="נרשם כמחליף" value={String(derivedTotals.benchAppearances)} />
-          <StatCard label="כניסות כמחליף" value={String(derivedTotals.substituteAppearances)} />
-          <StatCard label="הוחלף החוצה" value={String(derivedTotals.timesSubbedOff)} />
+          <StatCard label="פתיחות" value={String(derivedTotals.starts)} href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=starts#games`} />
+          <StatCard label="נרשם כמחליף" value={String(derivedTotals.benchAppearances)} href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=bench#games`} />
+          <StatCard label="כניסות כמחליף" value={String(derivedTotals.substituteAppearances)} href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=sub-in#games`} />
+          <StatCard label="הוחלף החוצה" value={String(derivedTotals.timesSubbedOff)} href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=sub-off#games`} />
           <StatCard label="צהובים" value={String(derivedTotals.yellowCards)} />
           <StatCard label="אדומים" value={String(derivedTotals.redCards)} />
         </section>
@@ -291,7 +340,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
           <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-black text-stone-900">פרטי שחקן</h2>
             <div className="mt-4 space-y-3 text-sm">
-              <StatRow label="עמדה נוכחית" value={latestSeasonEntry.position || 'לא צוין'} />
+              <StatRow label="עמדה נוכחית" value={displayPlayerEntry.position || 'לא צוין'} />
               <StatRow label="לאום" value={canonicalPlayer.nationalityHe || canonicalPlayer.nationalityEn || 'לא צוין'} />
               <StatRow label="קבוצות בקריירה" value={String(new Set(linkedPlayers.map((player) => player.teamId)).size)} />
               <StatRow label="עונות במערכת" value={String(new Set(linkedPlayers.map((player) => player.team.seasonId)).size)} />
@@ -313,7 +362,7 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                   </tr>
                 </thead>
                 <tbody>
-                  {linkedPlayers.map((player) => (
+                  {seasonPlayers.map((player) => (
                     <tr key={player.id} className="border-b border-stone-100">
                       <td className="px-3 py-3">{player.team.season.name}</td>
                       <td className="px-3 py-3">{player.team.nameHe || player.team.nameEn}</td>
@@ -368,18 +417,25 @@ export default async function PlayerPage({ params }: { params: { id: string } })
               </table>
             </div>
           ) : (
-            <p className="mt-4 text-stone-500">אין עדיין סטטיסטיקות שמורות לשחקן הזה.</p>
+            <p className="mt-4 text-stone-500">אין עדיין סטטיסטיקות שמורות לשחקן הזה בעונה שנבחרה.</p>
           )}
           {primarySeasonStats ? (
             <p className="mt-4 text-sm text-stone-500">
-              סיכום עונה אחרונה במערכת: {primarySeasonStats.gamesPlayed} משחקים, {primarySeasonStats.minutesPlayed} דקות, {primarySeasonStats.starts} פתיחות.
+              סיכום העונה שנבחרה: {primarySeasonStats.gamesPlayed} משחקים, {primarySeasonStats.minutesPlayed} דקות, {primarySeasonStats.starts} פתיחות.
             </p>
           ) : null}
         </section>
 
-        <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
+        <section id="games" className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-black text-stone-900">טבלת משחקים</h2>
-          {playerGameRows.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <FilterChip href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}#games`} active={activeGameFilter === 'all'} label={`הכל (${playerGameRows.length})`} />
+            <FilterChip href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=starts#games`} active={activeGameFilter === 'starts'} label={`פתח (${playerGameRows.filter((row) => row.isStarter).length})`} />
+            <FilterChip href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=bench#games`} active={activeGameFilter === 'bench'} label={`בספסל (${playerGameRows.filter((row) => row.onBench).length})`} />
+            <FilterChip href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=sub-in#games`} active={activeGameFilter === 'sub-in'} label={`נכנס (${playerGameRows.filter((row) => row.wasSubbedIn).length})`} />
+            <FilterChip href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&view=sub-off#games`} active={activeGameFilter === 'sub-off'} label={`הוחלף (${playerGameRows.filter((row) => row.wasSubbedOff).length})`} />
+          </div>
+          {filteredPlayerGameRows.length > 0 ? (
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full text-right text-sm">
                 <thead>
@@ -400,12 +456,16 @@ export default async function PlayerPage({ params }: { params: { id: string } })
                   </tr>
                 </thead>
                 <tbody>
-                  {playerGameRows.map((row) => (
+                  {filteredPlayerGameRows.map((row) => (
                     <tr key={`${row.playerId}-${row.gameId}`} className="border-b border-stone-100">
                       <td className="px-3 py-3 whitespace-nowrap">{row.displayDate}</td>
                       <td className="px-3 py-3 whitespace-nowrap">{row.seasonName}</td>
                       <td className="px-3 py-3">{row.competitionName}</td>
-                      <td className="px-3 py-3">{row.matchLabel}</td>
+                      <td className="px-3 py-3">
+                        <Link href={`/games/${row.gameId}`} className="font-semibold text-red-700 hover:text-red-800 hover:underline">
+                          {row.matchLabel}
+                        </Link>
+                      </td>
                       <td className="px-3 py-3 whitespace-nowrap">{row.scoreLabel}</td>
                       <td className="px-3 py-3 whitespace-nowrap">{row.squadRoleLabel}</td>
                       <td className="px-3 py-3 whitespace-nowrap">{row.enteredMinuteLabel}</td>
@@ -421,7 +481,9 @@ export default async function PlayerPage({ params }: { params: { id: string } })
               </table>
             </div>
           ) : (
-            <p className="mt-4 text-stone-500">אין עדיין פירוט משחקים לשחקן הזה.</p>
+            <p className="mt-4 text-stone-500">
+              {activeGameFilter === 'all' ? 'אין עדיין פירוט משחקים לשחקן הזה.' : 'לא נמצאו משחקים תחת החתך שבחרת.'}
+            </p>
           )}
         </section>
 
@@ -446,13 +508,19 @@ export default async function PlayerPage({ params }: { params: { id: string } })
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
+function StatCard({ label, value, href }: { label: string; value: string; href?: string }) {
+  const content = (
+    <article className={`rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm transition ${href ? 'hover:border-red-200 hover:shadow-md' : ''}`}>
       <div className="text-sm font-semibold text-stone-500">{label}</div>
       <div className="mt-3 text-3xl font-black text-stone-900">{value}</div>
     </article>
   );
+
+  if (href) {
+    return <Link href={href}>{content}</Link>;
+  }
+
+  return content;
 }
 
 function eventMinute(event: { minute: number; extraMinute: number | null }) {
@@ -467,10 +535,18 @@ function buildPlayerGameRow(
   const isStarter = playerLineups.some((entry) => entry.role === 'STARTER');
   const onBench = playerLineups.some((entry) => entry.role === 'SUBSTITUTE');
   const subInEvent = game.events
-    .filter((event) => event.type === 'SUBSTITUTION_IN' && event.playerId === player.id)
+    .filter(
+      (event) =>
+        (event.type === 'SUBSTITUTION_IN' || event.type === 'SUBSTITUTION_OUT') &&
+        event.relatedPlayerId === player.id
+    )
     .sort((left, right) => eventMinute(left) - eventMinute(right))[0];
   const subOffEvent = game.events
-    .filter((event) => event.type === 'SUBSTITUTION_IN' && event.relatedPlayerId === player.id)
+    .filter(
+      (event) =>
+        (event.type === 'SUBSTITUTION_IN' || event.type === 'SUBSTITUTION_OUT') &&
+        event.playerId === player.id
+    )
     .sort((left, right) => eventMinute(left) - eventMinute(right))[0];
   const goals = game.events.filter(
     (event) => event.playerId === player.id && (event.type === 'GOAL' || event.type === 'PENALTY_GOAL')
@@ -492,9 +568,11 @@ function buildPlayerGameRow(
   const startMinute = isStarter ? 0 : subInEvent ? eventMinute(subInEvent) : null;
   const endMinute = subOffEvent ? eventMinute(subOffEvent) : isStarter || subInEvent ? 90 : null;
 
-  const squadRoleLabel = isStarter ? 'פתח' : onBench || subInEvent ? 'נרשם כמחליף' : 'לא ידוע';
-  const enteredMinuteLabel = subInEvent ? String(eventMinute(subInEvent)) : isStarter ? '0' : '-';
-  const exitedMinuteLabel = subOffEvent ? String(eventMinute(subOffEvent)) : '-';
+  const wasSubbedIn = Boolean(subInEvent);
+  const wasSubbedOff = Boolean(subOffEvent);
+  const squadRoleLabel = isStarter ? 'פתח' : onBench || wasSubbedIn ? 'נרשם כמחליף' : 'לא ידוע';
+  const enteredMinuteLabel = wasSubbedIn ? String(eventMinute(subInEvent)) : isStarter ? '0' : '-';
+  const exitedMinuteLabel = wasSubbedOff ? String(eventMinute(subOffEvent)) : '-';
 
   return {
     playerId: player.id,
@@ -509,11 +587,47 @@ function buildPlayerGameRow(
     enteredMinuteLabel,
     exitedMinuteLabel,
     minutesLabel: startMinute === null || endMinute === null ? '-' : `${startMinute}-${endMinute}`,
+    isStarter,
+    onBench,
+    wasSubbedIn,
+    wasSubbedOff,
     goals,
     assists,
     yellowCards,
     redCards,
   };
+}
+
+function normalizeGameFilter(value: string | undefined): PlayerGameFilter {
+  if (value === 'starts' || value === 'bench' || value === 'sub-in' || value === 'sub-off') {
+    return value;
+  }
+
+  return 'all';
+}
+
+function matchesGameFilter(
+  row: ReturnType<typeof buildPlayerGameRow> extends infer T ? Exclude<T, null> : never,
+  filter: PlayerGameFilter
+) {
+  if (filter === 'starts') return row.isStarter;
+  if (filter === 'bench') return row.onBench;
+  if (filter === 'sub-in') return row.wasSubbedIn;
+  if (filter === 'sub-off') return row.wasSubbedOff;
+  return true;
+}
+
+function FilterChip({ href, active, label }: { href: string; active: boolean; label: string }) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+        active ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
+      }`}
+    >
+      {label}
+    </Link>
+  );
 }
 
 function StatRow({ label, value }: { label: string; value: string }) {
