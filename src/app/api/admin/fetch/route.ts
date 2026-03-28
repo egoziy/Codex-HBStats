@@ -104,9 +104,55 @@ const NAME_TRANSLATIONS: Record<string, string> = {
   'Maccabi Bnei Raina': 'מכבי בני ריינה',
 };
 
+const RESOURCE_STALE_HOURS = {
+  players: 24 * 7,
+  standings: 12,
+  fixtures: 6,
+  events: 6,
+  statistics: 6,
+  lineups: 3,
+  predictions: 6,
+  h2h: 24,
+  odds: 2,
+} as const;
+
 function translateName(name: string | null | undefined) {
   if (!name) return name || '';
   return NAME_TRANSLATIONS[name] || name;
+}
+
+function toDate(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isWithinHours(value: Date | string | null | undefined, hours: number) {
+  const date = toDate(value);
+  if (!date) return false;
+  return Date.now() - date.getTime() <= hours * 60 * 60 * 1000;
+}
+
+function isGameUpcomingOrOngoing(status: string | undefined, dateTime: Date | string | null | undefined) {
+  if (status === 'ONGOING') return true;
+  if (status !== 'SCHEDULED') return false;
+  const gameDate = toDate(dateTime);
+  if (!gameDate) return false;
+  return gameDate.getTime() >= Date.now() - 3 * 60 * 60 * 1000;
+}
+
+function isGameRecentOrOngoing(status: string | undefined, dateTime: Date | string | null | undefined, hours = 48) {
+  if (status === 'ONGOING') return true;
+  const gameDate = toDate(dateTime);
+  if (!gameDate) return false;
+  return Math.abs(Date.now() - gameDate.getTime()) <= hours * 60 * 60 * 1000;
+}
+
+function getMostRecentDate(values: Array<Date | string | null | undefined>) {
+  return values
+    .map(toDate)
+    .filter((value): value is Date => Boolean(value))
+    .sort((a, b) => b.getTime() - a.getTime())[0] || null;
 }
 
 function mapGameStatus(status: string | undefined) {
@@ -677,7 +723,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await prisma.competitionSeason.upsert({
+    const competitionSeason = await prisma.competitionSeason.upsert({
       where: {
         competitionId_seasonId: {
           competitionId: competition.id,
@@ -739,9 +785,32 @@ export async function POST(request: NextRequest) {
         : [],
     ]);
 
+    const cupFixtureTeamIds = new Set<number>();
+    const cupFixtureTeamNames = new Set<string>();
+    if (selectedCompetitionMeta?.kind === 'CUP') {
+      for (const fixture of fixtureRows) {
+        const homeId = fixture?.teams?.home?.id;
+        const awayId = fixture?.teams?.away?.id;
+        const homeName = fixture?.teams?.home?.name;
+        const awayName = fixture?.teams?.away?.name;
+        if (typeof homeId === 'number') cupFixtureTeamIds.add(homeId);
+        if (typeof awayId === 'number') cupFixtureTeamIds.add(awayId);
+        if (typeof homeName === 'string' && homeName) cupFixtureTeamNames.add(homeName);
+        if (typeof awayName === 'string' && awayName) cupFixtureTeamNames.add(awayName);
+      }
+    }
+
     const relevantTeams = teamRows.filter((row: any) => {
+      const apiTeamId = row?.team?.id;
+      const apiTeamName = row?.team?.name;
       if (selectedApiTeamId) return row?.team?.id === selectedApiTeamId;
       if (selectedTeamName) return row?.team?.name === selectedTeamName;
+      if (selectedCompetitionMeta?.kind === 'CUP' && (cupFixtureTeamIds.size || cupFixtureTeamNames.size)) {
+        return (
+          (typeof apiTeamId === 'number' && cupFixtureTeamIds.has(apiTeamId)) ||
+          (typeof apiTeamName === 'string' && cupFixtureTeamNames.has(apiTeamName))
+        );
+      }
       return true;
     });
     const teamsFetched = relevantTeams.filter((row: any) => !!row?.team?.name).length;
@@ -1159,6 +1228,13 @@ export async function POST(request: NextRequest) {
 
       steps = completeStep(steps, 'players', playersAdded, undefined, playersFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
+
+      await prisma.competitionSeason.update({
+        where: { id: competitionSeason.id },
+        data: {
+          playersUpdatedAt: new Date(),
+        },
+      });
     }
 
     if (effectiveResources.includes('sidelined')) {
@@ -1312,7 +1388,90 @@ export async function POST(request: NextRequest) {
 
       steps = completeStep(steps, 'fixtures', gamesAdded, undefined, fixturesFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
+
+      await prisma.competitionSeason.update({
+        where: { id: competitionSeason.id },
+        data: {
+          fixturesUpdatedAt: new Date(),
+        },
+      });
     }
+
+    const scopedFixtureRows = fixtureRows.filter((fixture) => {
+      const homeName = fixture?.teams?.home?.name;
+      const awayName = fixture?.teams?.away?.name;
+      if (!fixture?.fixture?.id || !homeName || !awayName) return false;
+      if (selectedTeamName && homeName !== selectedTeamName && awayName !== selectedTeamName) return false;
+      return true;
+    });
+
+    const scopedDbGames = await prisma.game.findMany({
+      where: {
+        seasonId: season.id,
+        competitionId: competition.id,
+        ...(selectedDbTeam?.id
+          ? {
+              OR: [{ homeTeamId: selectedDbTeam.id }, { awayTeamId: selectedDbTeam.id }],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        apiFootballId: true,
+        status: true,
+        dateTime: true,
+        updatedAt: true,
+        gameStats: {
+          select: {
+            updatedAt: true,
+          },
+        },
+        prediction: {
+          select: {
+            updatedAt: true,
+          },
+        },
+        events: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            updatedAt: true,
+          },
+        },
+        lineupEntries: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            updatedAt: true,
+          },
+        },
+        headToHeadEntries: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            updatedAt: true,
+          },
+        },
+        oddsValues: {
+          orderBy: [{ oddsUpdatedAt: 'desc' }, { updatedAt: 'desc' }],
+          take: 1,
+          select: {
+            id: true,
+            updatedAt: true,
+            oddsUpdatedAt: true,
+          },
+        },
+      },
+    });
+
+    const dbGameByApiId = new Map(
+      scopedDbGames
+        .filter((game): game is typeof game & { apiFootballId: number } => typeof game.apiFootballId === 'number')
+        .map((game) => [game.apiFootballId, game])
+    );
 
     if (effectiveResources.includes('standings')) {
       steps = markStep(steps, 'standings', 'running');
@@ -1371,20 +1530,39 @@ export async function POST(request: NextRequest) {
 
       steps = completeStep(steps, 'standings', standingsUpdated, undefined, standingsFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
+
+      await prisma.competitionSeason.update({
+        where: { id: competitionSeason.id },
+        data: {
+          standingsUpdatedAt: new Date(),
+        },
+      });
     }
 
     if (effectiveResources.includes('events')) {
       steps = markStep(steps, 'events', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
-      for (const fixture of fixtureRows) {
+      const eventTargetRows = scopedFixtureRows.filter((fixture) => {
+        const fixtureId = fixture?.fixture?.id;
+        if (!fixtureId) return false;
+        const game = dbGameByApiId.get(fixtureId);
+        if (!game) return false;
+        const latestEventUpdate = game.events[0]?.updatedAt || null;
+        return (
+          !game.events.length ||
+          isGameRecentOrOngoing(game.status, game.dateTime) ||
+          !isWithinHours(latestEventUpdate, RESOURCE_STALE_HOURS.events)
+        );
+      });
+
+      for (const fixture of eventTargetRows) {
         const fixtureId = fixture?.fixture?.id;
         const homeName = fixture?.teams?.home?.name;
         const awayName = fixture?.teams?.away?.name;
         if (!fixtureId || !homeName || !awayName) continue;
-        if (selectedTeamName && homeName !== selectedTeamName && awayName !== selectedTeamName) continue;
 
-        const game = await prisma.game.findUnique({ where: { apiFootballId: fixtureId } });
+        const game = dbGameByApiId.get(fixtureId);
         if (!game) continue;
 
         const eventRows = await apiFootballFetch(`/fixtures/events?fixture=${fixtureId}`);
@@ -1434,7 +1612,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'events', eventsSaved, undefined, eventsFetched);
+      steps = completeStep(
+        steps,
+        'events',
+        eventsSaved,
+        eventTargetRows.length ? `עודכנו רק ${eventTargetRows.length} משחקים שחסרו או התיישנו` : 'לא נמצאו משחקים שדורשים רענון אירועים',
+        eventsFetched
+      );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1442,14 +1626,25 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'statistics', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
-      for (const fixture of fixtureRows) {
+      const statisticsTargetRows = scopedFixtureRows.filter((fixture) => {
+        const fixtureId = fixture?.fixture?.id;
+        if (!fixtureId) return false;
+        const game = dbGameByApiId.get(fixtureId);
+        if (!game) return false;
+        return (
+          !game.gameStats ||
+          isGameRecentOrOngoing(game.status, game.dateTime) ||
+          !isWithinHours(game.gameStats.updatedAt, RESOURCE_STALE_HOURS.statistics)
+        );
+      });
+
+      for (const fixture of statisticsTargetRows) {
         const fixtureId = fixture?.fixture?.id;
         const homeName = fixture?.teams?.home?.name;
         const awayName = fixture?.teams?.away?.name;
         if (!fixtureId || !homeName || !awayName) continue;
-        if (selectedTeamName && homeName !== selectedTeamName && awayName !== selectedTeamName) continue;
 
-        const game = await prisma.game.findUnique({ where: { apiFootballId: fixtureId } });
+        const game = dbGameByApiId.get(fixtureId);
         if (!game) continue;
 
         const statisticsRows = await apiFootballFetch(`/fixtures/statistics?fixture=${fixtureId}`);
@@ -1470,7 +1665,13 @@ export async function POST(request: NextRequest) {
         statisticsSaved += 1;
       }
 
-      steps = completeStep(steps, 'statistics', statisticsSaved, undefined, statisticsFetched);
+      steps = completeStep(
+        steps,
+        'statistics',
+        statisticsSaved,
+        statisticsTargetRows.length ? `עודכנו רק ${statisticsTargetRows.length} משחקים שחסרו או התיישנו` : 'לא נמצאו משחקים שדורשים רענון סטטיסטיקות',
+        statisticsFetched
+      );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1478,14 +1679,27 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'lineups', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
-      for (const fixture of fixtureRows) {
+      const lineupTargetRows = scopedFixtureRows.filter((fixture) => {
+        const fixtureId = fixture?.fixture?.id;
+        if (!fixtureId) return false;
+        const game = dbGameByApiId.get(fixtureId);
+        if (!game) return false;
+        const latestLineupUpdate = game.lineupEntries[0]?.updatedAt || null;
+        return (
+          !game.lineupEntries.length ||
+          isGameUpcomingOrOngoing(game.status, game.dateTime) ||
+          isGameRecentOrOngoing(game.status, game.dateTime, 24) ||
+          !isWithinHours(latestLineupUpdate, RESOURCE_STALE_HOURS.lineups)
+        );
+      });
+
+      for (const fixture of lineupTargetRows) {
         const fixtureId = fixture?.fixture?.id;
         const homeName = fixture?.teams?.home?.name;
         const awayName = fixture?.teams?.away?.name;
         if (!fixtureId || !homeName || !awayName) continue;
-        if (selectedTeamName && homeName !== selectedTeamName && awayName !== selectedTeamName) continue;
 
-        const game = await prisma.game.findUnique({ where: { apiFootballId: fixtureId } });
+        const game = dbGameByApiId.get(fixtureId);
         if (!game) continue;
 
         const lineupRows = await apiFootballFetch(`/fixtures/lineups?fixture=${fixtureId}`);
@@ -1596,7 +1810,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      steps = completeStep(steps, 'lineups', lineupsSaved, undefined, lineupsFetched);
+      steps = completeStep(
+        steps,
+        'lineups',
+        lineupsSaved,
+        lineupTargetRows.length ? `עודכנו רק ${lineupTargetRows.length} משחקים שחסרו או התיישנו` : 'לא נמצאו משחקים שדורשים רענון הרכבים',
+        lineupsFetched
+      );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
@@ -1991,6 +2211,28 @@ export async function POST(request: NextRequest) {
       include: {
         homeTeam: true,
         awayTeam: true,
+        prediction: {
+          select: {
+            updatedAt: true,
+          },
+        },
+        headToHeadEntries: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            updatedAt: true,
+          },
+        },
+        oddsValues: {
+          orderBy: [{ oddsUpdatedAt: 'desc' }, { updatedAt: 'desc' }],
+          take: 1,
+          select: {
+            id: true,
+            updatedAt: true,
+            oddsUpdatedAt: true,
+          },
+        },
       },
       orderBy: [{ dateTime: 'asc' }],
     });
@@ -1999,15 +2241,23 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'predictions', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
+      const predictionTargetGames = scopedUpcomingGames.filter((game) => {
+        return (
+          !game.prediction ||
+          game.status === 'ONGOING' ||
+          !isWithinHours(game.prediction.updatedAt, RESOURCE_STALE_HOURS.predictions)
+        );
+      });
+
       await prisma.gamePrediction.deleteMany({
         where: {
           seasonId: season.id,
           competitionId: competition.id,
-          ...(scopedUpcomingGames.length ? { gameId: { in: scopedUpcomingGames.map((game) => game.id) } } : {}),
+          ...(predictionTargetGames.length ? { gameId: { in: predictionTargetGames.map((game) => game.id) } } : {}),
         },
       });
 
-      for (const game of scopedUpcomingGames) {
+      for (const game of predictionTargetGames) {
         if (!game.apiFootballId) continue;
 
         const predictionRows = await apiFootballFetch(`/predictions?fixture=${game.apiFootballId}`);
@@ -2056,15 +2306,24 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'h2h', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
+      const h2hTargetGames = scopedUpcomingGames.filter((game) => {
+        const latestH2hUpdate = game.headToHeadEntries[0]?.updatedAt || null;
+        return (
+          !game.headToHeadEntries.length ||
+          game.status === 'ONGOING' ||
+          !isWithinHours(latestH2hUpdate, RESOURCE_STALE_HOURS.h2h)
+        );
+      });
+
       await prisma.gameHeadToHeadEntry.deleteMany({
         where: {
           seasonId: season.id,
           competitionId: competition.id,
-          ...(scopedUpcomingGames.length ? { gameId: { in: scopedUpcomingGames.map((game) => game.id) } } : {}),
+          ...(h2hTargetGames.length ? { gameId: { in: h2hTargetGames.map((game) => game.id) } } : {}),
         },
       });
 
-      for (const game of scopedUpcomingGames) {
+      for (const game of h2hTargetGames) {
         if (!game.homeTeam.apiFootballId || !game.awayTeam.apiFootballId) continue;
 
         const h2hRows = await apiFootballFetch(
@@ -2120,15 +2379,27 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'odds', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
+      const oddsTargetGames = scopedUpcomingGames.filter((game) => {
+        const latestOddsUpdate = getMostRecentDate([
+          game.oddsValues[0]?.oddsUpdatedAt || null,
+          game.oddsValues[0]?.updatedAt || null,
+        ]);
+        return (
+          !game.oddsValues.length ||
+          game.status === 'ONGOING' ||
+          !isWithinHours(latestOddsUpdate, RESOURCE_STALE_HOURS.odds)
+        );
+      });
+
       await prisma.gameOddsValue.deleteMany({
         where: {
           seasonId: season.id,
           competitionId: competition.id,
-          ...(scopedUpcomingGames.length ? { gameId: { in: scopedUpcomingGames.map((game) => game.id) } } : {}),
+          ...(oddsTargetGames.length ? { gameId: { in: oddsTargetGames.map((game) => game.id) } } : {}),
         },
       });
 
-      for (const game of scopedUpcomingGames) {
+      for (const game of oddsTargetGames) {
         if (!game.apiFootballId) continue;
 
         const oddsRows = await apiFootballFetch(`/odds?fixture=${game.apiFootballId}`);

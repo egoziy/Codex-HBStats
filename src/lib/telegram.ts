@@ -4,7 +4,47 @@ export type TelegramChannelMessage = {
   url: string;
   publishedAt: Date | null;
   imageUrl?: string | null;
+  sourceSlug: string;
+  sourceLabel: string;
+  teamLabel: string;
 };
+
+export type TelegramSource = {
+  slug: string;
+  label: string;
+  teamLabel: string;
+};
+
+export const DEFAULT_TELEGRAM_SOURCES: TelegramSource[] = [
+  { slug: 'sportbanegev', label: 'ספורט בנגב', teamLabel: 'כדורגל בדרום' },
+  { slug: 'vasermilya', label: 'וסרמיליה', teamLabel: 'הפועל באר שבע' },
+];
+
+export function extractTelegramSlug(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized.startsWith('@')) return normalized.slice(1).trim() || null;
+
+  const match = normalized.match(/t\.me\/(?:s\/)?([A-Za-z0-9_]+)/i);
+  if (match?.[1]) return match[1];
+
+  if (/^[A-Za-z0-9_]+$/.test(normalized)) return normalized;
+  return null;
+}
+
+export function normalizeTelegramSource(input: Partial<TelegramSource> & { slug?: string | null; url?: string | null }) {
+  const slug = extractTelegramSlug(input.slug || input.url || '');
+  if (!slug) return null;
+
+  const label = String(input.label || '').trim() || slug;
+  const teamLabel = String(input.teamLabel || '').trim() || 'ללא שיוך';
+
+  return {
+    slug,
+    label,
+    teamLabel,
+  } satisfies TelegramSource;
+}
 
 const TELEGRAM_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
@@ -80,8 +120,16 @@ function extractImageUrl(chunk: string) {
   return null;
 }
 
-export async function fetchTelegramChannelMessages(channelSlug: string, limit = 5): Promise<TelegramChannelMessage[]> {
-  const response = await fetch(`https://t.me/s/${channelSlug}`, {
+export async function fetchTelegramChannelMessages(
+  source: string | TelegramSource,
+  limit = 5
+): Promise<TelegramChannelMessage[]> {
+  const normalizedSource =
+    typeof source === 'string'
+      ? { slug: source, label: source, teamLabel: 'ללא שיוך' }
+      : source;
+
+  const response = await fetch(`https://t.me/s/${normalizedSource.slug}`, {
     cache: 'no-store',
     headers: {
       'user-agent': TELEGRAM_USER_AGENT,
@@ -111,6 +159,9 @@ export async function fetchTelegramChannelMessages(channelSlug: string, limit = 
       url,
       publishedAt: extractPublishedAt(chunk),
       imageUrl: extractImageUrl(chunk),
+      sourceSlug: normalizedSource.slug,
+      sourceLabel: normalizedSource.label,
+      teamLabel: normalizedSource.teamLabel,
     });
   }
 
@@ -128,4 +179,18 @@ export async function fetchTelegramChannelMessages(channelSlug: string, limit = 
       return b.id.localeCompare(a.id);
     })
     .slice(0, limit);
+}
+
+export async function fetchTelegramMessagesFromSources(sources: TelegramSource[], limitPerSource = 5) {
+  const messages = await Promise.all(
+    sources.map((source) => fetchTelegramChannelMessages(source, limitPerSource).catch(() => []))
+  );
+
+  return messages
+    .flat()
+    .sort((a, b) => {
+      const dateDiff = (b.publishedAt?.getTime() || 0) - (a.publishedAt?.getTime() || 0);
+      if (dateDiff !== 0) return dateDiff;
+      return b.id.localeCompare(a.id);
+    });
 }

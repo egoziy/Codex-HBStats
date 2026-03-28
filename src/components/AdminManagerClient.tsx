@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import AdminDataCoveragePanel from '@/components/AdminDataCoveragePanel';
 import ApiFetchForm from '@/components/ApiFetchForm';
+import type { AdminCoverageRow } from '@/lib/admin-data-coverage';
 import { formatCoachName, getLatestCoachAssignment } from '@/lib/coach-display';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
 import { formatPlayerName } from '@/lib/player-display';
@@ -402,6 +404,7 @@ export default function AdminManagerClient({
   seasons,
   selectedSeasonId,
   rawData,
+  coverageRows,
 }: {
   teams: TeamGroup[];
   fetchTeams: FetchTeam[];
@@ -409,8 +412,9 @@ export default function AdminManagerClient({
   seasons: Season[];
   selectedSeasonId: string | null;
   rawData: RawData | null;
+  coverageRows: AdminCoverageRow[];
 }) {
-  const [openSection, setOpenSection] = useState<'fetch' | 'raw' | 'teams' | 'jobs'>('fetch');
+  const [openSection, setOpenSection] = useState<'fetch' | 'coverage' | 'raw' | 'teams' | 'jobs'>('coverage');
   const [rawView, setRawView] = useState<RawView>('teams');
   const rawEvents = rawData?.games.flatMap((game) =>
     game.events.map((event) => ({
@@ -438,7 +442,7 @@ export default function AdminManagerClient({
       gameLabel: `${game.homeTeam.nameHe || game.homeTeam.nameEn} - ${game.awayTeam.nameHe || game.awayTeam.nameEn}`,
     }))
   ) || [];
-  const sectionOrder: Array<'fetch' | 'raw' | 'teams' | 'jobs'> = ['fetch', 'raw', 'teams', 'jobs'];
+  const sectionOrder: Array<'fetch' | 'coverage' | 'raw' | 'teams' | 'jobs'> = ['fetch', 'coverage', 'raw', 'teams', 'jobs'];
   const rawViewOptions: Array<{ key: RawView; label: string; count: number }> = [
     { key: 'competitions', label: 'מסגרות', count: rawData?.competitions.length || 0 },
     { key: 'teams', label: 'קבוצות', count: rawData?.teams.length || 0 },
@@ -460,7 +464,7 @@ export default function AdminManagerClient({
     { key: 'jobs', label: 'עבודות משיכה', count: rawData?.fetchJobs.length || 0 },
   ];
 
-  function cycleSection(current: 'fetch' | 'raw' | 'teams' | 'jobs') {
+  function cycleSection(current: 'fetch' | 'coverage' | 'raw' | 'teams' | 'jobs') {
     const index = sectionOrder.indexOf(current);
     return sectionOrder[(index + 1) % sectionOrder.length];
   }
@@ -480,6 +484,21 @@ export default function AdminManagerClient({
         onToggle={() => setOpenSection(openSection === 'fetch' ? cycleSection('fetch') : 'fetch')}
       >
         <ApiFetchForm teams={fetchTeams} />
+      </Accordion>
+
+      <Accordion
+        title="נתונים קיימים והמלצת עדכון"
+        open={openSection === 'coverage'}
+        onToggle={() => setOpenSection(openSection === 'coverage' ? cycleSection('coverage') : 'coverage')}
+      >
+        <AdminDataCoveragePanel
+          rows={coverageRows}
+          seasons={seasons.map((season) => ({
+            id: season.id,
+            name: season.name,
+          }))}
+          initialSeasonId={selectedSeasonId}
+        />
       </Accordion>
 
       <Accordion

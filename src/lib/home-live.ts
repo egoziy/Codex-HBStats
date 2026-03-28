@@ -335,8 +335,8 @@ export async function getHomepageLiveSnapshots(
         },
       },
     },
-    orderBy: [{ snapshotAt: 'desc' }],
-    take: 20,
+    orderBy: [{ snapshotAt: 'desc' }, { apiFootballFixtureId: 'asc' }],
+    take: 250,
   });
 
   const filteredGlobalSnapshots = globalSnapshots.filter((snapshot) => {
@@ -374,7 +374,7 @@ export async function getHomepageLiveSnapshots(
               },
             },
             orderBy: [{ snapshotAt: 'desc' }],
-            take: 10,
+            take: 100,
           })
         : [];
 

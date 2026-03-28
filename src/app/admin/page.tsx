@@ -1,7 +1,10 @@
 import Link from 'next/link';
+import AdminTelegramSourcesClient from '@/components/AdminTelegramSourcesClient';
 import AdminManagerClient from '@/components/AdminManagerClient';
+import { buildAdminCoverageRows } from '@/lib/admin-data-coverage';
 import { getCurrentUser } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { DEFAULT_TELEGRAM_SOURCES, normalizeTelegramSource } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +36,7 @@ export default async function AdminPage({
     );
   }
 
-  const [teams, seasons, fetchJobs] = await Promise.all([
+  const [teams, seasons, fetchJobs, telegramSourcesSetting, coverageSeasons] = await Promise.all([
     prisma.team.findMany({
       include: { season: true },
       orderBy: [{ updatedAt: 'desc' }],
@@ -45,10 +48,181 @@ export default async function AdminPage({
       orderBy: { createdAt: 'desc' },
       take: 8,
     }),
+    prisma.siteSetting.findUnique({
+      where: { key: 'telegram_sources' },
+    }),
+    prisma.season.findMany({
+      orderBy: { year: 'desc' },
+      include: {
+        competitions: {
+          include: {
+            competition: {
+              select: {
+                id: true,
+                apiFootballId: true,
+                nameHe: true,
+                nameEn: true,
+                countryHe: true,
+                countryEn: true,
+                type: true,
+              },
+            },
+          },
+        },
+        teams: {
+          select: {
+            id: true,
+            apiFootballId: true,
+            nameHe: true,
+            nameEn: true,
+            _count: {
+              select: {
+                players: true,
+              },
+            },
+          },
+        },
+        games: {
+          select: {
+            id: true,
+            competitionId: true,
+            homeTeamId: true,
+            awayTeamId: true,
+            status: true,
+            dateTime: true,
+            updatedAt: true,
+          },
+        },
+        standings: {
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            updatedAt: true,
+          },
+        },
+        playerStats: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            player: {
+              select: {
+                id: true,
+                teamId: true,
+              },
+            },
+          },
+        },
+        teamStats: {
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            updatedAt: true,
+          },
+        },
+        leaderboardEntries: {
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            updatedAt: true,
+          },
+        },
+        predictions: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            game: {
+              select: {
+                homeTeamId: true,
+                awayTeamId: true,
+                status: true,
+                dateTime: true,
+              },
+            },
+          },
+        },
+        headToHeadEntries: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            game: {
+              select: {
+                homeTeamId: true,
+                awayTeamId: true,
+                status: true,
+                dateTime: true,
+              },
+            },
+          },
+        },
+        oddsValues: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            oddsUpdatedAt: true,
+            game: {
+              select: {
+                homeTeamId: true,
+                awayTeamId: true,
+                status: true,
+                dateTime: true,
+              },
+            },
+          },
+        },
+        liveSnapshots: {
+          select: {
+            id: true,
+            competitionId: true,
+            snapshotAt: true,
+            feedScope: true,
+            gameId: true,
+            homeTeamApiFootballId: true,
+            awayTeamApiFootballId: true,
+          },
+        },
+        fetchJobs: {
+          where: {
+            status: 'COMPLETED',
+          },
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            createdAt: true,
+            finishedAt: true,
+            stepsJson: true,
+          },
+          orderBy: [{ finishedAt: 'desc' }, { createdAt: 'desc' }],
+        },
+      },
+    }),
   ]);
+
+  const telegramSourcesRaw = Array.isArray(telegramSourcesSetting?.valueJson)
+    ? (telegramSourcesSetting.valueJson as Array<Record<string, unknown>>)
+    : [];
+  const telegramSources =
+    telegramSourcesRaw
+      .map((source) =>
+        normalizeTelegramSource({
+          slug: typeof source.slug === 'string' ? source.slug : null,
+          url: typeof source.url === 'string' ? source.url : null,
+          label: typeof source.label === 'string' ? source.label : '',
+          teamLabel: typeof source.teamLabel === 'string' ? source.teamLabel : '',
+        })
+      )
+      .filter((source): source is NonNullable<typeof source> => Boolean(source)) || [];
 
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
+  const coverageRows = buildAdminCoverageRows(coverageSeasons);
 
   const rawData = selectedSeason
     ? await prisma.season.findUnique({
@@ -253,7 +427,8 @@ export default async function AdminPage({
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-8">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
         <AdminManagerClient
           teams={groupedTeams}
           fetchTeams={teams}
@@ -261,6 +436,7 @@ export default async function AdminPage({
           seasons={seasons}
           selectedSeasonId={selectedSeason?.id || null}
           rawData={rawData}
+          coverageRows={coverageRows}
         />
       </div>
     </div>
