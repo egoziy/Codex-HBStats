@@ -6,13 +6,25 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const seasonId = searchParams.get('seasonId');
   const teamId = searchParams.get('teamId');
+  const competitionId = searchParams.get('competitionId');
+  const round = searchParams.get('round');
 
   let where: any = {};
   if (seasonId) where.seasonId = seasonId;
-  if (teamId) {
+  if (competitionId) where.competitionId = competitionId;
+  if (round) {
     where.OR = [
-      { homeTeamId: teamId },
-      { awayTeamId: teamId },
+      ...(where.OR || []),
+      { roundNameHe: round },
+      { roundNameEn: round },
+    ];
+  }
+  if (teamId) {
+    where.AND = [
+      ...(where.AND || []),
+      {
+        OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+      },
     ];
   }
 
@@ -23,6 +35,7 @@ export async function GET(request: NextRequest) {
       awayTeam: true,
       events: true,
       gameStats: true,
+      competition: true,
     },
     orderBy: { dateTime: 'desc' },
   });

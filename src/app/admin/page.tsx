@@ -1,13 +1,42 @@
+import Link from 'next/link';
+import AdminTelegramSourcesClient from '@/components/AdminTelegramSourcesClient';
 import AdminManagerClient from '@/components/AdminManagerClient';
-import { requireAdminUser } from '@/lib/auth';
+import { buildAdminCoverageRows } from '@/lib/admin-data-coverage';
+import { getCurrentUser } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { DEFAULT_TELEGRAM_SOURCES, normalizeTelegramSource } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminPage() {
-  await requireAdminUser();
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams?: { season?: string };
+}) {
+  const user = await getCurrentUser();
 
-  const [teams, seasons, fetchJobs] = await Promise.all([
+  if (!user || user.role !== 'ADMIN') {
+    return (
+      <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-16">
+        <div className="mx-auto max-w-2xl rounded-[28px] border border-stone-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-3xl font-black text-stone-900">גישה לאזור אדמין</h1>
+          <p className="mt-4 text-sm leading-7 text-stone-600">
+            כדי להיכנס לאדמין צריך להיות מחובר עם משתמש בעל הרשאת מנהל.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <Link href="/login" className="rounded-full bg-stone-900 px-5 py-3 text-sm font-bold text-white">
+              להתחברות
+            </Link>
+            <Link href="/" className="rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700">
+              חזרה לדף הבית
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const [teams, seasons, fetchJobs, telegramSourcesSetting, coverageSeasons] = await Promise.all([
     prisma.team.findMany({
       include: { season: true },
       orderBy: [{ updatedAt: 'desc' }],
@@ -19,7 +48,341 @@ export default async function AdminPage() {
       orderBy: { createdAt: 'desc' },
       take: 8,
     }),
+    prisma.siteSetting.findUnique({
+      where: { key: 'telegram_sources' },
+    }),
+    prisma.season.findMany({
+      orderBy: { year: 'desc' },
+      include: {
+        competitions: {
+          include: {
+            competition: {
+              select: {
+                id: true,
+                apiFootballId: true,
+                nameHe: true,
+                nameEn: true,
+                countryHe: true,
+                countryEn: true,
+                type: true,
+              },
+            },
+          },
+        },
+        teams: {
+          select: {
+            id: true,
+            apiFootballId: true,
+            nameHe: true,
+            nameEn: true,
+            _count: {
+              select: {
+                players: true,
+              },
+            },
+          },
+        },
+        games: {
+          select: {
+            id: true,
+            competitionId: true,
+            homeTeamId: true,
+            awayTeamId: true,
+            status: true,
+            dateTime: true,
+            updatedAt: true,
+          },
+        },
+        standings: {
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            updatedAt: true,
+          },
+        },
+        playerStats: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            player: {
+              select: {
+                id: true,
+                teamId: true,
+              },
+            },
+          },
+        },
+        teamStats: {
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            updatedAt: true,
+          },
+        },
+        leaderboardEntries: {
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            updatedAt: true,
+          },
+        },
+        predictions: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            game: {
+              select: {
+                homeTeamId: true,
+                awayTeamId: true,
+                status: true,
+                dateTime: true,
+              },
+            },
+          },
+        },
+        headToHeadEntries: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            game: {
+              select: {
+                homeTeamId: true,
+                awayTeamId: true,
+                status: true,
+                dateTime: true,
+              },
+            },
+          },
+        },
+        oddsValues: {
+          select: {
+            id: true,
+            competitionId: true,
+            updatedAt: true,
+            oddsUpdatedAt: true,
+            game: {
+              select: {
+                homeTeamId: true,
+                awayTeamId: true,
+                status: true,
+                dateTime: true,
+              },
+            },
+          },
+        },
+        liveSnapshots: {
+          select: {
+            id: true,
+            competitionId: true,
+            snapshotAt: true,
+            feedScope: true,
+            gameId: true,
+            homeTeamApiFootballId: true,
+            awayTeamApiFootballId: true,
+          },
+        },
+        fetchJobs: {
+          where: {
+            status: 'COMPLETED',
+          },
+          select: {
+            id: true,
+            competitionId: true,
+            teamId: true,
+            createdAt: true,
+            finishedAt: true,
+            stepsJson: true,
+          },
+          orderBy: [{ finishedAt: 'desc' }, { createdAt: 'desc' }],
+        },
+      },
+    }),
   ]);
+
+  const telegramSourcesRaw = Array.isArray(telegramSourcesSetting?.valueJson)
+    ? (telegramSourcesSetting.valueJson as Array<Record<string, unknown>>)
+    : [];
+  const telegramSources =
+    telegramSourcesRaw
+      .map((source) =>
+        normalizeTelegramSource({
+          slug: typeof source.slug === 'string' ? source.slug : null,
+          url: typeof source.url === 'string' ? source.url : null,
+          label: typeof source.label === 'string' ? source.label : '',
+          teamLabel: typeof source.teamLabel === 'string' ? source.teamLabel : '',
+        })
+      )
+      .filter((source): source is NonNullable<typeof source> => Boolean(source)) || [];
+
+  const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
+  const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
+  const coverageRows = buildAdminCoverageRows(coverageSeasons);
+
+  const rawData = selectedSeason
+    ? await prisma.season.findUnique({
+        where: { id: selectedSeason.id },
+        include: {
+          teams: {
+            include: {
+              coachAssignments: {
+                orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+              },
+              players: {
+                orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+              },
+              standings: {
+                include: {
+                  competition: true,
+                },
+                orderBy: [{ position: 'asc' }],
+              },
+            },
+            orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+          },
+          games: {
+            include: {
+              homeTeam: true,
+              awayTeam: true,
+              competition: true,
+              lineupEntries: {
+                include: {
+                  team: true,
+                  player: true,
+                },
+                orderBy: [{ role: 'asc' }, { teamId: 'asc' }],
+              },
+              events: {
+                include: {
+                  player: true,
+                  relatedPlayer: true,
+                  eventTeam: true,
+                },
+                orderBy: [{ minute: 'asc' }, { sortOrder: 'asc' }],
+              },
+              gameStats: true,
+            },
+            orderBy: [{ dateTime: 'desc' }],
+          },
+          standings: {
+            include: {
+              team: true,
+              competition: true,
+            },
+            orderBy: [{ position: 'asc' }, { points: 'desc' }],
+          },
+          fetchJobs: {
+            include: {
+              competition: true,
+              team: true,
+            },
+            orderBy: [{ createdAt: 'desc' }],
+          },
+          playerStats: {
+            include: {
+              player: {
+                include: {
+                  team: true,
+                },
+              },
+              competition: true,
+            },
+            orderBy: [{ goals: 'desc' }, { assists: 'desc' }],
+          },
+          teamStats: {
+            include: {
+              team: true,
+              competition: true,
+            },
+            orderBy: [{ points: 'desc' }],
+          },
+          competitions: {
+            include: {
+              competition: true,
+            },
+            orderBy: [{ createdAt: 'desc' }],
+          },
+          leaderboardEntries: {
+            include: {
+              player: true,
+              team: true,
+              competition: true,
+            },
+            orderBy: [{ category: 'asc' }, { rank: 'asc' }],
+          },
+          injuries: {
+            include: {
+              player: true,
+              team: true,
+              competition: true,
+              game: {
+                include: {
+                  homeTeam: true,
+                  awayTeam: true,
+                },
+              },
+            },
+            orderBy: [{ fixtureDate: 'desc' }, { createdAt: 'desc' }],
+          },
+          transfers: {
+            include: {
+              player: true,
+            },
+            orderBy: [{ transferDate: 'desc' }, { createdAt: 'desc' }],
+          },
+          trophies: {
+            include: {
+              player: true,
+            },
+            orderBy: [{ playerNameHe: 'asc' }, { leagueNameEn: 'asc' }],
+          },
+          predictions: {
+            include: {
+              game: {
+                include: {
+                  homeTeam: true,
+                  awayTeam: true,
+                },
+              },
+            },
+            orderBy: [{ createdAt: 'desc' }],
+          },
+          headToHeadEntries: {
+            include: {
+              game: {
+                include: {
+                  homeTeam: true,
+                  awayTeam: true,
+                },
+              },
+            },
+            orderBy: [{ relatedDate: 'desc' }],
+          },
+          oddsValues: {
+            include: {
+              game: {
+                include: {
+                  homeTeam: true,
+                  awayTeam: true,
+                },
+              },
+            },
+            orderBy: [{ oddsUpdatedAt: 'desc' }, { bookmakerName: 'asc' }],
+          },
+          liveSnapshots: {
+            where: {
+              feedScope: 'LOCAL',
+            },
+            orderBy: [{ snapshotAt: 'desc' }],
+          },
+        },
+      })
+    : null;
 
   const groupedTeams = Array.from(
     teams.reduce((map, team) => {
@@ -64,8 +427,17 @@ export default async function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-8">
-      <div className="mx-auto max-w-6xl">
-        <AdminManagerClient teams={groupedTeams} fetchTeams={teams} fetchJobs={fetchJobs} seasons={seasons} />
+      <div className="mx-auto max-w-6xl space-y-6">
+        <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
+        <AdminManagerClient
+          teams={groupedTeams}
+          fetchTeams={teams}
+          fetchJobs={fetchJobs}
+          seasons={seasons}
+          selectedSeasonId={selectedSeason?.id || null}
+          rawData={rawData}
+          coverageRows={coverageRows}
+        />
       </div>
     </div>
   );

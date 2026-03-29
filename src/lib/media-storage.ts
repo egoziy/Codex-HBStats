@@ -43,6 +43,15 @@ async function saveRemoteFile(remoteUrl: string, targetRelativePath: string) {
   return `/${targetRelativePath.replace(/\\/g, '/')}`;
 }
 
+async function saveBufferFile(buffer: Buffer, targetRelativePath: string) {
+  const absolutePath = path.join(process.cwd(), 'public', targetRelativePath);
+
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, buffer);
+
+  return `/${targetRelativePath.replace(/\\/g, '/')}`;
+}
+
 export async function storeTeamLogoLocally({
   remoteUrl,
   seasonYear,
@@ -105,4 +114,30 @@ export async function storePlayerPhotoLocally({
   } catch {
     return remoteUrl;
   }
+}
+
+export async function storeUploadedImage({
+  file,
+  entityType,
+  seasonYear,
+  folderName,
+  entityId,
+  label,
+}: {
+  file: File;
+  entityType: 'teams' | 'players';
+  seasonYear: number;
+  folderName: string;
+  entityId: string;
+  label: string;
+}) {
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const ext = extensionFromUrl(file.name) || extensionFromContentType(file.type);
+  const safeName = `${Date.now()}-${slugify(label || file.name || entityId)}${ext}`;
+
+  return saveBufferFile(
+    buffer,
+    path.join('uploads', entityType, String(seasonYear), slugify(folderName || entityId), `${entityId}-${safeName}`)
+  );
 }

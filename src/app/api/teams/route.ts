@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getRequestUser } from '@/lib/auth';
 
+function normalizeCoachName(name: string | null | undefined) {
+  const value = (name || '').trim();
+  return value || null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const seasonId = searchParams.get('seasonId');
@@ -10,7 +15,13 @@ export async function GET(request: NextRequest) {
   if (teamId) {
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      include: { players: true, season: true },
+      include: {
+        players: true,
+        season: true,
+        coachAssignments: {
+          orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+        },
+      },
     });
 
     if (!team) {
@@ -29,7 +40,12 @@ export async function GET(request: NextRequest) {
 
   const teams = await prisma.team.findMany({
     where: { seasonId },
-    include: { players: true },
+    include: {
+      players: true,
+      coachAssignments: {
+        orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+      },
+    },
   });
 
   return NextResponse.json(teams);
@@ -45,7 +61,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { nameEn, nameHe, seasonId, coach, logoUrl } = body;
+  const { nameEn, nameHe, seasonId, coach, coachHe, logoUrl } = body;
 
   if (!nameEn || !nameHe || !seasonId) {
     return NextResponse.json(
@@ -60,10 +76,25 @@ export async function POST(request: NextRequest) {
         nameEn,
         nameHe,
         seasonId,
-        coach: coach || null,
+        coach: normalizeCoachName(coach),
+        coachHe: normalizeCoachName(coachHe),
         logoUrl: logoUrl || null,
       },
     });
+
+    const coachNameEn = normalizeCoachName(coach);
+    const coachNameHe = normalizeCoachName(coachHe);
+
+    if (coachNameEn || coachNameHe) {
+      await prisma.teamCoachAssignment.create({
+        data: {
+          teamId: team.id,
+          seasonId,
+          coachNameEn: coachNameEn || coachNameHe || 'Unknown coach',
+          coachNameHe,
+        },
+      });
+    }
 
     // Create team statistics
     await prisma.teamStatistics.create({
@@ -97,6 +128,7 @@ export async function PUT(request: NextRequest) {
     shortNameHe,
     coach,
     coachHe,
+    coachAssignmentId,
     logoUrl,
     countryHe,
     cityHe,
@@ -112,28 +144,94 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
+    const existingTeam = await prisma.team.findUnique({
+      where: { id },
+      select: { additionalInfo: true, apiFootballId: true, nameEn: true, seasonId: true },
+    });
+
+    if (!existingTeam) {
+      return NextResponse.json(
+        { error: 'Team not found' },
+        { status: 404 }
+      );
+    }
+
+    const familyWhere = existingTeam.apiFootballId
+      ? { apiFootballId: existingTeam.apiFootballId }
+      : { nameEn: existingTeam.nameEn };
+
+    if (nameHe !== undefined || shortNameHe !== undefined) {
+      await prisma.team.updateMany({
+        where: familyWhere,
+        data: {
+          ...(nameHe !== undefined && { nameHe }),
+          ...(shortNameHe !== undefined && { shortNameHe: shortNameHe || null }),
+        },
+      });
+    }
+
+    const nextCoachNameEn = normalizeCoachName(coach);
+    const nextCoachNameHe = normalizeCoachName(coachHe);
+
     const team = await prisma.team.update({
       where: { id },
       data: {
         ...(nameEn && { nameEn }),
-        ...(nameHe && { nameHe }),
+        ...(nameHe !== undefined && { nameHe }),
         ...(shortNameEn !== undefined && { shortNameEn: shortNameEn || null }),
         ...(shortNameHe !== undefined && { shortNameHe: shortNameHe || null }),
-        ...(coach !== undefined && { coach }),
-        ...(coachHe !== undefined && { coachHe: coachHe || null }),
+        ...(coach !== undefined && { coach: nextCoachNameEn }),
+        ...(coachHe !== undefined && { coachHe: nextCoachNameHe }),
         ...(logoUrl !== undefined && { logoUrl }),
         ...(countryHe !== undefined && { countryHe: countryHe || null }),
         ...(cityHe !== undefined && { cityHe: cityHe || null }),
         ...(stadiumHe !== undefined && { stadiumHe: stadiumHe || null }),
         ...(notesHe !== undefined && {
           additionalInfo: {
+            ...((existingTeam?.additionalInfo as Record<string, unknown> | null) || {}),
             notesHe: notesHe || null,
           },
         }),
       },
     });
 
-    return NextResponse.json(team);
+    if (coach !== undefined || coachHe !== undefined) {
+      if (nextCoachNameEn || nextCoachNameHe) {
+        if (coachAssignmentId) {
+          await prisma.teamCoachAssignment.update({
+            where: { id: coachAssignmentId },
+            data: {
+              coachNameEn: nextCoachNameEn || nextCoachNameHe || 'Unknown coach',
+              coachNameHe: nextCoachNameHe,
+            },
+          });
+        } else {
+          await prisma.teamCoachAssignment.create({
+            data: {
+              teamId: id,
+              seasonId: existingTeam.seasonId,
+              coachNameEn: nextCoachNameEn || nextCoachNameHe || 'Unknown coach',
+              coachNameHe: nextCoachNameHe,
+            },
+          });
+        }
+      } else if (coachAssignmentId) {
+        await prisma.teamCoachAssignment.delete({
+          where: { id: coachAssignmentId },
+        });
+      }
+    }
+
+    const refreshedTeam = await prisma.team.findUnique({
+      where: { id: team.id },
+      include: {
+        coachAssignments: {
+          orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+        },
+      },
+    });
+
+    return NextResponse.json(refreshedTeam || team);
   } catch (error: any) {
     return NextResponse.json(
       { error: 'Failed to update team', details: error.message },

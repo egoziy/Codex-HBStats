@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
-import prisma from '@/lib/prisma';
 import { TeamChartsView } from '@/components/Charts';
+import { formatPlayerName } from '@/lib/player-display';
+import prisma from '@/lib/prisma';
 
 export default async function TeamChartsPage({ params }: { params: { id: string } }) {
   const team = await prisma.team.findUnique({
@@ -35,9 +36,9 @@ export default async function TeamChartsPage({ params }: { params: { id: string 
     if (goalsFor === goalsAgainst) points += 1;
 
     return {
-      מחזור: String(index + 1),
-      זכות: goalsFor,
-      חובה: goalsAgainst,
+      'מחזור': String(index + 1),
+      'זכות': goalsFor,
+      'חובה': goalsAgainst,
     };
   });
 
@@ -47,12 +48,12 @@ export default async function TeamChartsPage({ params }: { params: { id: string 
     const goalsAgainst = isHome ? game.awayScore ?? 0 : game.homeScore ?? 0;
     const nextPoints = index === 0 ? 0 : 0;
     return {
-      מחזור: String(index + 1),
-      נקודות:
+      'מחזור': String(index + 1),
+      'נקודות':
         nextPoints +
         goalsByMatchday
           .slice(0, index + 1)
-          .reduce((total, row) => total + (row.זכות > row.חובה ? 3 : row.זכות === row.חובה ? 1 : 0), 0),
+          .reduce((total, row) => total + (row['זכות'] > row['חובה'] ? 3 : row['זכות'] === row['חובה'] ? 1 : 0), 0),
     };
   });
 
@@ -65,23 +66,23 @@ export default async function TeamChartsPage({ params }: { params: { id: string 
 
   const topScorers = team.players
     .map((player) => ({
-      שחקן: player.nameHe,
-      שערים: player.playerStats.reduce((sum, item) => sum + item.goals, 0),
-      בישולים: player.playerStats.reduce((sum, item) => sum + item.assists, 0),
+      'שחקן': formatPlayerName(player),
+      'שערים': player.playerStats.reduce((sum, item) => sum + item.goals, 0),
+      'בישולים': player.playerStats.reduce((sum, item) => sum + item.assists, 0),
     }))
-    .sort((left, right) => right.שערים - left.שערים)
+    .sort((left, right) => right['שערים'] - left['שערים'])
     .slice(0, 5);
 
   const topAssisters = [...topScorers]
-    .sort((left, right) => right.בישולים - left.בישולים)
-    .map(({ שחקן, בישולים }) => ({ שחקן, בישולים }))
+    .sort((left, right) => right['בישולים'] - left['בישולים'])
+    .map(({ 'שחקן': playerName, 'בישולים': assists }) => ({ 'שחקן': playerName, 'בישולים': assists }))
     .slice(0, 5);
 
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-          <h1 className="text-3xl font-black text-stone-900">סטטיסטיקות קבוצה: {team.nameHe}</h1>
+          <h1 className="text-3xl font-black text-stone-900">{`סטטיסטיקות קבוצה: ${team.nameHe}`}</h1>
           <p className="mt-2 text-stone-600">גרפים מרכזיים לעונה הנוכחית של הקבוצה.</p>
         </section>
         <TeamChartsView

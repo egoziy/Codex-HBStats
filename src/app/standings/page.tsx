@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import prisma from '@/lib/prisma';
+import { sortStandings } from '@/lib/standings';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,13 +17,15 @@ export default async function StandingsPage({
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
 
-  const standings = selectedSeason
+  const rawStandings = selectedSeason
     ? await prisma.standing.findMany({
         where: { seasonId: selectedSeason.id },
         include: { team: true },
         orderBy: [{ position: 'asc' }, { points: 'desc' }],
       })
     : [];
+
+  const standings = sortStandings(rawStandings);
 
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
@@ -30,7 +34,7 @@ export default async function StandingsPage({
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-700">Standings</p>
             <h1 className="text-3xl font-black text-stone-900">טבלת הליגה</h1>
-            <p className="mt-2 text-sm text-stone-600">בחרו עונה כדי לצפות בטבלה של עונה אחת בלבד.</p>
+            <p className="mt-2 text-sm text-stone-600">בחרו עונה כדי לראות טבלה מסודרת בלי ערבוב של כמה עונות יחד.</p>
           </div>
 
           <form className="flex flex-wrap items-center gap-3" action="/standings">
@@ -56,7 +60,7 @@ export default async function StandingsPage({
         ) : null}
 
         <div className="overflow-x-auto">
-          <table className="min-w-[760px] w-full text-right">
+          <table className="min-w-[920px] w-full text-right">
             <thead>
               <tr className="border-b border-stone-200 text-sm text-stone-500">
                 <th className="sticky right-0 bg-white px-3 py-3">מיקום</th>
@@ -66,15 +70,21 @@ export default async function StandingsPage({
                 <th className="px-3 py-3">תיקו</th>
                 <th className="px-3 py-3">הפסדים</th>
                 <th className="px-3 py-3">שערים</th>
+                <th className="px-3 py-3">תיקון</th>
                 <th className="sticky left-0 bg-white px-3 py-3">נקודות</th>
               </tr>
             </thead>
             <tbody>
               {standings.map((row) => (
                 <tr key={row.id} className="border-b border-stone-100 text-sm">
-                  <td className="sticky right-0 bg-white px-3 py-3 font-bold">{row.position}</td>
+                  <td className="sticky right-0 bg-white px-3 py-3 font-bold">{row.displayPosition}</td>
                   <td className="sticky right-[70px] bg-white px-3 py-3 font-semibold">
-                    {row.team.nameHe || row.team.nameEn}
+                    <Link href={`/teams/${row.teamId}`} className="hover:text-red-800">
+                      {row.team.nameHe || row.team.nameEn}
+                    </Link>
+                    {row.pointsAdjustmentNoteHe ? (
+                      <div className="mt-1 text-xs font-medium text-red-700">{row.pointsAdjustmentNoteHe}</div>
+                    ) : null}
                   </td>
                   <td className="px-3 py-3">{row.played}</td>
                   <td className="px-3 py-3">{row.wins}</td>
@@ -83,7 +93,10 @@ export default async function StandingsPage({
                   <td className="px-3 py-3">
                     {row.goalsFor}-{row.goalsAgainst}
                   </td>
-                  <td className="sticky left-0 bg-white px-3 py-3 font-black">{row.points}</td>
+                  <td className={`px-3 py-3 font-bold ${row.pointsAdjustment < 0 ? 'text-red-700' : row.pointsAdjustment > 0 ? 'text-emerald-700' : 'text-stone-400'}`}>
+                    {row.pointsAdjustment > 0 ? `+${row.pointsAdjustment}` : row.pointsAdjustment}
+                  </td>
+                  <td className="sticky left-0 bg-white px-3 py-3 font-black">{row.adjustedPoints}</td>
                 </tr>
               ))}
             </tbody>

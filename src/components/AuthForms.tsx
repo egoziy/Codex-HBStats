@@ -30,7 +30,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push('/');
+    router.push(payload.user?.role === 'ADMIN' ? '/admin' : '/');
     router.refresh();
   }
 
@@ -90,7 +90,7 @@ export function RegisterForm() {
       return;
     }
 
-    router.push('/');
+    router.push(payload.user?.role === 'ADMIN' ? '/admin' : '/');
     router.refresh();
   }
 

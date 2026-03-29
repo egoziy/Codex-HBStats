@@ -1,8 +1,41 @@
 import { ChangePasswordForm } from '@/components/AuthForms';
+import AccountPreferencesForm from '@/components/AccountPreferencesForm';
 import { requireUser } from '@/lib/auth';
+import { getCurrentSeasonStartYear } from '@/lib/home-live';
+import prisma from '@/lib/prisma';
 
 export default async function AccountPage() {
   const user = await requireUser();
+  const [storedUser, latestSeason, competitions] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        favoriteTeamApiIds: true,
+        favoriteCompetitionApiIds: true,
+      },
+    }),
+    prisma.season.findFirst({
+      where: {
+        year: {
+          lte: getCurrentSeasonStartYear(),
+        },
+      },
+      orderBy: { year: 'desc' },
+    }),
+    prisma.competition.findMany({
+      where: { apiFootballId: { not: null } },
+      orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+      select: { apiFootballId: true, nameHe: true, nameEn: true },
+    }),
+  ]);
+
+  const teams = latestSeason
+    ? await prisma.team.findMany({
+        where: { seasonId: latestSeason.id, apiFootballId: { not: null } },
+        orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+        select: { apiFootballId: true, nameHe: true, nameEn: true },
+      })
+    : [];
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-8">
@@ -15,6 +48,19 @@ export default async function AccountPage() {
             תפקיד: {user.role === 'ADMIN' ? 'אדמין' : 'משתמש רגיל'}
           </p>
         </section>
+
+        <AccountPreferencesForm
+          teams={teams.map((team) => ({
+            apiFootballId: team.apiFootballId!,
+            name: team.nameHe || team.nameEn,
+          }))}
+          competitions={competitions.map((competition) => ({
+            apiFootballId: competition.apiFootballId!,
+            name: competition.nameHe || competition.nameEn,
+          }))}
+          initialFavoriteTeamApiIds={storedUser?.favoriteTeamApiIds || []}
+          initialFavoriteCompetitionApiIds={storedUser?.favoriteCompetitionApiIds || []}
+        />
 
         <ChangePasswordForm />
       </div>

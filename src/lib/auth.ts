@@ -86,12 +86,10 @@ export async function getCurrentUser() {
   });
 
   if (!session) {
-    cookies().delete(SESSION_COOKIE);
     return null;
   }
 
   if (session.expiresAt < new Date() || !session.user.isActive) {
-    await destroySession(rawToken);
     return null;
   }
 

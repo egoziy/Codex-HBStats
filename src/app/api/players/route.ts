@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   if (playerId) {
     const player = await prisma.player.findUnique({
       where: { id: playerId },
-      include: { playerStats: true, team: true },
+      include: { playerStats: true, team: true, canonicalPlayer: true },
     });
 
     if (!player) {
@@ -103,6 +103,13 @@ export async function PUT(request: NextRequest) {
   }
 
   try {
+    const existingPlayer = await prisma.player.findUnique({
+      where: { id },
+      select: { additionalInfo: true, canonicalPlayerId: true },
+    });
+
+    const canonicalPlayerId = existingPlayer?.canonicalPlayerId || id;
+
     const player = await prisma.player.update({
       where: { id },
       data: {
@@ -115,11 +122,26 @@ export async function PUT(request: NextRequest) {
         ...(photoUrl !== undefined && { photoUrl }),
         ...(notesHe !== undefined && {
           additionalInfo: {
+            ...((existingPlayer?.additionalInfo as Record<string, unknown> | null) || {}),
             notesHe: notesHe || null,
           },
         }),
       },
     });
+
+    if (nameEn !== undefined || nameHe !== undefined || firstNameHe !== undefined || lastNameHe !== undefined) {
+      await prisma.player.updateMany({
+        where: {
+          OR: [{ id: canonicalPlayerId }, { canonicalPlayerId }],
+        },
+        data: {
+          ...(nameEn !== undefined && { nameEn }),
+          ...(nameHe !== undefined && { nameHe }),
+          ...(firstNameHe !== undefined && { firstNameHe: firstNameHe || null }),
+          ...(lastNameHe !== undefined && { lastNameHe: lastNameHe || null }),
+        },
+      });
+    }
 
     return NextResponse.json(player);
   } catch (error: any) {

@@ -19,9 +19,9 @@ export default function RootLayout({
         <div className="border-b border-stone-200 bg-black">
           <div className="mx-auto max-w-7xl px-4 py-4">
             <img
-              src="/banner.png"
+              src="/banner-stats.png"
               alt="הדופק של טרנר במספרים"
-              className="w-full rounded-[24px] border border-white/10 object-cover shadow-[0_18px_40px_rgba(0,0,0,0.28)]"
+              className="h-24 w-full rounded-[24px] border border-white/10 object-cover shadow-[0_18px_40px_rgba(0,0,0,0.28)] md:h-28"
             />
           </div>
         </div>

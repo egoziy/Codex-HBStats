@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestUser } from '@/lib/auth';
 import { apiFootballFetch } from '@/lib/api-football';
+import prisma from '@/lib/prisma';
 
 const TEAM_TRANSLATIONS: Record<string, string> = {
   'Hapoel Beer Sheva': 'הפועל באר שבע',
@@ -50,6 +51,31 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ teams });
   } catch (error) {
+    const localSeason = await prisma.season.findUnique({
+      where: { year: Number(season) },
+      select: { id: true },
+    });
+
+    if (localSeason) {
+      const localTeams = await prisma.team.findMany({
+        where: { seasonId: localSeason.id },
+        orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+        select: {
+          id: true,
+          nameEn: true,
+          nameHe: true,
+          logoUrl: true,
+        },
+      });
+
+      if (localTeams.length > 0) {
+        return NextResponse.json({
+          teams: localTeams,
+          fallback: 'local-db',
+        });
+      }
+    }
+
     const message = error instanceof Error ? error.message : 'לא ניתן לטעון קבוצות.';
     return NextResponse.json({ error: message }, { status: 500 });
   }
