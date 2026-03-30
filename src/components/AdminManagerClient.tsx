@@ -476,6 +476,17 @@ export default function AdminManagerClient({
         <p className="mt-3 max-w-3xl text-sm leading-7 text-white/80 md:text-base">
           מכאן אפשר למשוך נתונים, לנהל קבוצות ושחקנים, ולעבור לדפי עריכה לפי עונה.
         </p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link href="/admin/games" className="rounded-full bg-white px-5 py-3 text-sm font-bold text-stone-900">
+            ניהול משחקים ואירועים
+          </Link>
+          <Link
+            href={`/admin?season=${seasons.find((season) => season.id === selectedSeasonId)?.id || seasons[0]?.id || ''}`}
+            className="rounded-full border border-white/30 px-5 py-3 text-sm font-bold text-white"
+          >
+            עונה נבחרת
+          </Link>
+        </div>
       </section>
 
       <Accordion

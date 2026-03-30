@@ -19,6 +19,7 @@ type CoverageCompetitionSeason = {
 type CoverageTeam = {
   id: string;
   apiFootballId: number | null;
+  venueId: string | null;
   nameHe: string;
   nameEn: string;
   _count: {
@@ -31,6 +32,7 @@ type CoverageGame = {
   competitionId: string | null;
   homeTeamId: string;
   awayTeamId: string;
+  venueId: string | null;
   status: 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
   dateTime: Date | string;
   updatedAt: Date | string;
@@ -143,6 +145,7 @@ export type AdminCoverageRow = {
   competitionNameHe: string;
   competitionNameEn: string;
   teamsCount: number;
+  venuesCount: number;
   playersCount: number;
   gamesCount: number;
   standingsCount: number;
@@ -373,6 +376,12 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
       const teamIds = primaryTeamIds.size > 0 ? primaryTeamIds : fallbackTeamIds;
 
       const teamsInScope = season.teams.filter((team) => teamIds.has(team.id));
+      const venueIdsInScope = new Set(
+        [
+          ...teamsInScope.map((team) => team.venueId),
+          ...scopedGames.map((game) => game.venueId),
+        ].filter((venueId): venueId is string => Boolean(venueId))
+      );
       const uniquePlayerIds = new Set(scopedPlayerStats.map((stat) => stat.player.id));
       const latestFetchAt = getLatestDate(
         scopedJobs.map((job) => job.finishedAt || job.createdAt)
@@ -408,6 +417,7 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
 
       const totalCount =
         teamsInScope.length +
+        venueIdsInScope.size +
         uniquePlayerIds.size +
         scopedGames.length +
         scopedStandings.length +
@@ -468,6 +478,7 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
             return Boolean(gameDate && gameDate.getTime() >= Date.now() - 3 * 60 * 60 * 1000);
           });
           const teamTotalCount =
+            (team.venueId ? 1 : 0) +
             new Set(teamPlayerStats.map((stat) => stat.player.id)).size +
             teamGames.length +
             teamStandings.length +
@@ -516,6 +527,7 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
         competitionNameHe: competitionSeason?.competition.nameHe || source.nameHe,
         competitionNameEn: competitionSeason?.competition.nameEn || source.nameEn,
         teamsCount: teamsInScope.length,
+        venuesCount: venueIdsInScope.size,
         playersCount: uniquePlayerIds.size,
         gamesCount: scopedGames.length,
         standingsCount: scopedStandings.length,

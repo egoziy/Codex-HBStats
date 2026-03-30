@@ -1,5 +1,5 @@
 import prisma from '@/lib/prisma';
-import { apiFootballFetch } from '@/lib/api-football';
+import { apiFootballFetch, isApiFootballRateLimitError } from '@/lib/api-football';
 
 export type HomepageLiveEvent = {
   id: string;
@@ -314,7 +314,13 @@ export async function getHomepageLiveSnapshots(
     Date.now() - new Date(latestGlobalSnapshot.snapshotAt).getTime() >= 55_000;
 
   if (shouldRefresh) {
-    await refreshGlobalHomepageLiveSnapshots();
+    try {
+      await refreshGlobalHomepageLiveSnapshots();
+    } catch (error) {
+      if (!isApiFootballRateLimitError(error)) {
+        throw error;
+      }
+    }
   }
 
   const selectedTeam = selectedTeamId

@@ -1,7 +1,9 @@
 import { notFound } from 'next/navigation';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
+import { getCurrentUser } from '@/lib/auth';
 import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
+import { GameRefereeForm } from '@/components/GameRefereeForm';
 
 const eventLabels: Record<string, string> = {
   GOAL: 'שער',
@@ -16,6 +18,7 @@ const eventLabels: Record<string, string> = {
 };
 
 export default async function GamePage({ params }: { params: { id: string } }) {
+  const currentUser = await getCurrentUser();
   const game = await prisma.game.findUnique({
     where: { id: params.id },
     include: {
@@ -23,6 +26,13 @@ export default async function GamePage({ params }: { params: { id: string } }) {
       awayTeam: true,
       competition: true,
       gameStats: true,
+      referee: {
+        select: {
+          id: true,
+          nameEn: true,
+          nameHe: true,
+        },
+      },
       events: {
         include: {
           player: true,
@@ -49,6 +59,7 @@ export default async function GamePage({ params }: { params: { id: string } }) {
   const homeLineup = buildTeamLineup(game, game.homeTeamId);
   const awayLineup = buildTeamLineup(game, game.awayTeamId);
   const comparisonRows = buildComparisonRows(game.gameStats, eventSummary);
+  const summaryCards = buildSummaryCards(game.gameStats, eventSummary);
 
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
@@ -78,6 +89,9 @@ export default async function GamePage({ params }: { params: { id: string } }) {
                   {getCompetitionDisplayName(game.competition)}
                 </div>
                 <div className="mt-1 text-xs text-stone-500">{getRoundDisplayName(game.roundNameHe, game.roundNameEn)}</div>
+                <div className="mt-3 inline-flex rounded-full bg-stone-100 px-3 py-1.5 text-xs font-bold text-stone-700">
+                  שופט: {game.referee?.nameHe || game.referee?.nameEn || game.refereeHe || game.refereeEn || 'לא זמין'}
+                </div>
               </div>
               <div className="text-center md:text-right">
                 {game.awayTeam.logoUrl ? (
@@ -94,10 +108,43 @@ export default async function GamePage({ params }: { params: { id: string } }) {
           </div>
         </section>
 
+        {currentUser?.role === 'ADMIN' ? (
+          <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-black text-stone-900">הוספת שופט ידנית</h2>
+                <p className="mt-2 text-sm text-stone-500">
+                  אם לא נמשך שופט מה־API או אם השם נשמר חלקית, אפשר להשלים אותו כאן. השמירה תיכנס גם לסטטיסטיקות.
+                </p>
+              </div>
+              <div className="rounded-full bg-stone-100 px-4 py-2 text-sm font-bold text-stone-700">
+                {game.referee ? 'שופט שמור' : 'שופט חסר'}
+              </div>
+            </div>
+            <GameRefereeForm
+              gameId={game.id}
+              refereeNameEn={game.referee?.nameEn || game.refereeEn || ''}
+              refereeNameHe={game.referee?.nameHe || game.refereeHe || ''}
+            />
+          </section>
+        ) : null}
+
         <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-black text-stone-900">סטטיסטיקת משחק</h2>
-            <p className="mt-2 text-sm text-stone-500">גרפים השוואתיים של נתוני המשחק בין שתי הקבוצות.</p>
+            <p className="mt-2 text-sm text-stone-500">השוואה רחבה של הנתונים ששמורים לנו ברמת המשחק.</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {summaryCards.map((card) => (
+                <div key={card.label} className="rounded-[20px] border border-stone-200 bg-stone-50 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">{card.label}</div>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <div className="text-lg font-black text-stone-900">{card.value}</div>
+                    {card.delta ? <div className="text-xs font-bold text-stone-500">{card.delta}</div> : null}
+                  </div>
+                  {card.note ? <div className="mt-1 text-sm text-stone-600">{card.note}</div> : null}
+                </div>
+              ))}
+            </div>
             <div className="mt-5 space-y-4">
               {comparisonRows.map((row) => (
                 <ComparisonBar
@@ -165,17 +212,6 @@ export default async function GamePage({ params }: { params: { id: string } }) {
           </div>
         </section>
 
-        <section className="rounded-[24px] border border-amber-200 bg-amber-50/70 p-6 shadow-sm">
-          <h2 className="text-2xl font-black text-stone-900">xG - שערים צפויים</h2>
-          <p className="mt-3 text-sm leading-7 text-stone-700">
-            אפשר לחשב <strong>xG</strong>, אבל כדי לחשב אותו בצורה אמינה צריך נתוני בעיטה ברמת אירוע כמו מיקום הבעיטה,
-            סוג הבעיטה, חלק גוף, מצב נייח, זווית, מרחק ולחץ הגנתי. בנתונים שיש כרגע במערכת אין מספיק פירוט כזה,
-            ולכן אפשר לכל היותר לייצר הערכה גסה ולא xG אמיתי ברמה של ספקי דאטה מקצועיים.
-          </p>
-          <p className="mt-3 text-sm leading-7 text-stone-700">
-            אם נתחיל לשמור נתוני shots מפורטים יותר מה־API, אפשר יהיה להוסיף בהמשך גם מודל xG משוער לדף המשחק.
-          </p>
-        </section>
       </div>
     </div>
   );
@@ -464,6 +500,115 @@ function buildComparisonRows(
       awayDisplay: formatNumber(stats?.awayRedCards ?? eventSummary.awayRedCards),
     },
   ];
+}
+
+function buildSummaryCards(
+  stats:
+    | {
+        homeTeamPossession: number | null;
+        awayTeamPossession: number | null;
+        homeShotsOnTarget: number | null;
+        awayShotsOnTarget: number | null;
+        homeShotsTotal: number | null;
+        awayShotsTotal: number | null;
+        homeCorners: number | null;
+        awayCorners: number | null;
+        homeFouls: number | null;
+        awayFouls: number | null;
+        homeOffsides: number | null;
+        awayOffsides: number | null;
+        homeYellowCards: number | null;
+        awayYellowCards: number | null;
+        homeRedCards: number | null;
+        awayRedCards: number | null;
+      }
+    | null,
+  eventSummary: ReturnType<typeof buildEventSummary>
+) {
+  const homeGoals = eventSummary.homeGoals;
+  const awayGoals = eventSummary.awayGoals;
+  const homeShotsOnTarget = stats?.homeShotsOnTarget ?? null;
+  const awayShotsOnTarget = stats?.awayShotsOnTarget ?? null;
+  const homeShotsTotal = stats?.homeShotsTotal ?? null;
+  const awayShotsTotal = stats?.awayShotsTotal ?? null;
+  const homePossession = stats?.homeTeamPossession ?? null;
+  const awayPossession = stats?.awayTeamPossession ?? null;
+  const homeCorners = stats?.homeCorners ?? null;
+  const awayCorners = stats?.awayCorners ?? null;
+  const homeFouls = stats?.homeFouls ?? null;
+  const awayFouls = stats?.awayFouls ?? null;
+  const homeYellowCards = stats?.homeYellowCards ?? eventSummary.homeYellowCards;
+  const awayYellowCards = stats?.awayYellowCards ?? eventSummary.awayYellowCards;
+  const homeRedCards = stats?.homeRedCards ?? eventSummary.homeRedCards;
+  const awayRedCards = stats?.awayRedCards ?? eventSummary.awayRedCards;
+
+  const shotAccuracyHome = homeShotsTotal && homeShotsTotal > 0 && homeShotsOnTarget !== null ? Math.round((homeShotsOnTarget / homeShotsTotal) * 100) : null;
+  const shotAccuracyAway = awayShotsTotal && awayShotsTotal > 0 && awayShotsOnTarget !== null ? Math.round((awayShotsOnTarget / awayShotsTotal) * 100) : null;
+  const goalConversionHome = homeShotsOnTarget && homeShotsOnTarget > 0 ? Math.round((homeGoals / homeShotsOnTarget) * 100) : null;
+  const goalConversionAway = awayShotsOnTarget && awayShotsOnTarget > 0 ? Math.round((awayGoals / awayShotsOnTarget) * 100) : null;
+
+  return [
+    {
+      label: 'תוצאה',
+      value: `${homeGoals}-${awayGoals}`,
+      delta: homeGoals === awayGoals ? 'תיקו' : homeGoals > awayGoals ? 'יתרון בית' : 'יתרון חוץ',
+      note: 'מופק גם מאירועים אם תוצאת ה־API לא זמינה',
+    },
+    {
+      label: 'דיוק בבעיטות',
+      value: `${formatPercent(shotAccuracyHome)} / ${formatPercent(shotAccuracyAway)}`,
+      delta: 'בית / חוץ',
+      note: 'אחוז הבעיטות למסגרת מתוך כלל הבעיטות',
+    },
+    {
+      label: 'ניצול מצבים',
+      value: `${formatPercent(goalConversionHome)} / ${formatPercent(goalConversionAway)}`,
+      delta: 'בית / חוץ',
+      note: 'שערים חלקי בעיטות למסגרת',
+    },
+    {
+      label: 'אחזקת כדור',
+      value: `${formatPercent(homePossession)} / ${formatPercent(awayPossession)}`,
+      delta: 'בית / חוץ',
+      note: 'אחוזי שליטה במשחק',
+    },
+    {
+      label: 'קרנות',
+      value: `${formatNumber(homeCorners)} / ${formatNumber(awayCorners)}`,
+      delta: homeCorners !== null && awayCorners !== null ? diffLabel(homeCorners, awayCorners) : null,
+      note: 'קרנות לטובת כל צד',
+    },
+    {
+      label: 'עבירות',
+      value: `${formatNumber(homeFouls)} / ${formatNumber(awayFouls)}`,
+      delta: homeFouls !== null && awayFouls !== null ? diffLabel(homeFouls, awayFouls) : null,
+      note: 'עבירות שנרשמו במשחק',
+    },
+    {
+      label: 'צהובים',
+      value: `${formatNumber(homeYellowCards)} / ${formatNumber(awayYellowCards)}`,
+      delta: homeYellowCards !== null && awayYellowCards !== null ? diffLabel(homeYellowCards, awayYellowCards) : null,
+      note: 'כולל נתון שמור או מחושב מהאירועים',
+    },
+    {
+      label: 'אדומים',
+      value: `${formatNumber(homeRedCards)} / ${formatNumber(awayRedCards)}`,
+      delta: homeRedCards !== null && awayRedCards !== null ? diffLabel(homeRedCards, awayRedCards) : null,
+      note: 'כולל נתון שמור או מחושב מהאירועים',
+    },
+    {
+      label: 'בעיטות למסגרת',
+      value: `${formatNumber(homeShotsOnTarget)} / ${formatNumber(awayShotsOnTarget)}`,
+      delta: homeShotsOnTarget !== null && awayShotsOnTarget !== null ? diffLabel(homeShotsOnTarget, awayShotsOnTarget) : null,
+      note: 'ניסיונות שהלכו למסגרת',
+    },
+  ];
+}
+
+function diffLabel(left: number, right: number) {
+  const delta = left - right;
+  if (delta === 0) return 'שוויון';
+  return delta > 0 ? `+${delta}` : `${delta}`;
 }
 
 function buildTeamLineup(

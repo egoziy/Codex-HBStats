@@ -61,6 +61,13 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
         homeTeam: true,
         awayTeam: true,
         competition: true,
+        referee: {
+          select: {
+            id: true,
+            nameEn: true,
+            nameHe: true,
+          },
+        },
         prediction: true,
         events: {
           select: {
@@ -140,6 +147,27 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
     })
     .sort((left, right) => right.goals - left.goals || right.assists - left.assists)
     .slice(0, 6);
+  const refereeSummaries = buildRefereeSummaries(teamGames, team.id);
+  const topRedCardReferee = [...refereeSummaries].sort(
+    (left, right) =>
+      right.teamRedCards - left.teamRedCards ||
+      right.redCards - left.redCards ||
+      right.games - left.games ||
+      right.latestGameAt.getTime() - left.latestGameAt.getTime()
+  )[0] || null;
+  const topGoalsReferee = [...refereeSummaries].sort(
+    (left, right) =>
+      right.totalGoals - left.totalGoals ||
+      right.games - left.games ||
+      right.latestGameAt.getTime() - left.latestGameAt.getTime()
+  )[0] || null;
+  const topPenaltyReferee = [...refereeSummaries].sort(
+    (left, right) =>
+      right.teamPenalties - left.teamPenalties ||
+      right.penalties - left.penalties ||
+      right.games - left.games ||
+      right.latestGameAt.getTime() - left.latestGameAt.getTime()
+  )[0] || null;
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f7efe3_0%,#efe3d3_100%)] px-4 py-8">
@@ -367,6 +395,98 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
             </div>
           </Panel>
         </section>
+
+        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <Panel title="שופטים מול הקבוצה">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <StatHighlight
+                label="הכי הרבה אדומים לקבוצה"
+                value={topRedCardReferee ? topRedCardReferee.name : 'אין מספיק נתונים'}
+                subvalue={
+                  topRedCardReferee
+                    ? `${topRedCardReferee.teamRedCards} אדומים לקבוצה · ${topRedCardReferee.redCards} אדומים במשחקים`
+                    : 'נדרשים משחקים היסטוריים עם אירועים שמורים'
+                }
+              />
+              <StatHighlight
+                label="הכי הרבה שערים במשחקים"
+                value={topGoalsReferee ? topGoalsReferee.name : 'אין מספיק נתונים'}
+                subvalue={
+                  topGoalsReferee
+                    ? `${topGoalsReferee.totalGoals} שערים · ${topGoalsReferee.games} משחקים`
+                    : 'נדרשים משחקים היסטוריים עם תוצאה שמורה'
+                }
+              />
+              <StatHighlight
+                label="הכי הרבה פנדלים לקבוצה"
+                value={topPenaltyReferee ? topPenaltyReferee.name : 'אין מספיק נתונים'}
+                subvalue={
+                  topPenaltyReferee
+                    ? `${topPenaltyReferee.teamPenalties} פנדלים לקבוצה · ${topPenaltyReferee.penalties} פנדלים במשחקים`
+                    : 'נדרשים משחקים היסטוריים עם אירועי פנדל'
+                }
+              />
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-[20px] border border-stone-200">
+              <table className="min-w-full text-right">
+                <thead className="bg-stone-100 text-xs text-stone-500">
+                  <tr>
+                    <th className="px-4 py-2.5">שופט</th>
+                    <th className="px-4 py-2.5">משחקים</th>
+                    <th className="px-4 py-2.5">שערים</th>
+                    <th className="px-4 py-2.5">צהובים</th>
+                    <th className="px-4 py-2.5">אדומים</th>
+                    <th className="px-4 py-2.5">אדומים לקבוצה</th>
+                    <th className="px-4 py-2.5">פנדלים לקבוצה</th>
+                    <th className="px-4 py-2.5">בית</th>
+                    <th className="px-4 py-2.5">חוץ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {refereeSummaries.map((referee) => (
+                    <tr key={referee.key} className="border-t border-stone-100 bg-white text-sm">
+                      <td className="px-4 py-3">
+                        <div className="font-black text-stone-900">{referee.name}</div>
+                        <div className="mt-1 text-xs text-stone-500">
+                          {referee.wins}-{referee.draws}-{referee.losses} · {referee.pointsPerGame.toFixed(2)} נק׳ למשחק
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.games}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.totalGoals}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.yellowCards}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.redCards}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.teamRedCards}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.teamPenalties}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.homeGames}</td>
+                      <td className="px-4 py-3 font-bold text-stone-900">{referee.awayGames}</td>
+                    </tr>
+                  ))}
+                  {refereeSummaries.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-8 text-center text-sm text-stone-500">
+                        אין כרגע משחקים סגורים עם שופט שמור לחיתוך הזה.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+
+          <Panel title="הקשר שיפוט">
+            <div className="space-y-3 text-sm leading-7 text-stone-700">
+              <p>
+                כאן אפשר לראות את הקבוצה דרך השופט: כמה משחקים הוא ניהל, כמה שערים נכבשו באותם משחקים, וכמה כרטיסים
+                אדומים/צהובים נרשמו.
+              </p>
+              <p>
+                בהמשך אפשר להרחיב את זה גם למאזן נקודות לפי שופט, הפרדה בין בית לחוץ, ושופטים שמייצרים הרבה פנדלים
+                במשחקים של הקבוצה.
+              </p>
+            </div>
+          </Panel>
+        </section>
       </div>
     </div>
   );
@@ -386,6 +506,16 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
     <div className="rounded-[22px] border border-white/15 bg-white/10 px-4 py-4 backdrop-blur-sm">
       <div className="text-xs font-semibold text-white/70">{label}</div>
       <div className="mt-2 text-2xl font-black text-white">{value}</div>
+    </div>
+  );
+}
+
+function StatHighlight({ label, value, subvalue }: { label: string; value: string; subvalue: string }) {
+  return (
+    <div className="rounded-[20px] border border-stone-200 bg-stone-50 p-4">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">{label}</div>
+      <div className="mt-2 text-lg font-black text-stone-900">{value}</div>
+      <div className="mt-1 text-sm text-stone-600">{subvalue}</div>
     </div>
   );
 }
@@ -489,4 +619,118 @@ function getOpponentName(
 ) {
   const opponent = game.homeTeamId === teamId ? game.awayTeam : game.homeTeam;
   return opponent.nameHe || opponent.nameEn;
+}
+
+function buildRefereeSummaries(
+  games: Array<{
+    id: string;
+    status: string;
+    homeTeamId: string;
+    awayTeamId: string;
+    homeScore: number | null;
+    awayScore: number | null;
+    dateTime: Date;
+    referee: { id: string; nameEn: string; nameHe: string | null } | null;
+    events: Array<{
+      teamId: string | null;
+      type: 'GOAL' | 'ASSIST' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION_IN' | 'SUBSTITUTION_OUT' | 'OWN_GOAL' | 'PENALTY_GOAL' | 'PENALTY_MISSED';
+    }>;
+  }>,
+  teamId: string
+) {
+  const summaries = new Map<
+    string,
+    {
+      key: string;
+      name: string;
+      games: number;
+      wins: number;
+      draws: number;
+      losses: number;
+      totalGoals: number;
+      yellowCards: number;
+      redCards: number;
+      teamYellowCards: number;
+      teamRedCards: number;
+      penalties: number;
+      teamPenalties: number;
+      homeGames: number;
+      awayGames: number;
+      points: number;
+      latestGameAt: Date;
+    }
+  >();
+
+  for (const game of games.filter((entry) => entry.status === 'COMPLETED')) {
+    const refereeName = game.referee?.nameHe || game.referee?.nameEn || 'שופט לא זמין';
+    const refereeKey = game.referee?.id || game.referee?.nameEn || 'unknown-referee';
+    const teamIsHome = game.homeTeamId === teamId;
+    const teamGoals = teamIsHome ? game.homeScore ?? 0 : game.awayScore ?? 0;
+    const opponentGoals = teamIsHome ? game.awayScore ?? 0 : game.homeScore ?? 0;
+    const resultPoints = teamGoals > opponentGoals ? 3 : teamGoals === opponentGoals ? 1 : 0;
+    const yellowCards = game.events.filter((event) => event.type === 'YELLOW_CARD').length;
+    const redCards = game.events.filter((event) => event.type === 'RED_CARD').length;
+    const teamYellowCards = game.events.filter((event) => event.type === 'YELLOW_CARD' && event.teamId === teamId).length;
+    const teamRedCards = game.events.filter((event) => event.type === 'RED_CARD' && event.teamId === teamId).length;
+    const penalties = game.events.filter((event) => event.type === 'PENALTY_GOAL' || event.type === 'PENALTY_MISSED').length;
+    const teamPenalties = game.events.filter(
+      (event) =>
+        event.teamId === teamId && (event.type === 'PENALTY_GOAL' || event.type === 'PENALTY_MISSED')
+    ).length;
+
+    const current = summaries.get(refereeKey) || {
+      key: refereeKey,
+      name: refereeName,
+      games: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      totalGoals: 0,
+      yellowCards: 0,
+      redCards: 0,
+      teamYellowCards: 0,
+      teamRedCards: 0,
+      penalties: 0,
+      teamPenalties: 0,
+      homeGames: 0,
+      awayGames: 0,
+      points: 0,
+      latestGameAt: game.dateTime,
+    };
+
+    current.games += 1;
+    current.wins += resultPoints === 3 ? 1 : 0;
+    current.draws += resultPoints === 1 ? 1 : 0;
+    current.losses += resultPoints === 0 ? 1 : 0;
+    current.totalGoals += teamGoals + opponentGoals;
+    current.yellowCards += yellowCards;
+    current.redCards += redCards;
+    current.teamYellowCards += teamYellowCards;
+    current.teamRedCards += teamRedCards;
+    current.penalties += penalties;
+    current.teamPenalties += teamPenalties;
+    current.homeGames += teamIsHome ? 1 : 0;
+    current.awayGames += teamIsHome ? 0 : 1;
+    current.points += resultPoints;
+    if (game.dateTime.getTime() > current.latestGameAt.getTime()) {
+      current.latestGameAt = game.dateTime;
+    }
+
+    summaries.set(refereeKey, current);
+  }
+
+  return [...summaries.values()]
+    .sort(
+      (left, right) =>
+        right.games - left.games ||
+        right.teamRedCards - left.teamRedCards ||
+        right.totalGoals - left.totalGoals ||
+        right.points - left.points ||
+        right.latestGameAt.getTime() - left.latestGameAt.getTime()
+    )
+    .map((summary) => ({
+      ...summary,
+      pointsPerGame: summary.games ? summary.points / summary.games : 0,
+    }))
+    .slice(0, 8);
 }

@@ -75,6 +75,7 @@ export default async function AdminPage({
             apiFootballId: true,
             nameHe: true,
             nameEn: true,
+            venueId: true,
             _count: {
               select: {
                 players: true,
@@ -88,6 +89,7 @@ export default async function AdminPage({
             competitionId: true,
             homeTeamId: true,
             awayTeamId: true,
+            venueId: true,
             status: true,
             dateTime: true,
             updatedAt: true,

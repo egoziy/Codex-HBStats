@@ -50,6 +50,39 @@ function truncateText(text: string, maxLength: number) {
   return `${text.slice(0, maxLength).trim()}...`;
 }
 
+function parseScoreLabel(scoreLabel: string) {
+  const match = scoreLabel.match(/^(\d+)\s*-\s*(\d+)$/);
+  if (!match) return { homeScore: 0, awayScore: 0 };
+  return {
+    homeScore: Number(match[1]),
+    awayScore: Number(match[2]),
+  };
+}
+
+function parseGameIdFromHref(gameHref: string) {
+  const match = gameHref.match(/\/games\/([^/?#]+)/);
+  return match?.[1] || gameHref;
+}
+
+function mapHomepageLiveSnapshot(snapshot: HomepageLiveSnapshot) {
+  const { homeScore, awayScore } = parseScoreLabel(snapshot.scoreLabel);
+
+  return {
+    id: snapshot.id,
+    gameId: parseGameIdFromHref(snapshot.gameHref),
+    homeTeamName: snapshot.homeTeamName,
+    awayTeamName: snapshot.awayTeamName,
+    homeScore,
+    awayScore,
+    minuteLabel: snapshot.minuteLabel,
+    statusLabel: snapshot.statusLabel,
+    countryLabel: snapshot.countryLabel,
+    countryFlagUrl: snapshot.countryFlagUrl,
+    leagueLabel: snapshot.leagueLabel,
+    eventCount: snapshot.eventCount,
+  };
+}
+
 async function getConfiguredTelegramSources() {
   const telegramSourcesSetting = await prisma.siteSetting.findUnique({
     where: { key: 'telegram_sources' },
@@ -436,7 +469,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         awayTeamName: getTeamLabel(game.awayTeam),
         dateTime: game.dateTime.toISOString(),
       })),
-      live: liveItems,
+      live: liveItems.map(mapHomepageLiveSnapshot),
       news: telegramMessages.slice(0, 5).map((message) => ({
         id: message.id,
         source: message.sourceLabel,
@@ -454,8 +487,9 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
 
 export async function getMobileLivePayload(limit = 50) {
   const items = await getHomepageLiveSnapshots(null, { limit });
+  const mobileItems = items.map(mapHomepageLiveSnapshot);
 
-  const groups = items.reduce(
+  const groups = mobileItems.reduce(
     (map, item) => {
       const key = `${item.countryLabel}__${item.leagueLabel}`;
       if (!map[key]) {
@@ -478,16 +512,16 @@ export async function getMobileLivePayload(limit = 50) {
         countryLabel: string;
         countryFlagUrl: string | null;
         leagueLabel: string;
-        matches: HomepageLiveSnapshot[];
+        matches: ReturnType<typeof mapHomepageLiveSnapshot>[];
       }
     >
   );
 
   return {
     updatedAt: new Date().toISOString(),
-    hasLive: items.length > 0,
-    message: items.length > 0 ? null : 'נכון לעכשיו אין משחקים בלייב',
-    items,
+    hasLive: mobileItems.length > 0,
+    message: mobileItems.length > 0 ? null : 'נכון לעכשיו אין משחקים בלייב',
+    items: mobileItems,
     groups: Object.values(groups),
   };
 }

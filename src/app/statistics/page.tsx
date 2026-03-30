@@ -1,4 +1,6 @@
-import { formatPlayerName } from '@/lib/player-display';
+import Link from 'next/link';
+
+import { formatPlayerName, formatPlayerPosition } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
 
@@ -155,6 +157,8 @@ export default async function StatisticsPage({
                     <th className="px-3 py-3">הופעות</th>
                     <th className="px-3 py-3">שערים</th>
                     <th className="px-3 py-3">בישולים</th>
+                    <th className="px-3 py-3">צהובים</th>
+                    <th className="px-3 py-3">אדומים</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -164,18 +168,29 @@ export default async function StatisticsPage({
                         gamesPlayed: acc.gamesPlayed + stat.gamesPlayed,
                         goals: acc.goals + stat.goals,
                         assists: acc.assists + stat.assists,
+                        yellowCards: acc.yellowCards + stat.yellowCards,
+                        redCards: acc.redCards + stat.redCards,
                       }),
-                      { gamesPlayed: 0, goals: 0, assists: 0 }
+                      { gamesPlayed: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 }
                     );
 
                     return (
                       <tr key={player.id} className="border-b border-stone-100 text-sm">
-                        <td className="px-3 py-3 font-semibold">{formatPlayerName(player)}</td>
+                        <td className="px-3 py-3 font-semibold">
+                          <Link
+                            href={`/players/${player.canonicalPlayerId || player.id}`}
+                            className="font-semibold text-stone-900 transition hover:text-amber-700"
+                          >
+                            {formatPlayerName(player)}
+                          </Link>
+                        </td>
                         <td className="px-3 py-3">{player.jerseyNumber ?? '-'}</td>
-                        <td className="px-3 py-3">{player.position || '-'}</td>
+                        <td className="px-3 py-3">{formatPlayerPosition(player.position)}</td>
                         <td className="px-3 py-3">{totals.gamesPlayed}</td>
                         <td className="px-3 py-3">{totals.goals}</td>
                         <td className="px-3 py-3">{totals.assists}</td>
+                        <td className="px-3 py-3">{totals.yellowCards}</td>
+                        <td className="px-3 py-3">{totals.redCards}</td>
                       </tr>
                     );
                   })}

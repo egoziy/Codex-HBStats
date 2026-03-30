@@ -1,9 +1,20 @@
 const MIN_REQUEST_INTERVAL_MS = 250;
 const MAX_RETRY_ATTEMPTS = 4;
 const RETRY_BASE_DELAY_MS = 3000;
+const API_FOOTBALL_RATE_LIMIT_CODE = 'API_FOOTBALL_RATE_LIMIT';
 
 let lastRequestStartedAt = 0;
 let requestQueue = Promise.resolve();
+
+export class ApiFootballRateLimitError extends Error {
+  code = API_FOOTBALL_RATE_LIMIT_CODE;
+  statusCode = 429;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiFootballRateLimitError';
+  }
+}
 
 function hasApiErrors(errors: unknown) {
   if (Array.isArray(errors)) {
@@ -42,6 +53,14 @@ function extractApiErrorMessage(payload: any) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTemporaryRateLimitMessage(message: string) {
+  return /too many requests|rate limit/i.test(message || '');
+}
+
+function isDailyLimitExceededMessage(message: string) {
+  return /request limit|limit for the day|upgrade your plan/i.test(message || '');
 }
 
 async function scheduleRequest() {
@@ -94,12 +113,20 @@ async function performApiFootballFetch(path: string, attempt = 0): Promise<any[]
     const payload = await response.json();
 
     const errorMessage = extractApiErrorMessage(payload);
-    const isRateLimited =
-      response.status === 429 || /too many requests|rate limit/i.test(errorMessage || '');
+    const isTemporaryRateLimited = response.status === 429 || isTemporaryRateLimitMessage(errorMessage);
+    const isDailyLimitExceeded = isDailyLimitExceededMessage(errorMessage);
 
-    if (isRateLimited && attempt < MAX_RETRY_ATTEMPTS) {
+    if (isDailyLimitExceeded) {
+      throw new ApiFootballRateLimitError(errorMessage);
+    }
+
+    if (isTemporaryRateLimited && attempt < MAX_RETRY_ATTEMPTS) {
       await sleep(RETRY_BASE_DELAY_MS * (attempt + 1));
       return performApiFootballFetch(path, attempt + 1);
+    }
+
+    if (isTemporaryRateLimited) {
+      throw new ApiFootballRateLimitError(errorMessage);
     }
 
     if (!response.ok || hasApiErrors(payload.errors)) {
@@ -114,4 +141,13 @@ async function performApiFootballFetch(path: string, attempt = 0): Promise<any[]
 
 export async function apiFootballFetch(path: string) {
   return performApiFootballFetch(path);
+}
+
+export function isApiFootballRateLimitError(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: string }).code === API_FOOTBALL_RATE_LIMIT_CODE
+  );
 }
