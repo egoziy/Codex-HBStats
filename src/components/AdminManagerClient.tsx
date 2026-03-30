@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useDeferredValue, useState } from 'react';
 import AdminDataCoveragePanel from '@/components/AdminDataCoveragePanel';
 import ApiFetchForm from '@/components/ApiFetchForm';
 import type { AdminCoverageRow } from '@/lib/admin-data-coverage';
@@ -414,8 +414,16 @@ export default function AdminManagerClient({
   rawData: RawData | null;
   coverageRows: AdminCoverageRow[];
 }) {
+  function normalizeAdminSearchValue(value: string) {
+    return value.trim().toLocaleLowerCase('he-IL');
+  }
+
   const [openSection, setOpenSection] = useState<'fetch' | 'coverage' | 'raw' | 'teams' | 'jobs'>('coverage');
   const [rawView, setRawView] = useState<RawView>('teams');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [showSelectedSeasonTeamsOnly, setShowSelectedSeasonTeamsOnly] = useState(true);
+  const deferredTeamSearch = useDeferredValue(teamSearch);
+  const selectedSeasonName = seasons.find((season) => season.id === selectedSeasonId)?.name ?? null;
   const rawEvents = rawData?.games.flatMap((game) =>
     game.events.map((event) => ({
       ...event,
@@ -443,6 +451,21 @@ export default function AdminManagerClient({
     }))
   ) || [];
   const sectionOrder: Array<'fetch' | 'coverage' | 'raw' | 'teams' | 'jobs'> = ['fetch', 'coverage', 'raw', 'teams', 'jobs'];
+  const normalizedTeamSearch = normalizeAdminSearchValue(deferredTeamSearch);
+  const filteredTeams = teams.filter((team) => {
+    const matchesSelectedSeason = !showSelectedSeasonTeamsOnly || !selectedSeasonName || team.seasons.includes(selectedSeasonName);
+
+    if (!matchesSelectedSeason) {
+      return false;
+    }
+
+    if (!normalizedTeamSearch) {
+      return true;
+    }
+
+    const searchableValues = [team.displayNameHe || '', team.displayNameEn, ...team.seasons];
+    return searchableValues.some((value) => normalizeAdminSearchValue(value).includes(normalizedTeamSearch));
+  });
   const rawViewOptions: Array<{ key: RawView; label: string; count: number }> = [
     { key: 'competitions', label: 'מסגרות', count: rawData?.competitions.length || 0 },
     { key: 'teams', label: 'קבוצות', count: rawData?.teams.length || 0 },
@@ -617,8 +640,51 @@ export default function AdminManagerClient({
           את פרטי הקבוצה והשחקנים.
         </div>
 
+        <div className="mb-4 rounded-[24px] border border-stone-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex-1">
+              <label htmlFor="admin-team-search" className="mb-2 block text-sm font-bold text-stone-900">
+                חיפוש קבוצה לעריכה
+              </label>
+              <input
+                id="admin-team-search"
+                type="search"
+                value={teamSearch}
+                onChange={(event) => setTeamSearch(event.target.value)}
+                placeholder="כתוב שם קבוצה בעברית, באנגלית או שם עונה"
+                className="w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-red-400 focus:bg-white"
+              />
+            </div>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-700">
+              <input
+                type="checkbox"
+                checked={showSelectedSeasonTeamsOnly}
+                onChange={(event) => setShowSelectedSeasonTeamsOnly(event.target.checked)}
+                className="h-4 w-4 rounded border-stone-300 text-stone-900 focus:ring-stone-400"
+              />
+              {selectedSeasonName ? `רק קבוצות מהעונה ${selectedSeasonName}` : 'רק קבוצות מהעונה הנבחרת'}
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-stone-600">
+            <span className="rounded-full bg-stone-100 px-3 py-1 font-semibold text-stone-800">
+              {filteredTeams.length} מתוך {teams.length} קבוצות
+            </span>
+            {normalizedTeamSearch ? (
+              <button
+                type="button"
+                onClick={() => setTeamSearch('')}
+                className="rounded-full border border-stone-300 px-3 py-1 font-semibold text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
+              >
+                נקה חיפוש
+              </button>
+            ) : null}
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {teams.map((team) => (
+          {filteredTeams.map((team) => (
             <Link
               key={team.key}
               href={`/admin/teams/${team.key}`}

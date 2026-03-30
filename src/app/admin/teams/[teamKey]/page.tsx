@@ -60,6 +60,23 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
           uploads: {
             orderBy: [{ createdAt: 'asc' }],
           },
+          playerStats: {
+            select: {
+              gamesPlayed: true,
+              minutesPlayed: true,
+            },
+          },
+          _count: {
+            select: {
+              lineupEntries: true,
+              injuries: true,
+              sidelinedEntries: true,
+              transfers: true,
+              trophies: true,
+              events: true,
+              relatedEvents: true,
+            },
+          },
         },
       },
     },

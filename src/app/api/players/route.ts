@@ -113,13 +113,13 @@ export async function PUT(request: NextRequest) {
     const player = await prisma.player.update({
       where: { id },
       data: {
-        ...(nameEn && { nameEn }),
-        ...(nameHe && { nameHe }),
+        ...(nameEn !== undefined && { nameEn }),
+        ...(nameHe !== undefined && { nameHe }),
         ...(firstNameHe !== undefined && { firstNameHe: firstNameHe || null }),
         ...(lastNameHe !== undefined && { lastNameHe: lastNameHe || null }),
         ...(jerseyNumber !== undefined && { jerseyNumber: jerseyNumber ? parseInt(jerseyNumber) : null }),
-        ...(position !== undefined && { position }),
-        ...(photoUrl !== undefined && { photoUrl }),
+        ...(position !== undefined && { position: position || null }),
+        ...(photoUrl !== undefined && { photoUrl: photoUrl || null }),
         ...(notesHe !== undefined && {
           additionalInfo: {
             ...((existingPlayer?.additionalInfo as Record<string, unknown> | null) || {}),

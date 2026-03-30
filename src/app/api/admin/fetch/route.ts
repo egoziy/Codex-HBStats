@@ -681,6 +681,10 @@ export async function POST(request: NextRequest) {
     (resource) => teamSelection === 'all' || !ALL_TEAMS_ONLY_RESOURCES.has(resource)
   );
 
+  if (!selectedCompetitionMeta) {
+    return NextResponse.json({ error: 'הליגה שנבחרה אינה נתמכת לייבוא במערכת.' }, { status: 400 });
+  }
+
   if (!effectiveResources.length) {
     return NextResponse.json({ error: 'לא נבחרו סעיפים זמינים למשיכה עבור החתך שנבחר.' }, { status: 400 });
   }
