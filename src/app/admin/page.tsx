@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import AdminPlayerDisplaySettingsClient from '@/components/AdminPlayerDisplaySettingsClient';
 import AdminTelegramSourcesClient from '@/components/AdminTelegramSourcesClient';
 import AdminManagerClient from '@/components/AdminManagerClient';
 import { buildAdminCoverageRows } from '@/lib/admin-data-coverage';
 import { getCurrentUser } from '@/lib/auth';
+import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import prisma from '@/lib/prisma';
 import { DEFAULT_TELEGRAM_SOURCES, normalizeTelegramSource } from '@/lib/telegram';
 
@@ -36,7 +38,7 @@ export default async function AdminPage({
     );
   }
 
-  const [teams, seasons, fetchJobs, telegramSourcesSetting, coverageSeasons] = await Promise.all([
+  const [teams, seasons, fetchJobs, telegramSourcesSetting, displayZeroStatPlayers, coverageSeasons] = await Promise.all([
     prisma.team.findMany({
       include: { season: true },
       orderBy: [{ updatedAt: 'desc' }],
@@ -51,6 +53,7 @@ export default async function AdminPage({
     prisma.siteSetting.findUnique({
       where: { key: 'telegram_sources' },
     }),
+    getDisplayZeroStatPlayersSetting(),
     prisma.season.findMany({
       orderBy: { year: 'desc' },
       include: {
@@ -430,6 +433,7 @@ export default async function AdminPage({
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-8">
       <div className="mx-auto max-w-6xl space-y-6">
+        <AdminPlayerDisplaySettingsClient initialDisplayZeroStatPlayers={displayZeroStatPlayers} />
         <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
         <AdminManagerClient
           teams={groupedTeams}

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { derivePlayerDeepStats } from '@/lib/deep-stats';
+import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 
@@ -17,6 +18,7 @@ export default async function PlayersPage({
 
   const selectedSeasonId = searchParams?.season || seasons.find((season) => season.year <= 2025)?.id || seasons[0]?.id;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
+  const displayZeroStatPlayers = await getDisplayZeroStatPlayersSetting();
 
   const teams = selectedSeason
     ? await prisma.team.findMany({
@@ -47,6 +49,57 @@ export default async function PlayersPage({
         orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
       })
     : [];
+
+  const playerIds = players.map((player) => player.id);
+
+  const seasonalEvidencePlayerIds = selectedSeason && playerIds.length > 0
+    ? new Set(
+        [
+          ...(await prisma.gameLineupEntry.findMany({
+            where: {
+              playerId: { in: playerIds },
+              game: { seasonId: selectedSeason.id },
+            },
+            select: { playerId: true },
+          })).map((entry) => entry.playerId),
+          ...(await prisma.playerInjury.findMany({
+            where: {
+              playerId: { in: playerIds },
+              seasonId: selectedSeason.id,
+            },
+            select: { playerId: true },
+          })).flatMap((entry) => (entry.playerId ? [entry.playerId] : [])),
+          ...(await prisma.playerSidelinedEntry.findMany({
+            where: {
+              playerId: { in: playerIds },
+              seasonId: selectedSeason.id,
+            },
+            select: { playerId: true },
+          })).flatMap((entry) => (entry.playerId ? [entry.playerId] : [])),
+          ...(await prisma.playerTransfer.findMany({
+            where: {
+              playerId: { in: playerIds },
+              seasonId: selectedSeason.id,
+            },
+            select: { playerId: true },
+          })).flatMap((entry) => (entry.playerId ? [entry.playerId] : [])),
+          ...(await prisma.playerTrophy.findMany({
+            where: {
+              playerId: { in: playerIds },
+              seasonId: selectedSeason.id,
+            },
+            select: { playerId: true },
+          })).flatMap((entry) => (entry.playerId ? [entry.playerId] : [])),
+          ...(await prisma.gameEvent.findMany({
+            where: {
+              game: { seasonId: selectedSeason.id },
+              OR: [{ playerId: { in: playerIds } }, { relatedPlayerId: { in: playerIds } }],
+            },
+            select: { playerId: true, relatedPlayerId: true },
+          })).flatMap((entry) => [entry.playerId, entry.relatedPlayerId].filter(Boolean) as string[]),
+        ].filter(Boolean)
+      )
+    : new Set<string>();
 
   const seasonGames = selectedSeason
     ? await prisma.game.findMany({
@@ -93,6 +146,37 @@ export default async function PlayersPage({
       })
     : [];
 
+  const visiblePlayers = players
+    .map((player) => {
+      const stat = derivePlayerDeepStats(
+        player.id,
+        seasonGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)
+      );
+      const hasSeasonStats =
+        player.playerStats.some((row) => row.gamesPlayed > 0 || row.minutesPlayed > 0) ||
+        stat.gamesPlayed > 0 ||
+        stat.minutesPlayed > 0 ||
+        stat.goals > 0 ||
+        stat.assists > 0;
+
+      return {
+        ...player,
+        stat,
+        isZeroStatPlayer: !hasSeasonStats && !seasonalEvidencePlayerIds.has(player.id),
+      };
+    })
+    .filter((player) => (displayZeroStatPlayers ? true : !player.isZeroStatPlayer))
+    .sort((left, right) => {
+      if (left.isZeroStatPlayer !== right.isZeroStatPlayer) {
+        return left.isZeroStatPlayer ? 1 : -1;
+      }
+
+      return formatPlayerName(left).localeCompare(formatPlayerName(right), 'he');
+    });
+
+  const mainPlayers = visiblePlayers.filter((player) => !player.isZeroStatPlayer);
+  const zeroStatPlayers = visiblePlayers.filter((player) => player.isZeroStatPlayer);
+
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -134,18 +218,14 @@ export default async function PlayersPage({
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {players.map((player) => {
-            const stat = derivePlayerDeepStats(
-              player.id,
-              seasonGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)
-            );
+          {mainPlayers.map((player) => {
             const displayPhoto = player.photoUrl || player.uploads[0]?.filePath || null;
             const playerDisplayName = formatPlayerName(player);
 
             return (
               <Link
                 key={player.id}
-                href={`/players/${player.canonicalPlayerId || player.id}`}
+                href={`/players/${player.canonicalPlayerId || player.id}?season=${selectedSeasonId}`}
                 className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm transition hover:border-red-300"
               >
                 <div className="flex items-center gap-4">
@@ -170,19 +250,69 @@ export default async function PlayersPage({
                 </div>
 
                 <div className="mt-5 grid grid-cols-4 gap-3 text-center">
-                  <PlayerMetric label="שערים" value={String(stat?.goals ?? 0)} />
-                  <PlayerMetric label="בישולים" value={String(stat?.assists ?? 0)} />
-                  <PlayerMetric label="דקות" value={String(stat.minutesPlayed)} />
-                  <PlayerMetric label="פתיחות" value={String(stat.starts)} />
-                  <PlayerMetric label="נרשם כמחליף" value={String(stat.benchAppearances)} />
-                  <PlayerMetric label="מחליף" value={String(stat.substituteAppearances)} />
-                  <PlayerMetric label="צהובים" value={String(stat.yellowCards)} />
-                  <PlayerMetric label="אדומים" value={String(stat.redCards)} />
+                  <PlayerMetric label="שערים" value={String(player.stat.goals)} />
+                  <PlayerMetric label="בישולים" value={String(player.stat.assists)} />
+                  <PlayerMetric label="דקות" value={String(player.stat.minutesPlayed)} />
+                  <PlayerMetric label="פתיחות" value={String(player.stat.starts)} />
+                  <PlayerMetric label="נרשם כמחליף" value={String(player.stat.benchAppearances)} />
+                  <PlayerMetric label="מחליף" value={String(player.stat.substituteAppearances)} />
+                  <PlayerMetric label="צהובים" value={String(player.stat.yellowCards)} />
+                  <PlayerMetric label="אדומים" value={String(player.stat.redCards)} />
                 </div>
               </Link>
             );
           })}
         </section>
+
+        {displayZeroStatPlayers && zeroStatPlayers.length > 0 ? (
+          <section className="space-y-4">
+            <div className="rounded-[24px] border border-stone-200 bg-stone-50 p-5">
+              <h2 className="text-xl font-black text-stone-700">שחקנים ללא סטטיסטיקות עונתיות</h2>
+              <p className="mt-2 text-sm text-stone-500">
+                שחקנים שהגיעו מה־API לעונה הזו, אך אין להם הופעות, דקות או נתוני עונה ממשיים.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {zeroStatPlayers.map((player) => {
+                const displayPhoto = player.photoUrl || player.uploads[0]?.filePath || null;
+                const playerDisplayName = formatPlayerName(player);
+
+                return (
+                  <Link
+                    key={player.id}
+                    href={`/players/${player.canonicalPlayerId || player.id}?season=${selectedSeasonId}`}
+                    className="rounded-[24px] border border-stone-200 bg-stone-50 p-5 shadow-sm transition hover:border-stone-300"
+                  >
+                    <div className="flex items-center gap-4">
+                      {displayPhoto ? (
+                        <img
+                          src={displayPhoto}
+                          alt={playerDisplayName}
+                          className="h-20 w-20 rounded-full border border-stone-200 bg-white object-cover grayscale"
+                        />
+                      ) : (
+                        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-stone-300 bg-white text-xs text-stone-400">
+                          ללא תמונה
+                        </div>
+                      )}
+                      <div>
+                        <div className="mb-1 inline-flex rounded-full bg-stone-200 px-3 py-1 text-xs font-bold text-stone-600">
+                          0 סטטיסטיקות
+                        </div>
+                        <h2 className="text-xl font-black text-stone-700">{playerDisplayName}</h2>
+                        <div className="mt-1 text-sm text-stone-500">{player.team.nameHe || player.team.nameEn}</div>
+                        <div className="mt-1 text-sm text-stone-500">
+                          {player.position || 'ללא עמדה'} | #{player.jerseyNumber ?? '-'}
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   );

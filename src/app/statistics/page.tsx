@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import { formatPlayerName, formatPlayerPosition } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
@@ -18,6 +19,7 @@ export default async function StatisticsPage({
 
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
+  const displayZeroStatPlayers = await getDisplayZeroStatPlayersSetting();
 
   const teams = selectedSeason
     ? await prisma.team.findMany({
@@ -56,7 +58,11 @@ export default async function StatisticsPage({
     selectedTeam
       ? prisma.player.findMany({
           where: { teamId: selectedTeam.id },
-          include: { playerStats: true },
+          include: {
+            playerStats: {
+              where: selectedSeason ? { seasonId: selectedSeason.id } : undefined,
+            },
+          },
           orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
         })
       : [],
@@ -71,7 +77,41 @@ export default async function StatisticsPage({
   const completedGames = games.length;
   const averageGoals = completedGames ? (totalGoals / completedGames).toFixed(2) : '0.00';
   const pointsLeader = standings[0];
-  const totalPlayers = players.length;
+
+  const playerRows = players
+    .map((player) => {
+      const totals = player.playerStats.reduce(
+        (acc, stat) => ({
+          gamesPlayed: acc.gamesPlayed + stat.gamesPlayed,
+          goals: acc.goals + stat.goals,
+          assists: acc.assists + stat.assists,
+          yellowCards: acc.yellowCards + stat.yellowCards,
+          redCards: acc.redCards + stat.redCards,
+        }),
+        { gamesPlayed: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 }
+      );
+
+      return {
+        player,
+        totals,
+        isZeroStatPlayer:
+          totals.gamesPlayed === 0 &&
+          totals.goals === 0 &&
+          totals.assists === 0 &&
+          totals.yellowCards === 0 &&
+          totals.redCards === 0,
+      };
+    })
+    .filter((row) => (displayZeroStatPlayers ? true : !row.isZeroStatPlayer))
+    .sort((left, right) => {
+      if (left.isZeroStatPlayer !== right.isZeroStatPlayer) {
+        return left.isZeroStatPlayer ? 1 : -1;
+      }
+
+      return formatPlayerName(left.player).localeCompare(formatPlayerName(right.player), 'he');
+    });
+
+  const totalPlayers = playerRows.length;
 
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
@@ -116,7 +156,7 @@ export default async function StatisticsPage({
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard title="עונה נבחרת" value={selectedSeason?.name || '-'} subtitle="סינון הנתונים הנוכחי" />
           <StatsCard title="משחקים" value={String(completedGames)} subtitle="במסגרת הסינון הנוכחי" />
-          <StatsCard title='סה"כ שערים' value={String(totalGoals)} subtitle={`ממוצע למשחק: ${averageGoals}`} />
+          <StatsCard title={'סה"כ שערים'} value={String(totalGoals)} subtitle={`ממוצע למשחק: ${averageGoals}`} />
           <StatsCard
             title="מובילה בנקודות"
             value={pointsLeader ? pointsLeader.team.nameHe || pointsLeader.team.nameEn : '-'}
@@ -132,7 +172,7 @@ export default async function StatisticsPage({
             </div>
 
             <div className="grid gap-4 md:grid-cols-4">
-              <StatsCard title="שחקנים בסגל" value={String(totalPlayers)} subtitle="לפי הנתונים שנשמרו" />
+              <StatsCard title="שחקנים בסגל" value={String(totalPlayers)} subtitle="לפי הנתונים שמוצגים כרגע" />
               <StatsCard title="ניצחונות" value={String(standings[0]?.wins ?? 0)} subtitle="בטבלת העונה הנבחרת" />
               <StatsCard title="שערי זכות" value={String(standings[0]?.goalsFor ?? 0)} subtitle="במסגרת הסינון" />
               <StatsCard
@@ -162,38 +202,26 @@ export default async function StatisticsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {players.map((player) => {
-                    const totals = player.playerStats.reduce(
-                      (acc, stat) => ({
-                        gamesPlayed: acc.gamesPlayed + stat.gamesPlayed,
-                        goals: acc.goals + stat.goals,
-                        assists: acc.assists + stat.assists,
-                        yellowCards: acc.yellowCards + stat.yellowCards,
-                        redCards: acc.redCards + stat.redCards,
-                      }),
-                      { gamesPlayed: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0 }
-                    );
-
-                    return (
-                      <tr key={player.id} className="border-b border-stone-100 text-sm">
-                        <td className="px-3 py-3 font-semibold">
-                          <Link
-                            href={`/players/${player.canonicalPlayerId || player.id}`}
-                            className="font-semibold text-stone-900 transition hover:text-amber-700"
-                          >
-                            {formatPlayerName(player)}
-                          </Link>
-                        </td>
-                        <td className="px-3 py-3">{player.jerseyNumber ?? '-'}</td>
-                        <td className="px-3 py-3">{formatPlayerPosition(player.position)}</td>
-                        <td className="px-3 py-3">{totals.gamesPlayed}</td>
-                        <td className="px-3 py-3">{totals.goals}</td>
-                        <td className="px-3 py-3">{totals.assists}</td>
-                        <td className="px-3 py-3">{totals.yellowCards}</td>
-                        <td className="px-3 py-3">{totals.redCards}</td>
-                      </tr>
-                    );
-                  })}
+                  {playerRows.map(({ player, totals, isZeroStatPlayer }) => (
+                    <tr key={player.id} className={`border-b border-stone-100 text-sm ${isZeroStatPlayer ? 'bg-stone-50 text-stone-500' : ''}`}>
+                      <td className="px-3 py-3 font-semibold">
+                        <Link
+                          href={`/players/${player.canonicalPlayerId || player.id}?season=${selectedSeasonId}`}
+                          className={`font-semibold transition hover:text-amber-700 ${isZeroStatPlayer ? 'text-stone-600' : 'text-stone-900'}`}
+                        >
+                          {formatPlayerName(player)}
+                        </Link>
+                        {isZeroStatPlayer ? <div className="mt-1 text-xs font-bold text-stone-400">0 סטטיסטיקות</div> : null}
+                      </td>
+                      <td className="px-3 py-3">{player.jerseyNumber ?? '-'}</td>
+                      <td className="px-3 py-3">{formatPlayerPosition(player.position)}</td>
+                      <td className="px-3 py-3">{totals.gamesPlayed}</td>
+                      <td className="px-3 py-3">{totals.goals}</td>
+                      <td className="px-3 py-3">{totals.assists}</td>
+                      <td className="px-3 py-3">{totals.yellowCards}</td>
+                      <td className="px-3 py-3">{totals.redCards}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
