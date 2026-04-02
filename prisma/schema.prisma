@@ -134,6 +134,7 @@ model CompetitionSeason {
   standingsUpdatedAt  DateTime?
   fixturesUpdatedAt   DateTime?
   playersUpdatedAt    DateTime?
+  additionalInfo      Json?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
   competition         Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
@@ -260,6 +261,14 @@ model Player {
   nationalityEn     String?
   nationalityHe     String?
   birthDate         DateTime?
+  birthPlaceEn      String?
+  birthPlaceHe      String?
+  birthCountryEn    String?
+  birthCountryHe    String?
+  age               Int?
+  height            String?
+  weight            String?
+  isInjured         Boolean?
   additionalInfo    Json?
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -296,9 +305,16 @@ model Game {
   refereeEn           String?
   refereeHe           String?
   dateTime            DateTime
+  timestamp           Int?
+  timezone            String?
+  statusShort         String?
+  statusLong          String?
+  elapsed             Int?
+  extra               Int?
   homeScore           Int?
   awayScore           Int?
   status              GameStatus        @default(SCHEDULED)
+  additionalInfo      Json?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   venueId             String?
@@ -425,6 +441,14 @@ model Standing {
   pointsAdjustmentNoteHe String?
   cleanSheets     Int          @default(0)
   form            String?
+  goalsDiff       Int          @default(0)
+  groupNameEn     String?
+  groupNameHe     String?
+  descriptionEn   String?
+  descriptionHe   String?
+  statusEn        String?
+  statusHe        String?
+  additionalInfo  Json?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   teamId          String
@@ -507,6 +531,7 @@ model CompetitionLeaderboardEntry {
   rank              Int
   value             Int                       @default(0)
   gamesPlayed       Int                       @default(0)
+  additionalInfo    Json?
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
   seasonId          String
@@ -551,6 +576,7 @@ model GameStatistics {
   awayYellowCards        Int?
   homeRedCards           Int?
   awayRedCards           Int?
+  additionalInfo         Json?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
   gameId                 String   @unique

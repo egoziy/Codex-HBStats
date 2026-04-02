@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
 import { formatPlayerName } from '@/lib/player-display';
@@ -25,8 +26,10 @@ export default async function GamesPage({
     competitionId?: string;
     round?: string;
     teamId?: string;
+    view?: string;
   };
 }) {
+  const displayMode = await getDisplayMode(searchParams?.view);
   const seasons = await prisma.season.findMany({
     orderBy: { year: 'desc' },
     take: 10,
@@ -121,20 +124,21 @@ export default async function GamesPage({
     : [];
 
   return (
-    <div className="min-h-screen bg-stone-100 px-4 py-8">
+    <div className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#edf2ff_100%)]' : 'bg-stone-100'}`}>
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-700">Matches</p>
+        <section className={`rounded-[28px] border p-6 shadow-sm ${displayMode === 'premier' ? 'border-white/70 bg-[linear-gradient(140deg,#12002f,#4a006f_48%,#05a3d6)] text-white' : 'border-stone-200 bg-white'}`}>
+          <p className={`text-sm font-semibold tracking-[0.25em] ${displayMode === 'premier' ? 'text-cyan-100' : 'text-amber-700'}`}>משחקים</p>
           <h1 className="mt-2 text-3xl font-black text-stone-900">מרכז המשחקים</h1>
           <p className="mt-3 max-w-3xl text-stone-600">
             בחרו עונה, ליגה או גביע, מחזור וקבוצה כדי לראות את רשימת המשחקים ואת האירועים המרכזיים בכל משחק.
           </p>
 
           <form className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]" action="/games">
+            <input type="hidden" name="view" value={displayMode} />
             <select
               name="season"
               defaultValue={selectedSeason?.id || ''}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
             >
               {seasons.map((season) => (
                 <option key={season.id} value={season.id}>
@@ -146,7 +150,7 @@ export default async function GamesPage({
             <select
               name="competitionId"
               defaultValue={selectedCompetitionId}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
             >
               <option value="all">כל המסגרות</option>
               {competitions.map((competition) => (
@@ -159,7 +163,7 @@ export default async function GamesPage({
             <select
               name="round"
               defaultValue={selectedRound}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
             >
               <option value="all">כל המחזורים</option>
               {rounds.map((round) => (
@@ -172,7 +176,7 @@ export default async function GamesPage({
             <select
               name="teamId"
               defaultValue={selectedTeamId}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
             >
               <option value="all">כל הקבוצות</option>
               {teams.map((team) => (

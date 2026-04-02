@@ -1162,6 +1162,11 @@ export async function POST(request: NextRequest) {
             stageNameHe: null,
             currentRoundEn: null,
             currentRoundHe: null,
+            additionalInfo: {
+              league: row?.league || null,
+              country: row?.country || null,
+              season: seasonInfo || null,
+            } as any,
           },
           create: {
             competitionId: leagueCompetition.id,
@@ -1170,6 +1175,11 @@ export async function POST(request: NextRequest) {
             stageNameHe: null,
             currentRoundEn: null,
             currentRoundHe: null,
+            additionalInfo: {
+              league: row?.league || null,
+              country: row?.country || null,
+              season: seasonInfo || null,
+            } as any,
           },
         });
 
@@ -1237,6 +1247,10 @@ export async function POST(request: NextRequest) {
           cityHe: row?.venue?.city ? translateName(row.venue.city) : null,
           venueId: venue?.id || null,
           seasonId: season.id,
+          additionalInfo: {
+            team: row?.team || null,
+            venue: row?.venue || null,
+          } as any,
         };
 
         const team = existing
@@ -1360,10 +1374,27 @@ export async function POST(request: NextRequest) {
               apiFootballId: playerRow.id || null,
               nameEn: playerRow.name,
               nameHe: resolvedNameHe,
+              firstNameEn: playerRow.firstname || null,
               firstNameHe: resolvedFirstNameHe,
+              lastNameEn: playerRow.lastname || null,
               lastNameHe: resolvedLastNameHe,
               jerseyNumber: safeJerseyNumber,
               position: playerStatistic?.games?.position || playerRow.position || null,
+              nationalityEn: playerRow.nationality || null,
+              nationalityHe: translateName(playerRow.nationality),
+              birthDate: playerRow?.birth?.date ? new Date(playerRow.birth.date) : null,
+              birthPlaceEn: playerRow?.birth?.place || null,
+              birthPlaceHe: translateName(playerRow?.birth?.place),
+              birthCountryEn: playerRow?.birth?.country || null,
+              birthCountryHe: translateName(playerRow?.birth?.country),
+              age: typeof playerRow?.age === 'number' ? playerRow.age : null,
+              height: playerRow?.height || null,
+              weight: playerRow?.weight || null,
+              isInjured: typeof playerRow?.injured === 'boolean' ? playerRow.injured : null,
+              additionalInfo: {
+                player: playerRow,
+                statistics: playerEntry?.statistics || [],
+              } as any,
               teamId: dbTeam.id,
               canonicalPlayerId,
             };
@@ -1390,9 +1421,23 @@ export async function POST(request: NextRequest) {
                   ...playerData,
                   apiFootballId: playerRow.id || existingPlayer.apiFootballId,
                   nameHe: existingPlayer.nameHe || playerData.nameHe,
+                  firstNameEn: playerData.firstNameEn || existingPlayer.firstNameEn,
                   firstNameHe: existingPlayer.firstNameHe || playerData.firstNameHe,
+                  lastNameEn: playerData.lastNameEn || existingPlayer.lastNameEn,
                   lastNameHe: existingPlayer.lastNameHe || playerData.lastNameHe,
+                  nationalityEn: playerData.nationalityEn || existingPlayer.nationalityEn,
+                  nationalityHe: existingPlayer.nationalityHe || playerData.nationalityHe,
+                  birthDate: playerData.birthDate || existingPlayer.birthDate,
+                  birthPlaceEn: playerData.birthPlaceEn || existingPlayer.birthPlaceEn,
+                  birthPlaceHe: existingPlayer.birthPlaceHe || playerData.birthPlaceHe,
+                  birthCountryEn: playerData.birthCountryEn || existingPlayer.birthCountryEn,
+                  birthCountryHe: existingPlayer.birthCountryHe || playerData.birthCountryHe,
+                  age: playerData.age ?? existingPlayer.age,
+                  height: playerData.height || existingPlayer.height,
+                  weight: playerData.weight || existingPlayer.weight,
+                  isInjured: playerData.isInjured ?? existingPlayer.isInjured,
                   jerseyNumber: safeJerseyNumber ?? existingPlayer.jerseyNumber,
+                  additionalInfo: playerData.additionalInfo,
                   canonicalPlayerId:
                     canonicalPlayer && canonicalPlayer.id !== existingPlayer.id
                       ? canonicalPlayer.id
@@ -1572,6 +1617,12 @@ export async function POST(request: NextRequest) {
           refereeHe: translateName(fixture?.fixture?.referee),
           refereeId: (await resolveRefereeRecord(fixture?.fixture?.referee))?.id || null,
           dateTime: new Date(fixture.fixture.date),
+          timestamp: typeof fixture?.fixture?.timestamp === 'number' ? fixture.fixture.timestamp : null,
+          timezone: fixture?.fixture?.timezone || null,
+          statusShort: fixture?.fixture?.status?.short || null,
+          statusLong: fixture?.fixture?.status?.long || null,
+          elapsed: fixture?.fixture?.status?.elapsed ?? null,
+          extra: fixture?.fixture?.status?.extra ?? null,
           homeTeamId: homeTeam.id,
           awayTeamId: awayTeam.id,
           seasonId: season.id,
@@ -1580,6 +1631,7 @@ export async function POST(request: NextRequest) {
           awayScore: fixture?.goals?.away ?? null,
           status: mapGameStatus(fixture?.fixture?.status?.short),
           venueId: (await resolveVenueRecord(fixture?.fixture?.venue))?.id || null,
+          additionalInfo: fixture as any,
         };
 
         if (!existingGame) {
@@ -1721,7 +1773,7 @@ export async function POST(request: NextRequest) {
             if (!dbTeam) continue;
 
             standingsUpdated += 1;
-            await prisma.standing.upsert({
+                    await prisma.standing.upsert({
               where: {
                 seasonId_teamId: {
                   seasonId: season.id,
@@ -1739,6 +1791,24 @@ export async function POST(request: NextRequest) {
                 goalsAgainst: row?.all?.goals?.against ?? 0,
                 points: row?.points ?? 0,
                 form: row?.form ?? null,
+                goalsDiff: row?.goalsDiff ?? row?.goals_diff ?? 0,
+                groupNameEn: block?.group || block?.name || null,
+                groupNameHe: translateName(block?.group || block?.name),
+                descriptionEn:
+                  typeof row?.description === 'string'
+                    ? row.description
+                    : Array.isArray(row?.description)
+                      ? row.description.join(', ')
+                      : null,
+                descriptionHe:
+                  typeof row?.description === 'string'
+                    ? translateName(row.description)
+                    : Array.isArray(row?.description)
+                      ? translateName(row.description.join(', '))
+                      : null,
+                statusEn: typeof row?.status === 'string' ? row.status : null,
+                statusHe: typeof row?.status === 'string' ? translateName(row.status) : null,
+                additionalInfo: row as any,
               },
               create: {
                 competitionId: competition.id,
@@ -1753,6 +1823,24 @@ export async function POST(request: NextRequest) {
                 goalsAgainst: row?.all?.goals?.against ?? 0,
                 points: row?.points ?? 0,
                 form: row?.form ?? null,
+                goalsDiff: row?.goalsDiff ?? row?.goals_diff ?? 0,
+                groupNameEn: block?.group || block?.name || null,
+                groupNameHe: translateName(block?.group || block?.name),
+                descriptionEn:
+                  typeof row?.description === 'string'
+                    ? row.description
+                    : Array.isArray(row?.description)
+                      ? row.description.join(', ')
+                      : null,
+                descriptionHe:
+                  typeof row?.description === 'string'
+                    ? translateName(row.description)
+                    : Array.isArray(row?.description)
+                      ? translateName(row.description.join(', '))
+                      : null,
+                statusEn: typeof row?.status === 'string' ? row.status : null,
+                statusHe: typeof row?.status === 'string' ? translateName(row.status) : null,
+                additionalInfo: row as any,
               },
             });
           }
@@ -1886,10 +1974,14 @@ export async function POST(request: NextRequest) {
 
         await prisma.gameStatistics.upsert({
           where: { gameId: game.id },
-          update: mappedStats,
+          update: {
+            ...mappedStats,
+            additionalInfo: statisticsRows as any,
+          },
           create: {
             gameId: game.id,
             ...mappedStats,
+            additionalInfo: statisticsRows as any,
           },
         });
 
@@ -2133,6 +2225,7 @@ export async function POST(request: NextRequest) {
             rank: index + 1,
             value,
             gamesPlayed: statsBlock?.games?.appearences ?? 0,
+            additionalInfo: row as any,
             seasonId: season.id,
             competitionId: competition.id,
             teamId: dbTeam?.id || null,

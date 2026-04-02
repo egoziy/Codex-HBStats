@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
+import type { DisplayMode } from '@/lib/display-mode';
+import DisplayModeSwitch from '@/components/DisplayModeSwitch';
+
 type SearchResult = {
   id: string;
   type: 'team' | 'player' | 'game';
@@ -28,7 +31,7 @@ const navLinks = [
   { href: '/admin', label: 'אדמין' },
 ];
 
-export default function Navbar() {
+export default function Navbar({ initialDisplayMode }: { initialDisplayMode: DisplayMode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -115,6 +118,9 @@ export default function Navbar() {
               loading={loadingResults}
               clearResults={() => setResults([])}
             />
+            <div className="w-[220px]">
+              <DisplayModeSwitch initialMode={initialDisplayMode} />
+            </div>
             <nav className="flex items-center gap-2">
               {visibleLinks.map((link) => (
                 <NavLink key={link.href} href={link.href} pathname={pathname}>
@@ -128,6 +134,7 @@ export default function Navbar() {
 
         {menuOpen ? (
           <div className="mt-4 space-y-4 rounded-3xl border border-white/10 bg-black/10 p-4 md:hidden">
+            <DisplayModeSwitch initialMode={initialDisplayMode} compact />
             <GlobalSearch
               query={query}
               setQuery={setQuery}

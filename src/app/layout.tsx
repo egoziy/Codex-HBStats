@@ -1,21 +1,24 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Navbar from '@/components/Navbar';
+import { getDisplayMode } from '@/lib/display-mode';
 
 export const metadata: Metadata = {
   title: 'ליגת הסטטיסטיקות',
   description: 'מערכת עברית לסטטיסטיקות כדורגל, ניתוח נתונים, משחקים, שחקנים וקבוצות.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const displayMode = await getDisplayMode();
+
   return (
     <html lang="he" dir="rtl">
-      <body className="bg-stone-100 text-stone-900">
-        <Navbar />
+      <body className={displayMode === 'premier' ? 'bg-[#f4f6fb] text-slate-950' : 'bg-stone-100 text-stone-900'}>
+        <Navbar initialDisplayMode={displayMode} />
         <div className="border-b border-stone-200 bg-black">
           <div className="mx-auto max-w-7xl px-4 py-4">
             <img

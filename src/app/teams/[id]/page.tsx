@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { derivePlayerDeepStats, deriveTeamDeepStats } from '@/lib/deep-stats';
+import { getDisplayMode } from '@/lib/display-mode';
 import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
@@ -12,7 +13,14 @@ function formatDate(date: Date, withTime = false) {
   }).format(date);
 }
 
-export default async function TeamPage({ params }: { params: { id: string } }) {
+export default async function TeamPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { view?: string };
+}) {
+  const displayMode = await getDisplayMode(searchParams?.view);
   const team = await prisma.team.findUnique({
     where: { id: params.id },
     include: {
@@ -170,7 +178,7 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
   )[0] || null;
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f7efe3_0%,#efe3d3_100%)] px-4 py-8">
+    <div className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#eef3ff_100%)]' : 'bg-[linear-gradient(180deg,#f7efe3_0%,#efe3d3_100%)]'}`}>
       <div className="mx-auto max-w-7xl space-y-6">
         <section className="overflow-hidden rounded-[30px] border border-stone-200 bg-white shadow-sm">
           <div className="bg-[linear-gradient(120deg,#7f1d1d,#111827)] p-6 text-white">
@@ -186,7 +194,7 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
                   </div>
                 ) : null}
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-amber-300">Team Hub</p>
+                  <p className="text-[11px] font-semibold tracking-[0.28em] text-amber-300">מרכז קבוצה</p>
                   <h1 className="mt-2 text-3xl font-black leading-tight">{team.nameHe || team.nameEn}</h1>
                   <p className="mt-1 text-sm text-white/75">{team.nameEn}</p>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
@@ -265,9 +273,9 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
                   >
                     <div
                       className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm font-black ${
-                        result === 'W'
+                        result === 'נ'
                           ? 'bg-emerald-100 text-emerald-800'
-                          : result === 'L'
+                          : result === 'ה'
                             ? 'bg-red-100 text-red-800'
                             : 'bg-amber-100 text-amber-800'
                       }`}
@@ -513,7 +521,7 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
 function StatHighlight({ label, value, subvalue }: { label: string; value: string; subvalue: string }) {
   return (
     <div className="rounded-[20px] border border-stone-200 bg-stone-50 p-4">
-      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">{label}</div>
+      <div className="text-xs font-semibold tracking-[0.18em] text-stone-500">{label}</div>
       <div className="mt-2 text-lg font-black text-stone-900">{value}</div>
       <div className="mt-1 text-sm text-stone-600">{subvalue}</div>
     </div>
@@ -608,9 +616,9 @@ function getTeamResult(
 ) {
   const teamGoals = game.homeTeamId === teamId ? game.homeScore ?? 0 : game.awayScore ?? 0;
   const opponentGoals = game.homeTeamId === teamId ? game.awayScore ?? 0 : game.homeScore ?? 0;
-  if (teamGoals > opponentGoals) return 'W';
-  if (teamGoals < opponentGoals) return 'L';
-  return 'D';
+  if (teamGoals > opponentGoals) return 'נ';
+  if (teamGoals < opponentGoals) return 'ה';
+  return 'ת';
 }
 
 function getOpponentName(

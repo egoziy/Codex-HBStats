@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth';
+import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
 import {
@@ -13,7 +14,7 @@ import HomeLivePanel from '@/components/HomeLivePanel';
 
 export const dynamic = 'force-dynamic';
 
-type SearchParams = { team?: string | string[]; league?: string | string[] };
+type SearchParams = { team?: string | string[]; league?: string | string[]; view?: string | string[] };
 
 type HeadToHeadGroup = {
   gameId: string;
@@ -98,6 +99,7 @@ function parseSearchValues(value: string | string[] | undefined) {
 }
 
 export default async function HomePage({ searchParams }: { searchParams?: SearchParams }) {
+  const displayMode = await getDisplayMode(Array.isArray(searchParams?.view) ? searchParams.view[0] : searchParams?.view);
   const viewer = await getCurrentUser();
   const latestSeason = await prisma.season.findFirst({
     where: {
@@ -273,7 +275,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   const telegramFeedMessages = featuredTelegramMessage ? telegramMessages.slice(1) : telegramMessages;
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f7efe3_0%,#efe3d3_100%)]">
+    <div className={`min-h-screen ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#eef3ff_100%)]' : 'bg-[linear-gradient(180deg,#f7efe3_0%,#efe3d3_100%)]'}`}>
       <div className="mx-auto grid max-w-7xl gap-5 px-4 py-6">
         <section className="rounded-[28px] border border-stone-200 bg-white/90 p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
