@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { LeaderboardCategory } from '@prisma/client';
 import { derivePlayerDeepStats } from '@/lib/deep-stats';
 import { getDisplayMode } from '@/lib/display-mode';
 import { formatPlayerName, formatPlayerPosition } from '@/lib/player-display';
@@ -24,6 +25,7 @@ type AggregatedStatRow = {
 
 type PlayerGameFilter = 'all' | 'starts' | 'bench' | 'sub-in' | 'sub-off';
 type PlayerPremierTab = 'overview' | 'stats' | 'games' | 'career';
+type LeaderboardFallbackMap = Map<string, { goals: number; assists: number }>;
 
 type PlayerSeasonEntry = {
   id: string;
@@ -115,6 +117,24 @@ export default async function PlayerPage({
     },
     orderBy: [{ team: { season: { year: 'desc' } } }, { updatedAt: 'desc' }],
   });
+  const linkedPlayerIds = linkedPlayers.map((player) => player.id);
+  const linkedSeasonIds = Array.from(new Set(linkedPlayers.map((player) => player.team.season.id)));
+  const linkedApiFootballIds = Array.from(
+    new Set(linkedPlayers.map((player) => player.apiFootballId).filter((value): value is number => typeof value === 'number'))
+  );
+  const leaderboardEntries =
+    linkedSeasonIds.length > 0 && (linkedPlayerIds.length > 0 || linkedApiFootballIds.length > 0)
+      ? await prisma.competitionLeaderboardEntry.findMany({
+          where: {
+            seasonId: { in: linkedSeasonIds },
+            OR: [
+              ...(linkedPlayerIds.length > 0 ? [{ playerId: { in: linkedPlayerIds } }] : []),
+              ...(linkedApiFootballIds.length > 0 ? [{ apiFootballPlayerId: { in: linkedApiFootballIds } }] : []),
+            ],
+            category: { in: [LeaderboardCategory.TOP_SCORERS, LeaderboardCategory.TOP_ASSISTS] },
+          },
+        })
+      : [];
 
   const canonicalPlayer = linkedPlayers.find((player) => player.id === canonicalPlayerId) || linkedPlayers[0];
   const latestSeasonEntry = [...linkedPlayers].sort(
@@ -192,7 +212,7 @@ export default async function PlayerPage({
     orderBy: { dateTime: 'desc' },
   });
 
-  const derivedTotals = seasonPlayers.reduce(
+  const derivedTotalsBase = seasonPlayers.reduce(
     (acc, player) => {
       const playerGames = allGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId);
       const derived = derivePlayerDeepStats(player.id, playerGames);
@@ -224,20 +244,24 @@ export default async function PlayerPage({
     }
   );
 
+  const leaderboardFallbacks = buildLeaderboardFallbackMap(leaderboardEntries);
   const aggregatedStats = Array.from(
     seasonPlayers
       .flatMap((player) => player.playerStats)
       .reduce((map, stat) => {
         const key = `${stat.seasonId || 'all'}-${stat.competitionId || 'all'}`;
         const existing = map.get(key);
+        const fallback = leaderboardFallbacks.get(key);
+        const goals = Math.max(stat.goals, fallback?.goals || 0);
+        const assists = Math.max(stat.assists, fallback?.assists || 0);
 
         if (!existing) {
           map.set(key, {
             key,
             seasonName: stat.season?.name || stat.seasonLabelHe || stat.seasonLabelEn || '-',
             competitionName: stat.competition?.nameHe || stat.competition?.nameEn || 'כולל',
-            goals: stat.goals,
-            assists: stat.assists,
+            goals,
+            assists,
             shots: stat.shots,
             keyPasses: stat.keyPasses,
             minutesPlayed: stat.minutesPlayed,
@@ -251,8 +275,8 @@ export default async function PlayerPage({
           return map;
         }
 
-        existing.goals += stat.goals;
-        existing.assists += stat.assists;
+        existing.goals += goals;
+        existing.assists += assists;
         existing.shots += stat.shots;
         existing.keyPasses += stat.keyPasses;
         existing.minutesPlayed += stat.minutesPlayed;
@@ -267,6 +291,12 @@ export default async function PlayerPage({
       }, new Map<string, AggregatedStatRow>())
       .values()
   ).sort((left, right) => right.seasonName.localeCompare(left.seasonName) || left.competitionName.localeCompare(right.competitionName));
+  const selectedSeasonStats = aggregatedStats.filter((stat) => stat.key.startsWith(`${selectedSeasonId}-`));
+  const derivedTotals = {
+    ...derivedTotalsBase,
+    goals: Math.max(derivedTotalsBase.goals, selectedSeasonStats.reduce((sum, stat) => sum + stat.goals, 0)),
+    assists: Math.max(derivedTotalsBase.assists, selectedSeasonStats.reduce((sum, stat) => sum + stat.assists, 0)),
+  };
 
   const uploads = linkedPlayers
     .flatMap((player) => player.uploads)
@@ -1063,6 +1093,26 @@ function buildPremierPlayerHref(
     params.set('filter', filter);
   }
   return `/players/${canonicalPlayerId}?${params.toString()}`;
+}
+
+function buildLeaderboardFallbackMap(entries: Array<{
+  seasonId: string;
+  competitionId: string;
+  category: LeaderboardCategory;
+  value: number;
+}>): LeaderboardFallbackMap {
+  return entries.reduce((map, entry) => {
+    const key = `${entry.seasonId}-${entry.competitionId}`;
+    const current = map.get(key) || { goals: 0, assists: 0 };
+    if (entry.category === LeaderboardCategory.TOP_SCORERS) {
+      current.goals = Math.max(current.goals, entry.value);
+    }
+    if (entry.category === LeaderboardCategory.TOP_ASSISTS) {
+      current.assists = Math.max(current.assists, entry.value);
+    }
+    map.set(key, current);
+    return map;
+  }, new Map<string, { goals: number; assists: number }>());
 }
 
 function normalizeGameFilter(value: string | undefined): PlayerGameFilter {

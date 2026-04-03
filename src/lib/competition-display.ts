@@ -6,6 +6,11 @@ const ROUND_TRANSLATIONS: Record<string, string> = {
   Final: 'גמר',
   'Round of 16': 'שמינית גמר',
   'Round of 32': 'סיבוב 32 האחרונות',
+  'Regular Season': 'מחזור',
+};
+
+const COMPETITION_TRANSLATIONS: Record<string, string> = {
+  "Ligat Ha'al": 'ליגת העל',
 };
 
 export function getCompetitionDisplayName(competition?: {
@@ -22,7 +27,8 @@ export function getCompetitionDisplayName(competition?: {
     return competition.nameHe;
   }
 
-  return competition.nameEn || competition.nameHe || 'ללא מסגרת';
+  const fallbackName = competition.nameEn || competition.nameHe || '';
+  return COMPETITION_TRANSLATIONS[fallbackName] || fallbackName || 'ללא מסגרת';
 }
 
 export function getGameScoreDisplay(game: {

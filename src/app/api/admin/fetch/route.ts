@@ -317,6 +317,32 @@ function formatSeasonLabel(year: number) {
   return `${year}-${year + 1}`;
 }
 
+function readPlayerApiStatisticBlock(player: { additionalInfo?: any }, competitionApiFootballId: number | null) {
+  const stats = Array.isArray(player.additionalInfo?.statistics) ? player.additionalInfo.statistics : [];
+  const block =
+    competitionApiFootballId != null
+      ? stats.find((entry: any) => entry?.league?.id === competitionApiFootballId) || null
+      : null;
+
+  if (!block) {
+    return null;
+  }
+
+  return {
+    goals: typeof block?.goals?.total === 'number' ? block.goals.total : 0,
+    assists: typeof block?.goals?.assists === 'number' ? block.goals.assists : 0,
+    yellowCards: typeof block?.cards?.yellow === 'number' ? block.cards.yellow : 0,
+    redCards: typeof block?.cards?.red === 'number' ? block.cards.red : 0,
+    gamesPlayed: typeof block?.games?.appearences === 'number' ? block.games.appearences : 0,
+    minutesPlayed: typeof block?.games?.minutes === 'number' ? block.games.minutes : 0,
+    starts: typeof block?.games?.lineups === 'number' ? block.games.lineups : 0,
+    substituteAppearances: typeof block?.substitutes?.in === 'number' ? block.substitutes.in : 0,
+    timesSubbedOff: typeof block?.substitutes?.out === 'number' ? block.substitutes.out : 0,
+    shots: typeof block?.shots?.total === 'number' ? block.shots.total : 0,
+    keyPasses: typeof block?.passes?.key === 'number' ? block.passes.key : 0,
+  };
+}
+
 async function findCanonicalPlayerMatch(apiFootballId: number | null, nameEn: string | null) {
   const matchedPlayer =
     (apiFootballId
@@ -490,14 +516,27 @@ async function syncDerivedStatistics({
 }) {
   const teamFilter = teamIds?.length ? { id: { in: teamIds } } : {};
 
-  const [teams, games] = await Promise.all([
+  const [competition, teams, games] = await Promise.all([
+    prisma.competition.findUnique({
+      where: { id: competitionId },
+      select: { apiFootballId: true },
+    }),
     prisma.team.findMany({
       where: {
         seasonId,
         ...teamFilter,
       },
       include: {
-        players: true,
+        players: {
+          include: {
+            playerStats: {
+              where: {
+                seasonId,
+                competitionId,
+              },
+            },
+          },
+        },
         standings: {
           where: { competitionId },
         },
@@ -568,7 +607,30 @@ async function syncDerivedStatistics({
 
     for (const player of team.players) {
       const playerDerived = derivePlayerDeepStats(player.id, teamGames);
-      totalAssists += playerDerived.assists;
+      const apiPlayerStat = readPlayerApiStatisticBlock(player, competition?.apiFootballId || null);
+      const existingPlayerStat = player.playerStats[0] || null;
+      const mergedPlayerStat = {
+        goals: Math.max(playerDerived.goals, apiPlayerStat?.goals || 0, existingPlayerStat?.goals || 0),
+        assists: Math.max(playerDerived.assists, apiPlayerStat?.assists || 0, existingPlayerStat?.assists || 0),
+        yellowCards: Math.max(playerDerived.yellowCards, apiPlayerStat?.yellowCards || 0, existingPlayerStat?.yellowCards || 0),
+        redCards: Math.max(playerDerived.redCards, apiPlayerStat?.redCards || 0, existingPlayerStat?.redCards || 0),
+        gamesPlayed: Math.max(playerDerived.gamesPlayed, apiPlayerStat?.gamesPlayed || 0, existingPlayerStat?.gamesPlayed || 0),
+        minutesPlayed: Math.max(playerDerived.minutesPlayed, apiPlayerStat?.minutesPlayed || 0, existingPlayerStat?.minutesPlayed || 0),
+        starts: Math.max(playerDerived.starts, apiPlayerStat?.starts || 0, existingPlayerStat?.starts || 0),
+        substituteAppearances: Math.max(
+          playerDerived.substituteAppearances,
+          apiPlayerStat?.substituteAppearances || 0,
+          existingPlayerStat?.substituteAppearances || 0
+        ),
+        timesSubbedOff: Math.max(
+          playerDerived.timesSubbedOff,
+          apiPlayerStat?.timesSubbedOff || 0,
+          existingPlayerStat?.timesSubbedOff || 0
+        ),
+        shots: Math.max(apiPlayerStat?.shots || 0, existingPlayerStat?.shots || 0),
+        keyPasses: Math.max(apiPlayerStat?.keyPasses || 0, existingPlayerStat?.keyPasses || 0),
+      };
+      totalAssists += mergedPlayerStat.assists;
 
       await prisma.playerStatistics.upsert({
         where: {
@@ -579,29 +641,33 @@ async function syncDerivedStatistics({
           },
         },
         update: {
-          goals: playerDerived.goals,
-          assists: playerDerived.assists,
-          yellowCards: playerDerived.yellowCards,
-          redCards: playerDerived.redCards,
-          gamesPlayed: playerDerived.gamesPlayed,
-          minutesPlayed: playerDerived.minutesPlayed,
-          starts: playerDerived.starts,
-          substituteAppearances: playerDerived.substituteAppearances,
-          timesSubbedOff: playerDerived.timesSubbedOff,
+          goals: mergedPlayerStat.goals,
+          assists: mergedPlayerStat.assists,
+          yellowCards: mergedPlayerStat.yellowCards,
+          redCards: mergedPlayerStat.redCards,
+          gamesPlayed: mergedPlayerStat.gamesPlayed,
+          minutesPlayed: mergedPlayerStat.minutesPlayed,
+          starts: mergedPlayerStat.starts,
+          substituteAppearances: mergedPlayerStat.substituteAppearances,
+          timesSubbedOff: mergedPlayerStat.timesSubbedOff,
+          shots: mergedPlayerStat.shots,
+          keyPasses: mergedPlayerStat.keyPasses,
         },
         create: {
           playerId: player.id,
           seasonId,
           competitionId,
-          goals: playerDerived.goals,
-          assists: playerDerived.assists,
-          yellowCards: playerDerived.yellowCards,
-          redCards: playerDerived.redCards,
-          gamesPlayed: playerDerived.gamesPlayed,
-          minutesPlayed: playerDerived.minutesPlayed,
-          starts: playerDerived.starts,
-          substituteAppearances: playerDerived.substituteAppearances,
-          timesSubbedOff: playerDerived.timesSubbedOff,
+          goals: mergedPlayerStat.goals,
+          assists: mergedPlayerStat.assists,
+          yellowCards: mergedPlayerStat.yellowCards,
+          redCards: mergedPlayerStat.redCards,
+          gamesPlayed: mergedPlayerStat.gamesPlayed,
+          minutesPlayed: mergedPlayerStat.minutesPlayed,
+          starts: mergedPlayerStat.starts,
+          substituteAppearances: mergedPlayerStat.substituteAppearances,
+          timesSubbedOff: mergedPlayerStat.timesSubbedOff,
+          shots: mergedPlayerStat.shots,
+          keyPasses: mergedPlayerStat.keyPasses,
         },
       });
     }

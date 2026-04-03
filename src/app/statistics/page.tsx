@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import StatisticsLeaderboardsClient from '@/components/StatisticsLeaderboardsClient';
+import { getCompetitionDisplayName } from '@/lib/competition-display';
 import { getDisplayMode } from '@/lib/display-mode';
 import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import { formatPlayerName, formatPlayerPosition } from '@/lib/player-display';
@@ -8,11 +10,47 @@ import { sortStandings } from '@/lib/standings';
 
 export const dynamic = 'force-dynamic';
 
-function getPlayerTotalPasses(player: any) {
+function getCompetitionLabel(competition: { nameHe: string | null; nameEn: string } | null | undefined) {
+  if (!competition) return '-';
+  return getCompetitionDisplayName(competition);
+}
+
+function getDefaultCompetition(
+  competitions: Array<{ id: string; apiFootballId: number | null; nameHe: string; nameEn: string; type: string }>
+) {
+  return (
+    competitions.find(
+      (competition) =>
+        competition.type === 'LEAGUE' &&
+        `${competition.nameHe} ${competition.nameEn}`.toLowerCase().includes("ligat ha'al")
+    ) ||
+    competitions.find((competition) => competition.type === 'LEAGUE') ||
+    competitions[0] ||
+    null
+  );
+}
+
+function getPlayerTotalPasses(
+  player: any,
+  selectedCompetition: { id: string; apiFootballId: number | null; nameHe: string; nameEn: string } | null
+) {
   const statistics = Array.isArray(player?.additionalInfo?.statistics) ? player.additionalInfo.statistics : [];
   let total = 0;
 
   for (const stat of statistics) {
+    if (selectedCompetition) {
+      const statLeagueId = stat?.league?.id;
+      const statLeagueName = `${stat?.league?.name || ''}`.toLowerCase();
+      const matchesSelectedCompetition =
+        (typeof statLeagueId === 'number' && statLeagueId === selectedCompetition.apiFootballId) ||
+        statLeagueName === selectedCompetition.nameEn.toLowerCase() ||
+        statLeagueName === selectedCompetition.nameHe.toLowerCase();
+
+      if (!matchesSelectedCompetition) {
+        continue;
+      }
+    }
+
     const passes = stat?.passes?.total;
     if (typeof passes === 'number') {
       total += passes;
@@ -33,7 +71,7 @@ function isGoalkeeper(position: string | null | undefined) {
 export default async function StatisticsPage({
   searchParams,
 }: {
-  searchParams?: { season?: string; teamId?: string; view?: string };
+  searchParams?: { season?: string; teamId?: string; competitionId?: string; view?: string };
 }) {
   const displayMode = await getDisplayMode(searchParams?.view);
   const seasons = await prisma.season.findMany({
@@ -52,14 +90,38 @@ export default async function StatisticsPage({
       })
     : [];
 
+  const competitions = selectedSeason
+    ? await prisma.competition.findMany({
+        where: {
+          OR: [
+            { standings: { some: { seasonId: selectedSeason.id } } },
+            { games: { some: { seasonId: selectedSeason.id } } },
+            { playerStats: { some: { seasonId: selectedSeason.id } } },
+          ],
+        },
+        select: {
+          id: true,
+          apiFootballId: true,
+          nameHe: true,
+          nameEn: true,
+          type: true,
+        },
+        orderBy: [{ type: 'asc' }, { nameHe: 'asc' }, { nameEn: 'asc' }],
+      })
+    : [];
+
   const selectedTeamId = searchParams?.teamId || 'all';
   const selectedTeam = teams.find((team) => team.id === selectedTeamId) || null;
+  const defaultCompetition = getDefaultCompetition(competitions);
+  const selectedCompetitionId = searchParams?.competitionId || defaultCompetition?.id || 'all';
+  const selectedCompetition = competitions.find((competition) => competition.id === selectedCompetitionId) || defaultCompetition || null;
 
   const [rawStandings, games, players, leaderPlayers, leaderGames] = await Promise.all([
     selectedSeason
       ? prisma.standing.findMany({
           where: {
             seasonId: selectedSeason.id,
+            ...(selectedCompetition ? { competitionId: selectedCompetition.id } : {}),
             ...(selectedTeam ? { teamId: selectedTeam.id } : {}),
           },
           include: { team: true },
@@ -70,6 +132,7 @@ export default async function StatisticsPage({
       ? prisma.game.findMany({
           where: {
             seasonId: selectedSeason.id,
+            ...(selectedCompetition ? { competitionId: selectedCompetition.id } : {}),
             ...(selectedTeam
               ? {
                   OR: [{ homeTeamId: selectedTeam.id }, { awayTeamId: selectedTeam.id }],
@@ -84,7 +147,12 @@ export default async function StatisticsPage({
           where: { teamId: selectedTeam.id },
           include: {
             playerStats: {
-              where: selectedSeason ? { seasonId: selectedSeason.id } : undefined,
+              where: selectedSeason
+                ? {
+                    seasonId: selectedSeason.id,
+                    ...(selectedCompetition ? { competitionId: selectedCompetition.id } : {}),
+                  }
+                : undefined,
             },
           },
           orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
@@ -101,7 +169,10 @@ export default async function StatisticsPage({
           include: {
             team: true,
             playerStats: {
-              where: { seasonId: selectedSeason.id },
+              where: {
+                seasonId: selectedSeason.id,
+                ...(selectedCompetition ? { competitionId: selectedCompetition.id } : {}),
+              },
             },
           },
           orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
@@ -112,6 +183,7 @@ export default async function StatisticsPage({
           where: {
             seasonId: selectedSeason.id,
             status: 'COMPLETED',
+            ...(selectedCompetition ? { competitionId: selectedCompetition.id } : {}),
             ...(selectedTeam
               ? {
                   OR: [{ homeTeamId: selectedTeam.id }, { awayTeamId: selectedTeam.id }],
@@ -119,6 +191,20 @@ export default async function StatisticsPage({
               : {}),
           },
           include: {
+            homeTeam: true,
+            awayTeam: true,
+            competition: true,
+            events: {
+              select: {
+                id: true,
+                minute: true,
+                extraMinute: true,
+                type: true,
+                playerId: true,
+                relatedPlayerId: true,
+                assistPlayerId: true,
+              },
+            },
             lineupEntries: {
               select: {
                 playerId: true,
@@ -191,7 +277,7 @@ export default async function StatisticsPage({
       return {
         player,
         totals,
-        totalPasses: getPlayerTotalPasses(player),
+        totalPasses: getPlayerTotalPasses(player, selectedCompetition),
       };
     })
     .filter((row) => row.totals.gamesPlayed > 0 || row.totalPasses > 0);
@@ -218,6 +304,14 @@ export default async function StatisticsPage({
     .filter((row) => cleanSheetMap.has(row.player.id))
     .sort((a, b) => (cleanSheetMap.get(b.player.id) || 0) - (cleanSheetMap.get(a.player.id) || 0))
     .slice(0, 10);
+  const leaderboardCards = buildLeaderboardCards({
+    goalsLeaders,
+    assistsLeaders,
+    passesLeaders,
+    cleanSheetLeaders,
+    cleanSheetMap,
+    leaderGames,
+  });
 
   if (displayMode === 'premier') {
     return (
@@ -228,6 +322,9 @@ export default async function StatisticsPage({
         teams={teams}
         selectedTeam={selectedTeam}
         selectedTeamId={selectedTeamId}
+        competitions={competitions}
+        selectedCompetition={selectedCompetition}
+        selectedCompetitionId={selectedCompetitionId}
         completedGames={completedGames}
         totalGoals={totalGoals}
         averageGoals={averageGoals}
@@ -240,6 +337,7 @@ export default async function StatisticsPage({
         passesLeaders={passesLeaders}
         cleanSheetLeaders={cleanSheetLeaders}
         cleanSheetMap={Object.fromEntries(cleanSheetMap)}
+        leaderboardCards={leaderboardCards}
       />
     );
   }
@@ -254,7 +352,7 @@ export default async function StatisticsPage({
             בחרו עונה, ואם תרצו גם קבוצה ספציפית, כדי לראות תמונת מצב סטטיסטית מלאה.
           </p>
 
-          <form className="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_auto]" action="/statistics">
+          <form className="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto]" action="/statistics">
             <select
               name="season"
               defaultValue={selectedSeason?.id || ''}
@@ -263,6 +361,18 @@ export default async function StatisticsPage({
               {seasons.map((season) => (
                 <option key={season.id} value={season.id}>
                   {season.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              name="competitionId"
+              defaultValue={selectedCompetitionId}
+              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+            >
+              {competitions.map((competition) => (
+                <option key={competition.id} value={competition.id}>
+                  {getCompetitionLabel(competition)}
                 </option>
               ))}
             </select>
@@ -410,6 +520,9 @@ function PremierStatisticsView({
   teams,
   selectedTeam,
   selectedTeamId,
+  competitions,
+  selectedCompetition,
+  selectedCompetitionId,
   completedGames,
   totalGoals,
   averageGoals,
@@ -422,6 +535,7 @@ function PremierStatisticsView({
   passesLeaders,
   cleanSheetLeaders,
   cleanSheetMap,
+  leaderboardCards,
 }: {
   seasons: Array<{ id: string; name: string }>;
   selectedSeason: { id: string; name: string } | null;
@@ -429,6 +543,9 @@ function PremierStatisticsView({
   teams: Array<{ id: string; nameHe: string | null; nameEn: string }>;
   selectedTeam: { id: string; nameHe: string | null; nameEn: string } | null;
   selectedTeamId: string;
+  competitions: Array<{ id: string; nameHe: string; nameEn: string; type: string }>;
+  selectedCompetition: { id: string; nameHe: string; nameEn: string } | null;
+  selectedCompetitionId: string;
   completedGames: number;
   totalGoals: number;
   averageGoals: string;
@@ -445,6 +562,7 @@ function PremierStatisticsView({
   passesLeaders: Array<any>;
   cleanSheetLeaders: Array<any>;
   cleanSheetMap: Record<string, number>;
+  leaderboardCards: Array<any>;
 }) {
   const topScorers = [...playerRows].sort((a, b) => b.totals.goals - a.totals.goals || b.totals.assists - a.totals.assists).slice(0, 8);
 
@@ -463,7 +581,7 @@ function PremierStatisticsView({
               </p>
             </div>
 
-            <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" action="/statistics">
+            <form className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" action="/statistics">
               <input type="hidden" name="view" value="premier" />
               <select
                 name="season"
@@ -474,13 +592,24 @@ function PremierStatisticsView({
                   <option key={season.id} value={season.id} className="text-slate-950">
                     {season.name}
                   </option>
-                ))}
-              </select>
-              <select
-                name="teamId"
-                defaultValue={selectedTeamId}
-                className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
-              >
+                  ))}
+                </select>
+                <select
+                  name="competitionId"
+                  defaultValue={selectedCompetitionId}
+                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
+                >
+                  {competitions.map((competition) => (
+                    <option key={competition.id} value={competition.id} className="text-slate-950">
+                      {getCompetitionLabel(competition)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  name="teamId"
+                  defaultValue={selectedTeamId}
+                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
+                >
                 <option value="all" className="text-slate-950">כל הקבוצות</option>
                 {teams.map((team) => (
                   <option key={team.id} value={team.id} className="text-slate-950">
@@ -505,12 +634,15 @@ function PremierStatisticsView({
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-          <div className="xl:col-span-2 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <>
+            <StatisticsLeaderboardsClient cards={leaderboardCards} />
+            <div className="hidden xl:col-span-2 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <LeaderboardCard title="מלך השערים" rows={goalsLeaders} valueForRow={(row) => row.totals.goals} />
             <LeaderboardCard title="מלך הבישולים" rows={assistsLeaders} valueForRow={(row) => row.totals.assists} />
             <LeaderboardCard title="מסירות מדויקות" rows={passesLeaders} valueForRow={(row) => row.totalPasses} />
             <LeaderboardCard title="רשת נקייה" rows={cleanSheetLeaders} valueForRow={(row) => cleanSheetMap[row.player.id] || 0} />
-          </div>
+            </div>
+          </>
 
           <div className="overflow-hidden rounded-[30px] border border-slate-200/70 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
             <div className="border-b border-slate-100 px-6 py-5">
@@ -660,6 +792,189 @@ function LeaderboardCard({
       </div>
     </section>
   );
+}
+
+function eventMinuteLabel(event: { minute: number; extraMinute: number | null }) {
+  return `${event.minute}${event.extraMinute ? `+${event.extraMinute}` : ''}'`;
+}
+
+function roundLabel(game: { roundNameHe: string | null; roundNameEn: string | null }) {
+  return game.roundNameHe || game.roundNameEn || '-';
+}
+
+function matchLabel(game: { homeTeam: { nameHe: string | null; nameEn: string }; awayTeam: { nameHe: string | null; nameEn: string } }) {
+  return `${game.homeTeam.nameHe || game.homeTeam.nameEn} - ${game.awayTeam.nameHe || game.awayTeam.nameEn}`;
+}
+
+function scoreLabel(game: { homeScore: number | null; awayScore: number | null }) {
+  return `${game.homeScore ?? 0}-${game.awayScore ?? 0}`;
+}
+
+function isScoringEventForPlayer(event: any, playerId: string) {
+  if (event.type !== 'GOAL' && event.type !== 'PENALTY_GOAL') {
+    return false;
+  }
+
+  return event.playerId === playerId || (!event.playerId && event.relatedPlayerId === playerId);
+}
+
+function isAssistEventForPlayer(event: any, playerId: string) {
+  if (event.type !== 'GOAL' && event.type !== 'PENALTY_GOAL') {
+    return false;
+  }
+
+  return event.assistPlayerId === playerId || event.relatedPlayerId === playerId;
+}
+
+function didPlayerAppearInGame(game: any, playerId: string) {
+  return game.lineupEntries.some((entry: any) => entry.playerId === playerId);
+}
+
+function buildLeaderboardCards({
+  goalsLeaders,
+  assistsLeaders,
+  passesLeaders,
+  cleanSheetLeaders,
+  cleanSheetMap,
+  leaderGames,
+}: {
+  goalsLeaders: Array<any>;
+  assistsLeaders: Array<any>;
+  passesLeaders: Array<any>;
+  cleanSheetLeaders: Array<any>;
+  cleanSheetMap: Map<string, number>;
+  leaderGames: Array<any>;
+}) {
+  const goalsCard = {
+    title: 'מלך השערים',
+    valueLabel: 'שערים',
+    rows: goalsLeaders.map((row) => ({
+      playerId: row.player.id,
+      playerName: formatPlayerName(row.player),
+      teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
+      value: row.totals.goals,
+      details: leaderGames.flatMap((game) =>
+        game.events
+          .filter((event: any) => isScoringEventForPlayer(event, row.player.id))
+          .map((event: any) => ({
+            id: event.id,
+            roundLabel: roundLabel(game),
+            matchLabel: matchLabel(game),
+            valueLabel: event.type === 'PENALTY_GOAL' ? 'שער בפנדל' : 'שער',
+            minuteLabel: eventMinuteLabel(event),
+            scoreLabel: scoreLabel(game),
+            note: game.competition?.nameHe || game.competition?.nameEn || null,
+          }))
+      ),
+      emptyMessage: 'אין פירוט שערים מקומי זמין עבור השחקן הזה.',
+    })),
+  };
+
+  const assistsCard = {
+    title: 'מלך הבישולים',
+    valueLabel: 'בישולים',
+    rows: assistsLeaders.map((row) => ({
+      playerId: row.player.id,
+      playerName: formatPlayerName(row.player),
+      teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
+      value: row.totals.assists,
+      details: leaderGames.flatMap((game) =>
+        game.events
+          .filter((event: any) => isAssistEventForPlayer(event, row.player.id))
+          .map((event: any) => ({
+            id: event.id,
+            roundLabel: roundLabel(game),
+            matchLabel: matchLabel(game),
+            valueLabel: 'בישול',
+            minuteLabel: eventMinuteLabel(event),
+            scoreLabel: scoreLabel(game),
+            note: game.competition?.nameHe || game.competition?.nameEn || null,
+          }))
+      ),
+      emptyMessage: 'אין פירוט בישולים מקומי זמין עבור השחקן הזה.',
+    })),
+  };
+
+  const passesCard = {
+    title: 'מסירות מדויקות',
+    valueLabel: 'מסירות',
+    rows: passesLeaders.map((row) => {
+      const statistics = Array.isArray(row.player?.additionalInfo?.statistics) ? row.player.additionalInfo.statistics : [];
+      const details = statistics
+        .map((entry: any, index: number) => ({
+          id: `${row.player.id}-passes-${index}`,
+          roundLabel: entry?.league?.name || entry?.team?.name || 'עונה',
+          matchLabel: entry?.team?.name || row.player.team?.nameHe || row.player.team?.nameEn || '-',
+          valueLabel: `${entry?.passes?.total ?? 0} מסירות`,
+          minuteLabel: null,
+          scoreLabel: null,
+          note:
+            typeof entry?.games?.appearences === 'number'
+              ? `${entry.games.appearences} הופעות`
+              : 'פירוט עונתי מקומי',
+        }))
+        .filter((detail: any) => detail.valueLabel !== '0 מסירות');
+
+      return {
+        playerId: row.player.id,
+        playerName: formatPlayerName(row.player),
+        teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
+        value: row.totalPasses,
+        details,
+        emptyMessage: 'למסירות מדויקות שמור אצלנו כרגע פירוט עונתי בלבד, לא פירוט פר משחק.',
+      };
+    }),
+  };
+
+  passesCard.rows = passesLeaders.map((row) => ({
+    playerId: row.player.id,
+    playerName: formatPlayerName(row.player),
+    teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
+    value: row.totalPasses,
+    details: leaderGames
+      .filter((game) => didPlayerAppearInGame(game, row.player.id))
+      .map((game) => ({
+        id: `${game.id}-${row.player.id}-appearance`,
+        roundLabel: roundLabel(game),
+        matchLabel: matchLabel(game),
+        valueLabel: 'הופיע במשחק',
+        minuteLabel: null,
+        scoreLabel: scoreLabel(game),
+        note: 'פירוט מסירות מדויקות פר משחק לא זמין כרגע, ולכן מוצגת רשימת המשחקים שבהם השתתף.',
+      })),
+    emptyMessage: 'אין אצלנו כרגע משחקים מקושרים לשחקן הזה במסגרת שנבחרה.',
+  }));
+
+  const cleanSheetsCard = {
+    title: 'רשת נקייה',
+    valueLabel: 'רשתות נקיות',
+    rows: cleanSheetLeaders.map((row) => ({
+      playerId: row.player.id,
+      playerName: formatPlayerName(row.player),
+      teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
+      value: cleanSheetMap.get(row.player.id) || 0,
+      details: leaderGames
+        .filter((game) => {
+          const starterEntry = game.lineupEntries.find((entry: any) => entry.playerId === row.player.id && entry.role === 'STARTER');
+          if (!starterEntry) return false;
+          const conceded =
+            starterEntry.teamId === game.homeTeamId ? (game.awayScore ?? 0) : starterEntry.teamId === game.awayTeamId ? (game.homeScore ?? 0) : null;
+          return conceded === 0;
+        })
+        .map((game) => ({
+          id: `${game.id}-${row.player.id}-clean-sheet`,
+          roundLabel: roundLabel(game),
+          matchLabel: matchLabel(game),
+          valueLabel: 'רשת נקייה',
+          minuteLabel: null,
+          scoreLabel: scoreLabel(game),
+          note: game.competition?.nameHe || game.competition?.nameEn || null,
+        })),
+      emptyMessage: 'אין פירוט רשתות נקיות מקומי זמין עבור השחקן הזה.',
+    })),
+  };
+
+  return [goalsCard, assistsCard, passesCard, cleanSheetsCard];
 }
 
 function StatsCard({

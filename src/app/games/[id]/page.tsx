@@ -1,9 +1,13 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import type { ReactNode } from 'react';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
 import { getCurrentUser } from '@/lib/auth';
+import { getDisplayMode } from '@/lib/display-mode';
 import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { GameRefereeForm } from '@/components/GameRefereeForm';
+import GameAdminQuickEditorClient from '@/components/GameAdminQuickEditorClient';
 
 const eventLabels: Record<string, string> = {
   GOAL: 'שער',
@@ -17,7 +21,17 @@ const eventLabels: Record<string, string> = {
   PENALTY_MISSED: 'פנדל מוחמץ',
 };
 
-export default async function GamePage({ params }: { params: { id: string } }) {
+type GamePremierTab = 'overview' | 'stats' | 'events' | 'lineups';
+
+export default async function GamePage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { view?: string; tab?: string };
+}) {
+  const displayMode = await getDisplayMode(searchParams?.view);
+  const selectedTab = normalizeGamePremierTab(searchParams?.tab);
   const currentUser = await getCurrentUser();
   const game = await prisma.game.findUnique({
     where: { id: params.id },
@@ -54,12 +68,96 @@ export default async function GamePage({ params }: { params: { id: string } }) {
     notFound();
   }
 
+  const adminPlayers =
+    currentUser?.role === 'ADMIN'
+      ? await prisma.player.findMany({
+          where: {
+            teamId: {
+              in: [game.homeTeamId, game.awayTeamId],
+            },
+          },
+          select: {
+            id: true,
+            nameHe: true,
+            nameEn: true,
+            teamId: true,
+            team: {
+              select: {
+                id: true,
+                nameHe: true,
+                nameEn: true,
+              },
+            },
+          },
+          orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+        })
+      : [];
+
   const hasDetailedStats = hasDetailedGameStats(game.gameStats);
   const eventSummary = buildEventSummary(game);
   const homeLineup = buildTeamLineup(game, game.homeTeamId);
   const awayLineup = buildTeamLineup(game, game.awayTeamId);
   const comparisonRows = buildComparisonRows(game.gameStats, eventSummary);
   const summaryCards = buildSummaryCards(game.gameStats, eventSummary);
+  const adminEditorProps = {
+    game: {
+      id: game.id,
+      dateTime: game.dateTime.toISOString(),
+      status: game.status,
+      homeScore: game.homeScore,
+      awayScore: game.awayScore,
+      roundNameHe: game.roundNameHe,
+      roundNameEn: game.roundNameEn,
+      refereeHe: game.referee?.nameHe || game.refereeHe,
+      refereeEn: game.referee?.nameEn || game.refereeEn,
+      events: game.events.map((event) => ({
+        id: event.id,
+        minute: event.minute,
+        extraMinute: event.extraMinute,
+        type: event.type,
+        team: event.team,
+        teamId: event.teamId,
+        sortOrder: event.sortOrder,
+        notesHe: event.notesHe,
+        notesEn: event.notesEn,
+        playerId: event.playerId,
+        relatedPlayerId: event.relatedPlayerId,
+        assistPlayerId: event.assistPlayerId,
+        player: event.player,
+        relatedPlayer: event.relatedPlayer,
+      })),
+    },
+    teams: [
+      {
+        id: game.homeTeam.id,
+        nameHe: game.homeTeam.nameHe,
+        nameEn: game.homeTeam.nameEn,
+      },
+      {
+        id: game.awayTeam.id,
+        nameHe: game.awayTeam.nameHe,
+        nameEn: game.awayTeam.nameEn,
+      },
+    ],
+    players: adminPlayers,
+  };
+
+  if (displayMode === 'premier') {
+    return (
+      <PremierGameView
+        currentUserRole={currentUser?.role || null}
+        game={game}
+        eventSummary={eventSummary}
+        comparisonRows={comparisonRows}
+        summaryCards={summaryCards}
+        homeLineup={homeLineup}
+        awayLineup={awayLineup}
+        hasDetailedStats={hasDetailedStats}
+        selectedTab={selectedTab}
+        adminEditorProps={adminEditorProps}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-stone-100 px-4 py-8">
@@ -128,6 +226,8 @@ export default async function GamePage({ params }: { params: { id: string } }) {
             />
           </section>
         ) : null}
+
+        {currentUser?.role === 'ADMIN' ? <GameAdminQuickEditorClient {...adminEditorProps} /> : null}
 
         <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
@@ -213,6 +313,307 @@ export default async function GamePage({ params }: { params: { id: string } }) {
         </section>
 
       </div>
+    </div>
+  );
+}
+
+function PremierGameView({
+  currentUserRole,
+  game,
+  eventSummary,
+  comparisonRows,
+  summaryCards,
+  homeLineup,
+  awayLineup,
+  hasDetailedStats,
+  selectedTab,
+  adminEditorProps,
+}: {
+  currentUserRole: string | null;
+  game: any;
+  eventSummary: ReturnType<typeof buildEventSummary>;
+  comparisonRows: ReturnType<typeof buildComparisonRows>;
+  summaryCards: ReturnType<typeof buildSummaryCards>;
+  homeLineup: ReturnType<typeof buildTeamLineup>;
+  awayLineup: ReturnType<typeof buildTeamLineup>;
+  hasDetailedStats: boolean;
+  selectedTab: GamePremierTab;
+  adminEditorProps: any;
+}) {
+  const tabs: Array<{ id: GamePremierTab; label: string }> = [
+    { id: 'overview', label: 'סקירה' },
+    { id: 'stats', label: 'סטטיסטיקה' },
+    { id: 'events', label: 'אירועים' },
+    { id: 'lineups', label: 'הרכבים' },
+  ];
+
+  const homeTeamName = game.homeTeam.nameHe || game.homeTeam.nameEn;
+  const awayTeamName = game.awayTeam.nameHe || game.awayTeam.nameEn;
+  const refereeName = game.referee?.nameHe || game.referee?.nameEn || game.refereeHe || game.refereeEn || 'לא זמין';
+
+  return (
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef3ff_100%)] px-4 py-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <section className="overflow-hidden rounded-[34px] border border-white/60 bg-white shadow-[0_24px_80px_rgba(38,54,120,0.10)]">
+          <div className="bg-[linear-gradient(135deg,#5a0b8a_0%,#3d168f_48%,#1499d3_100%)] p-6 text-white md:p-8">
+            <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="space-y-5">
+                <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold tracking-[0.22em] text-white/85">
+                  מרכז משחק
+                </div>
+                <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
+                  <PremierTeamBadge name={homeTeamName} logoUrl={game.homeTeam.logoUrl} align="right" />
+                  <div className="text-center">
+                    <div className="text-sm font-semibold text-white/80">{getCompetitionDisplayName(game.competition)}</div>
+                    <div className="mt-2 text-4xl font-black tracking-tight md:text-5xl">{getGameScoreDisplay(game)}</div>
+                    <div className="mt-2 text-sm text-white/80">
+                      {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(game.dateTime)}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-white/90">
+                      {getRoundDisplayName(game.roundNameHe, game.roundNameEn)}
+                    </div>
+                  </div>
+                  <PremierTeamBadge name={awayTeamName} logoUrl={game.awayTeam.logoUrl} align="left" />
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                  <span className="rounded-full bg-white/12 px-3 py-1.5">שופט: {refereeName}</span>
+                  <span className="rounded-full bg-white/12 px-3 py-1.5">שערים: {eventSummary.homeGoals}-{eventSummary.awayGoals}</span>
+                  <span className="rounded-full bg-white/12 px-3 py-1.5">סטטוס: {formatGameStatus(game.status)}</span>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <PremierMetricCard label="כדורגל שליטה" value={`${formatPercent(game.gameStats?.homeTeamPossession ?? null)} / ${formatPercent(game.gameStats?.awayTeamPossession ?? null)}`} />
+                <PremierMetricCard label="בעיטות למסגרת" value={`${formatNumber(game.gameStats?.homeShotsOnTarget ?? null)} / ${formatNumber(game.gameStats?.awayShotsOnTarget ?? null)}`} />
+                <PremierMetricCard label="כרטיסים צהובים" value={`${eventSummary.homeYellowCards} / ${eventSummary.awayYellowCards}`} />
+                <PremierMetricCard label="חילופים" value={`${homeLineup.substitutes.length} / ${awayLineup.substitutes.length}`} />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200/80 bg-white px-6 py-4 md:px-8">
+            <div className="flex flex-wrap items-center gap-3">
+              {tabs.map((tab) => (
+                <Link
+                  key={tab.id}
+                  href={`/games/${game.id}?view=premier&tab=${tab.id}`}
+                  className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                    selectedTab === tab.id ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {tab.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {selectedTab === 'overview' ? (
+          <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-6">
+              <PremierPanel title="תמונת משחק">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {summaryCards.slice(0, 6).map((card) => (
+                    <div key={card.label} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-xs font-semibold tracking-[0.18em] text-slate-500">{card.label}</div>
+                      <div className="mt-2 text-2xl font-black text-slate-900">{card.value}</div>
+                      {card.delta ? <div className="mt-1 text-xs font-bold text-slate-500">{card.delta}</div> : null}
+                      {card.note ? <div className="mt-2 text-sm text-slate-600">{card.note}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              </PremierPanel>
+
+              <PremierPanel title="אירועים מרכזיים">
+                <div className="space-y-3">
+                  {game.events.slice(0, 8).map((event: any) => (
+                    <PremierEventCard key={event.id} event={event} />
+                  ))}
+                  {game.events.length === 0 ? <PremierEmptyState text="אין אירועים שמורים למשחק הזה." /> : null}
+                </div>
+              </PremierPanel>
+            </div>
+
+            <div className="space-y-6">
+              <PremierPanel title="נתוני משחק">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <StatPairCard label="בעיטות" homeDisplay={formatNumber(game.gameStats?.homeShotsTotal ?? null)} awayDisplay={formatNumber(game.gameStats?.awayShotsTotal ?? null)} />
+                  <StatPairCard label="קרנות" homeDisplay={formatNumber(game.gameStats?.homeCorners ?? null)} awayDisplay={formatNumber(game.gameStats?.awayCorners ?? null)} />
+                  <StatPairCard label="עבירות" homeDisplay={formatNumber(game.gameStats?.homeFouls ?? null)} awayDisplay={formatNumber(game.gameStats?.awayFouls ?? null)} />
+                  <StatPairCard label="נבדלים" homeDisplay={formatNumber(game.gameStats?.homeOffsides ?? null)} awayDisplay={formatNumber(game.gameStats?.awayOffsides ?? null)} />
+                </div>
+              </PremierPanel>
+
+              {currentUserRole === 'ADMIN' ? (
+                <PremierPanel title="ניהול שופט">
+                  <p className="mb-4 text-sm text-slate-600">אם שם השופט חסר או חלקי, אפשר להשלים אותו כאן.</p>
+                  <GameRefereeForm
+                    gameId={game.id}
+                    refereeNameEn={game.referee?.nameEn || game.refereeEn || ''}
+                    refereeNameHe={game.referee?.nameHe || game.refereeHe || ''}
+                  />
+                </PremierPanel>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {selectedTab === 'stats' ? (
+          <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <PremierPanel title="מדדי משחק">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {summaryCards.map((card) => (
+                  <div key={card.label} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold tracking-[0.18em] text-slate-500">{card.label}</div>
+                    <div className="mt-2 text-2xl font-black text-slate-900">{card.value}</div>
+                    {card.note ? <div className="mt-2 text-sm text-slate-600">{card.note}</div> : null}
+                  </div>
+                ))}
+              </div>
+            </PremierPanel>
+
+            <PremierPanel title="השוואת קבוצות">
+              <div className="space-y-4">
+                {comparisonRows.map((row) => (
+                  <ComparisonBar
+                    key={row.label}
+                    label={row.label}
+                    homeValue={row.homeValue}
+                    awayValue={row.awayValue}
+                    homeDisplay={row.homeDisplay}
+                    awayDisplay={row.awayDisplay}
+                  />
+                ))}
+              </div>
+              {!hasDetailedStats ? (
+                <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+                  חלק מהגרפים מבוססים על אירועים מקומיים כי נתוני ה-API למשחק הזה חלקיים.
+                </div>
+              ) : null}
+            </PremierPanel>
+          </section>
+        ) : null}
+
+        {selectedTab === 'events' ? (
+          <>
+          <PremierPanel title="ציר אירועים מלא">
+            <div className="space-y-3">
+              {game.events.map((event: any) => (
+                <PremierEventCard key={event.id} event={event} />
+              ))}
+              {game.events.length === 0 ? <PremierEmptyState text="אין אירועים שמורים למשחק הזה." /> : null}
+            </div>
+          </PremierPanel>
+          {currentUserRole === 'ADMIN' ? <GameAdminQuickEditorClient {...adminEditorProps} /> : null}
+          </>
+        ) : null}
+
+        {selectedTab === 'lineups' ? (
+          <PremierPanel title="הרכבים ומחליפים">
+            <div className="mb-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+              {homeLineup.formation || awayLineup.formation ? (
+                <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+                  מערכים: {homeLineup.formation || '-'} מול {awayLineup.formation || '-'}
+                </span>
+              ) : null}
+            </div>
+            <div className="grid gap-6 xl:grid-cols-2">
+              <TeamLineupCard teamName={homeTeamName} side="home" lineup={homeLineup} />
+              <TeamLineupCard teamName={awayTeamName} side="away" lineup={awayLineup} />
+            </div>
+          </PremierPanel>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function PremierPanel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-[30px] border border-white/70 bg-white p-6 shadow-[0_18px_50px_rgba(28,42,102,0.08)]">
+      <h2 className="text-2xl font-black text-slate-900">{title}</h2>
+      <div className="mt-5">{children}</div>
+    </section>
+  );
+}
+
+function PremierMetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[24px] border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+      <div className="text-xs font-semibold tracking-[0.18em] text-white/70">{label}</div>
+      <div className="mt-2 text-2xl font-black text-white">{value}</div>
+    </div>
+  );
+}
+
+function PremierTeamBadge({
+  name,
+  logoUrl,
+  align,
+}: {
+  name: string;
+  logoUrl: string | null;
+  align: 'right' | 'left';
+}) {
+  return (
+    <div className={`text-center ${align === 'right' ? 'md:text-right' : 'md:text-left'}`}>
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt={name}
+          className={`mx-auto mb-3 h-16 w-16 rounded-full bg-white/90 object-contain p-2 ${align === 'right' ? 'md:mr-0 md:ml-auto' : 'md:ml-0 md:mr-auto'}`}
+        />
+      ) : null}
+      <div className="text-xl font-black md:text-2xl">{name}</div>
+    </div>
+  );
+}
+
+function StatPairCard({
+  label,
+  homeDisplay,
+  awayDisplay,
+}: {
+  label: string;
+  homeDisplay: string;
+  awayDisplay: string;
+}) {
+  return (
+    <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+      <div className="text-xs font-semibold tracking-[0.18em] text-slate-500">{label}</div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="text-xl font-black text-slate-900">{homeDisplay}</div>
+        <div className="text-xs font-bold text-slate-400">בית / חוץ</div>
+        <div className="text-xl font-black text-slate-900">{awayDisplay}</div>
+      </div>
+    </div>
+  );
+}
+
+function PremierEventCard({ event }: { event: any }) {
+  return (
+    <article className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-bold text-slate-900">{eventLabels[event.type] || event.type}</div>
+        <div className="text-sm font-semibold text-slate-500">
+          {event.minute}
+          {event.extraMinute ? `+${event.extraMinute}` : ''}
+          &apos;
+        </div>
+      </div>
+      <div className="mt-2 text-sm text-slate-700">
+        {event.player ? formatPlayerName(event.player) : 'שחקן לא משויך'}
+        {event.relatedPlayer ? ` | ${formatPlayerName(event.relatedPlayer)}` : ''}
+      </div>
+      {event.notesHe ? <div className="mt-1 text-xs text-slate-500">{event.notesHe}</div> : null}
+    </article>
+  );
+}
+
+function PremierEmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-[22px] border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-500">
+      {text}
     </div>
   );
 }
@@ -682,4 +1083,34 @@ function buildFormationRows(
     );
 
   return side === 'home' ? sortedRows : [...sortedRows].reverse();
+}
+
+function normalizeGamePremierTab(value: string | null | undefined): GamePremierTab {
+  switch (value) {
+    case 'stats':
+    case 'events':
+    case 'lineups':
+      return value;
+    default:
+      return 'overview';
+  }
+}
+
+function formatGameStatus(status: string | null | undefined) {
+  switch (status) {
+    case 'COMPLETED':
+      return 'הסתיים';
+    case 'LIVE':
+      return 'חי';
+    case 'IN_PLAY':
+      return 'במשחק';
+    case 'SCHEDULED':
+      return 'מתוכנן';
+    case 'POSTPONED':
+      return 'נדחה';
+    case 'CANCELLED':
+      return 'בוטל';
+    default:
+      return status || 'לא זמין';
+  }
 }

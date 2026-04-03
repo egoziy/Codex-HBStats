@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
-import { getRoundDisplayName } from '@/lib/competition-display';
+import { getCompetitionDisplayName, getRoundDisplayName } from '@/lib/competition-display';
+import { getCompetitionById } from '@/lib/competitions';
 import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { sortStandings, type StandingWithDerived } from '@/lib/standings';
@@ -41,6 +42,13 @@ type LeagueGame = {
   awayTeamId: string;
   homeTeam: TeamName;
   awayTeam: TeamName;
+  competition: {
+    id: string;
+    apiFootballId: number | null;
+    nameHe: string | null;
+    nameEn: string;
+    type: 'LEAGUE' | 'CUP' | 'EUROPE';
+  } | null;
 };
 
 function hasHebrew(value: string | null | undefined) {
@@ -61,11 +69,24 @@ function getRoundSortValue(label: string) {
   const match = normalized.match(/(\d+)/);
   const number = match ? Number(match[1]) : 999;
 
+  if (/final/i.test(normalized)) return 9000;
+  if (/semi-finals?/i.test(normalized)) return 8000;
+  if (/quarter-finals?/i.test(normalized)) return 7000;
+  if (/round of 16/i.test(normalized)) return 6000;
+  if (/round of 32/i.test(normalized)) return 5000;
   if (/regular season/i.test(normalized)) return number;
   if (/championship round/i.test(normalized)) return 1000 + number;
   if (/relegation round/i.test(normalized)) return 2000 + number;
   if (/group stage/i.test(normalized)) return 3000 + number;
   return 5000 + number;
+}
+
+function getCompetitionKind(competition?: {
+  apiFootballId?: number | null;
+  type?: 'LEAGUE' | 'CUP' | 'EUROPE' | null;
+}) {
+  const mapped = competition?.apiFootballId ? getCompetitionById(String(competition.apiFootballId)) : null;
+  return mapped?.kind || competition?.type || 'LEAGUE';
 }
 
 function buildStandingsFromGames(
@@ -176,7 +197,7 @@ function getNextGame(teamId: string, games: LeagueGame[]) {
 export default async function StandingsPage({
   searchParams,
 }: {
-  searchParams?: { season?: string; view?: string; round?: string };
+  searchParams?: { season?: string; view?: string; round?: string; competition?: string };
 }) {
   const displayMode = await getDisplayMode(searchParams?.view);
   const seasons = await prisma.season.findMany({
@@ -187,7 +208,7 @@ export default async function StandingsPage({
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
 
-  const [teams, rawStandings, leagueGames] = selectedSeason
+  const [seasonTeams, rawStandings, seasonGames, seasonCompetitions] = selectedSeason
     ? await Promise.all([
         prisma.team.findMany({
           where: { seasonId: selectedSeason.id },
@@ -202,25 +223,59 @@ export default async function StandingsPage({
         prisma.game.findMany({
           where: {
             seasonId: selectedSeason.id,
-            competition: { apiFootballId: 383 },
           },
           include: {
+            competition: { select: { id: true, apiFootballId: true, nameHe: true, nameEn: true, type: true } },
             homeTeam: { select: { id: true, nameHe: true, nameEn: true, logoUrl: true } },
             awayTeam: { select: { id: true, nameHe: true, nameEn: true, logoUrl: true } },
           },
           orderBy: [{ dateTime: 'asc' }],
         }),
+        prisma.competitionSeason.findMany({
+          where: { seasonId: selectedSeason.id },
+          include: {
+            competition: { select: { id: true, apiFootballId: true, nameHe: true, nameEn: true, type: true } },
+          },
+          orderBy: [{ competition: { nameHe: 'asc' } }, { competition: { nameEn: 'asc' } }],
+        }),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
 
-  const typedGames = leagueGames as LeagueGame[];
+  const competitionOptions = Array.from(
+    new Map(
+      seasonCompetitions
+        .map((entry) => entry.competition)
+        .filter(Boolean)
+        .map((competition) => [competition.id, competition])
+    ).values()
+  );
+  const defaultCompetition =
+    competitionOptions.find((competition) => competition.apiFootballId === 383) || competitionOptions[0] || null;
+  const selectedCompetitionId =
+    searchParams?.competition && competitionOptions.some((competition) => competition.id === searchParams.competition)
+      ? searchParams.competition
+      : defaultCompetition?.id || null;
+  const selectedCompetition =
+    competitionOptions.find((competition) => competition.id === selectedCompetitionId) || defaultCompetition;
+
+  const typedGames = (seasonGames as LeagueGame[]).filter((game) => game.competition?.id === selectedCompetition?.id);
+  const competitionStandings = rawStandings.filter((standing) => standing.competitionId === selectedCompetition?.id);
+  const competitionTeamIds = new Set<string>([
+    ...competitionStandings.map((standing) => standing.teamId),
+    ...typedGames.flatMap((game) => [game.homeTeamId, game.awayTeamId]),
+  ]);
+  const teams = seasonTeams.filter((team) => competitionTeamIds.has(team.id));
+  const selectedCompetitionKind = getCompetitionKind(selectedCompetition);
   const completedLeagueGames = typedGames.filter(
     (game) => game.status === 'COMPLETED' && game.homeScore !== null && game.awayScore !== null
   );
   const roundOptions = Array.from(new Set(typedGames.map((game) => normalizeRoundLabel(game.roundNameEn)))).sort(
     (a, b) => getRoundSortValue(a) - getRoundSortValue(b)
   );
-  const selectedRound = searchParams?.round || 'current';
+  const selectedRound =
+    searchParams?.round && (searchParams.round === 'current' || roundOptions.includes(searchParams.round))
+      ? searchParams.round
+      : 'current';
   const isCurrentRoundView = selectedRound === 'current';
   const snapshotGames = isCurrentRoundView
     ? completedLeagueGames
@@ -233,17 +288,24 @@ export default async function StandingsPage({
         (game) => getRoundSortValue(normalizeRoundLabel(game.roundNameEn)) > getRoundSortValue(selectedRound)
       );
 
-  const hasStoredStandings = rawStandings.length > 0;
+  const hasStoredStandings = competitionStandings.length > 0;
   const standings =
-    hasStoredStandings && isCurrentRoundView ? sortStandings(rawStandings) : buildStandingsFromGames(teams, snapshotGames);
-  const isFallbackTable = (!hasStoredStandings || !isCurrentRoundView) && standings.length > 0;
-  const canDeriveTable = Boolean(selectedSeason && teams.length > 0 && snapshotGames.length > 0);
+    hasStoredStandings && isCurrentRoundView
+      ? sortStandings(competitionStandings)
+      : selectedCompetitionKind === 'LEAGUE'
+        ? buildStandingsFromGames(teams, snapshotGames)
+        : [];
+  const isFallbackTable = (!hasStoredStandings || !isCurrentRoundView) && standings.length > 0 && selectedCompetitionKind === 'LEAGUE';
+  const canDeriveTable = Boolean(selectedSeason && teams.length > 0 && snapshotGames.length > 0 && selectedCompetitionKind === 'LEAGUE');
 
   if (displayMode === 'premier') {
     return (
       <PremierStandingsView
         seasons={seasons}
         selectedSeason={selectedSeason}
+        competitionOptions={competitionOptions}
+        selectedCompetition={selectedCompetition}
+        selectedCompetitionKind={selectedCompetitionKind}
         standings={standings}
         teamsCount={teams.length}
         completedLeagueGames={snapshotGames.length}
@@ -252,6 +314,7 @@ export default async function StandingsPage({
         isFallbackTable={isFallbackTable}
         selectedRound={selectedRound}
         roundOptions={roundOptions}
+        competitionGames={typedGames}
         snapshotGames={snapshotGames}
         futureGames={futureGames}
       />
@@ -281,6 +344,17 @@ export default async function StandingsPage({
                 {seasons.map((season) => (
                   <option key={season.id} value={season.id}>
                     {season.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                name="competition"
+                defaultValue={selectedCompetition?.id || ''}
+                className="min-w-[200px] rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-900"
+              >
+                {competitionOptions.map((competition) => (
+                  <option key={competition.id} value={competition.id}>
+                    {getCompetitionDisplayName(competition)}
                   </option>
                 ))}
               </select>
@@ -381,6 +455,9 @@ export default async function StandingsPage({
 function PremierStandingsView({
   seasons,
   selectedSeason,
+  competitionOptions,
+  selectedCompetition,
+  selectedCompetitionKind,
   standings,
   teamsCount,
   completedLeagueGames,
@@ -389,11 +466,15 @@ function PremierStandingsView({
   isFallbackTable,
   selectedRound,
   roundOptions,
+  competitionGames,
   snapshotGames,
   futureGames,
 }: {
   seasons: Array<{ id: string; name: string }>;
   selectedSeason: { id: string; name: string } | null;
+  competitionOptions: Array<{ id: string; apiFootballId: number | null; nameHe: string | null; nameEn: string; type: 'LEAGUE' | 'CUP' | 'EUROPE' }>;
+  selectedCompetition: { id: string; apiFootballId: number | null; nameHe: string | null; nameEn: string; type: 'LEAGUE' | 'CUP' | 'EUROPE' } | null;
+  selectedCompetitionKind: 'LEAGUE' | 'CUP' | 'EUROPE';
   standings: Array<StandingWithDerived<DerivedStandingRow>>;
   teamsCount: number;
   completedLeagueGames: number;
@@ -402,9 +483,20 @@ function PremierStandingsView({
   isFallbackTable: boolean;
   selectedRound: string;
   roundOptions: string[];
+  competitionGames: LeagueGame[];
   snapshotGames: LeagueGame[];
   futureGames: LeagueGame[];
 }) {
+  const gamesByRound = Array.from(
+    competitionGames.reduce((map, game) => {
+      const round = normalizeRoundLabel(game.roundNameEn);
+      const bucket = map.get(round) || [];
+      bucket.push(game);
+      map.set(round, bucket);
+      return map;
+    }, new Map<string, LeagueGame[]>())
+  ).sort((left, right) => getRoundSortValue(left[0]) - getRoundSortValue(right[0]));
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#ffffff_0%,#eef3ff_42%,#e7ecfb_100%)] px-4 py-8 text-slate-950">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -421,7 +513,7 @@ function PremierStandingsView({
                 </p>
               </div>
 
-              <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]" action="/standings">
+              <form className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" action="/standings">
                 <input type="hidden" name="view" value="premier" />
                 <select
                   name="season"
@@ -431,6 +523,17 @@ function PremierStandingsView({
                   {seasons.map((season) => (
                     <option key={season.id} value={season.id} className="text-slate-950">
                       {season.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  name="competition"
+                  defaultValue={selectedCompetition?.id || ''}
+                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none backdrop-blur"
+                >
+                  {competitionOptions.map((competition) => (
+                    <option key={competition.id} value={competition.id} className="text-slate-950">
+                      {getCompetitionDisplayName(competition)}
                     </option>
                   ))}
                 </select>
@@ -452,8 +555,9 @@ function PremierStandingsView({
               </form>
             </div>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-4">
+            <div className="mt-6 grid gap-3 md:grid-cols-5">
               <PremierBadge label="עונה" value={selectedSeason?.name || '-'} />
+              <PremierBadge label="מסגרת" value={getCompetitionDisplayName(selectedCompetition || undefined)} />
               <PremierBadge label="חתך" value={selectedRound === 'current' ? 'נוכחי' : selectedRound} />
               <PremierBadge label="קבוצות" value={String(teamsCount)} />
               <PremierBadge label="משחקים שהושלמו" value={String(completedLeagueGames)} />
@@ -579,6 +683,45 @@ function PremierStandingsView({
             </div>
           ) : null}
         </section>
+
+        {selectedCompetitionKind !== 'LEAGUE' && gamesByRound.length > 0 ? (
+          <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_25px_60px_rgba(30,41,59,0.08)]">
+            <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f5f7ff)] px-6 py-5">
+              <h2 className="text-2xl font-black text-slate-950">שלבי המסגרת</h2>
+              <p className="mt-1 text-sm text-slate-500">תצוגה היררכית של המשחקים לפי שלב או מחזור במסגרת שנבחרה.</p>
+            </div>
+            <div className="grid gap-4 p-6 lg:grid-cols-2">
+              {gamesByRound.map(([round, games]) => (
+                <div key={round} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5">
+                  <div className="mb-4 text-lg font-black text-[#23003d]">{getRoundDisplayName(round, round)}</div>
+                  <div className="space-y-3">
+                    {games
+                      .sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime())
+                      .map((game) => (
+                        <Link
+                          key={game.id}
+                          href={`/games/${game.id}?view=premier`}
+                          className="block rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-[#5f00b8] hover:shadow-sm"
+                        >
+                          <div className="flex items-center justify-between gap-3 text-sm font-bold text-slate-500">
+                            <span>{game.dateTime.toLocaleDateString('he-IL')}</span>
+                            <span>{game.status === 'COMPLETED' ? 'הסתיים' : game.status === 'ONGOING' ? 'חי' : 'טרם שוחק'}</span>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <div className="text-right font-bold text-slate-900">{getDisplayTeamName(game.homeTeam)}</div>
+                            <div className="min-w-[84px] rounded-full bg-[#f3ecff] px-3 py-2 text-center text-sm font-black text-[#4d007b]">
+                              {game.homeScore !== null && game.awayScore !== null ? `${game.homeScore} - ${game.awayScore}` : '-'}
+                            </div>
+                            <div className="text-left font-bold text-slate-900">{getDisplayTeamName(game.awayTeam)}</div>
+                          </div>
+                        </Link>
+                      ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   );

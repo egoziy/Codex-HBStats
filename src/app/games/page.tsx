@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getCurrentUser } from '@/lib/auth';
 import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
@@ -30,6 +31,7 @@ export default async function GamesPage({
   };
 }) {
   const displayMode = await getDisplayMode(searchParams?.view);
+  const currentUser = await getCurrentUser();
   const seasons = await prisma.season.findMany({
     orderBy: { year: 'desc' },
     take: 10,
@@ -226,9 +228,17 @@ export default async function GamesPage({
 
                 <div className="border-t border-stone-200 bg-white px-5 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <Link href={`/games/${game.id}`} className="rounded-full bg-red-800 px-4 py-2 text-sm font-bold text-white">
+                    <Link href={`/games/${game.id}?view=${displayMode}`} className="rounded-full bg-red-800 px-4 py-2 text-sm font-bold text-white">
                       לעמוד המשחק המלא
                     </Link>
+                    {currentUser?.role === 'ADMIN' ? (
+                      <Link
+                        href={`/games/${game.id}?view=${displayMode}${displayMode === 'premier' ? '&tab=events' : ''}#admin-editor`}
+                        className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900"
+                      >
+                        עריכת אדמין
+                      </Link>
+                    ) : null}
                     <details className="group w-full md:w-auto">
                       <summary className="cursor-pointer list-none rounded-full border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 transition hover:border-red-300 hover:text-red-800">
                         פתח אירועים מרכזיים

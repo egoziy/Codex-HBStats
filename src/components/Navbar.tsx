@@ -9,7 +9,7 @@ import DisplayModeSwitch from '@/components/DisplayModeSwitch';
 
 type SearchResult = {
   id: string;
-  type: 'team' | 'player' | 'game';
+  type: 'team' | 'player' | 'game' | 'venue';
   label: string;
   href: string;
   subtitle?: string;
@@ -74,11 +74,13 @@ export default function Navbar({ initialDisplayMode }: { initialDisplayMode: Dis
   }, [query]);
 
   const visibleLinks = useMemo(() => {
+    const linksWithVenues = [...navLinks, { href: '/venues', label: 'אצטדיונים' }];
+
     if (viewer?.role === 'ADMIN') {
-      return navLinks;
+      return linksWithVenues;
     }
 
-    return navLinks.filter((link) => link.href !== '/admin');
+    return linksWithVenues.filter((link) => link.href !== '/admin');
   }, [viewer]);
 
   async function handleLogout() {

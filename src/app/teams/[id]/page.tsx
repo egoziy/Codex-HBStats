@@ -6,6 +6,8 @@ import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
 
+type TeamPremierTab = 'overview' | 'matches' | 'squad' | 'stats' | 'referees';
+
 function formatDate(date: Date, withTime = false) {
   return new Intl.DateTimeFormat('he-IL', {
     dateStyle: 'medium',
@@ -18,9 +20,10 @@ export default async function TeamPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { view?: string };
+  searchParams?: { view?: string; tab?: string };
 }) {
   const displayMode = await getDisplayMode(searchParams?.view);
+  const selectedTab = normalizeTeamPremierTab(searchParams?.tab);
   const team = await prisma.team.findUnique({
     where: { id: params.id },
     include: {
@@ -214,8 +217,32 @@ export default async function TeamPage({
               </div>
             </div>
           </div>
+          {displayMode === 'premier' ? (
+            <div className="border-t border-stone-200 bg-white px-6 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                {[
+                  { id: 'overview', label: 'סקירה' },
+                  { id: 'matches', label: 'משחקים' },
+                  { id: 'squad', label: 'סגל' },
+                  { id: 'stats', label: 'סטטיסטיקה' },
+                  { id: 'referees', label: 'שופטים' },
+                ].map((tab) => (
+                  <Link
+                    key={tab.id}
+                    href={`/teams/${team.id}?view=premier&tab=${tab.id}`}
+                    className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+                      selectedTab === tab.id ? 'bg-stone-900 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
 
+        {displayMode !== 'premier' || selectedTab === 'overview' ? (
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr_0.95fr]">
           <Panel title="המשחק הקרוב">
             {nextGame ? (
@@ -259,7 +286,9 @@ export default async function TeamPage({
             </div>
           </Panel>
         </section>
+        ) : null}
 
+        {displayMode !== 'premier' || selectedTab === 'overview' || selectedTab === 'matches' ? (
         <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
           <Panel title="מומנטום אחרון">
             <div className="flex flex-wrap gap-3">
@@ -319,7 +348,9 @@ export default async function TeamPage({
             </div>
           </Panel>
         </section>
+        ) : null}
 
+        {displayMode !== 'premier' || selectedTab === 'overview' || selectedTab === 'stats' ? (
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <Panel title="סיכום עונה">
             <div className="space-y-3 text-sm">
@@ -350,7 +381,9 @@ export default async function TeamPage({
             </div>
           </Panel>
         </section>
+        ) : null}
 
+        {displayMode !== 'premier' || selectedTab === 'overview' || selectedTab === 'squad' ? (
         <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
           <Panel title="המובילים של הקבוצה">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -403,7 +436,9 @@ export default async function TeamPage({
             </div>
           </Panel>
         </section>
+        ) : null}
 
+        {displayMode !== 'premier' || selectedTab === 'overview' || selectedTab === 'referees' || selectedTab === 'stats' ? (
         <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           <Panel title="שופטים מול הקבוצה">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -495,6 +530,7 @@ export default async function TeamPage({
             </div>
           </Panel>
         </section>
+        ) : null}
       </div>
     </div>
   );
@@ -741,4 +777,16 @@ function buildRefereeSummaries(
       pointsPerGame: summary.games ? summary.points / summary.games : 0,
     }))
     .slice(0, 8);
+}
+
+function normalizeTeamPremierTab(value: string | null | undefined): TeamPremierTab {
+  switch (value) {
+    case 'matches':
+    case 'squad':
+    case 'stats':
+    case 'referees':
+      return value;
+    default:
+      return 'overview';
+  }
 }

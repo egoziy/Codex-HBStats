@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getRequestUser } from '@/lib/auth';
 
+function normalizeOptionalJerseyNumber(value: unknown) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+
+  const normalized = typeof value === 'string' ? value.trim() : String(value);
+  if (!normalized) return null;
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const teamId = searchParams.get('teamId');
@@ -59,7 +70,7 @@ export async function POST(request: NextRequest) {
       data: {
         nameEn,
         nameHe,
-        jerseyNumber: jerseyNumber ? parseInt(jerseyNumber) : null,
+        jerseyNumber: normalizeOptionalJerseyNumber(jerseyNumber),
         teamId,
         position: position || null,
         photoUrl: photoUrl || null,
@@ -117,7 +128,7 @@ export async function PUT(request: NextRequest) {
         ...(nameHe !== undefined && { nameHe }),
         ...(firstNameHe !== undefined && { firstNameHe: firstNameHe || null }),
         ...(lastNameHe !== undefined && { lastNameHe: lastNameHe || null }),
-        ...(jerseyNumber !== undefined && { jerseyNumber: jerseyNumber ? parseInt(jerseyNumber) : null }),
+        ...(jerseyNumber !== undefined && { jerseyNumber: normalizeOptionalJerseyNumber(jerseyNumber) }),
         ...(position !== undefined && { position: position || null }),
         ...(photoUrl !== undefined && { photoUrl: photoUrl || null }),
         ...(notesHe !== undefined && {

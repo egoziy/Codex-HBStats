@@ -433,6 +433,18 @@ export default async function AdminPage({
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-8">
       <div className="mx-auto max-w-6xl space-y-6">
+        <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
+          <h2 className="text-2xl font-black text-stone-900">קיצורי עריכה</h2>
+          <p className="mt-2 text-sm text-stone-600">גישה מהירה למסכי עריכה פשוטים יותר, בנוסף לעורכים המלאים.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link href={`/admin/quick-edit?season=${selectedSeason?.id || ''}`} className="rounded-full bg-stone-900 px-5 py-3 text-sm font-bold text-white">
+              עריכה מהירה לשחקנים ואירועים
+            </Link>
+            <Link href={`/admin/games?season=${selectedSeason?.id || ''}`} className="rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700">
+              עורך משחקים מלא
+            </Link>
+          </div>
+        </section>
         <AdminPlayerDisplaySettingsClient initialDisplayZeroStatPlayers={displayZeroStatPlayers} />
         <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
         <AdminManagerClient
