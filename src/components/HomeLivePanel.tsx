@@ -1,8 +1,111 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { HomepageLiveSnapshot } from '@/lib/home-live';
+
+type LiveGroup = {
+  id: string;
+  countryLabel: string;
+  countryFlagUrl: string | null;
+  leagueLabel: string;
+  items: HomepageLiveSnapshot[];
+  isIsraeliPriority: boolean;
+};
+
+const israeliCompetitionKeywords = ['israel', 'ligat ha', 'toto cup', 'state cup', 'winner cup'];
+
+const israeliTeamKeywords = [
+  'hapoel',
+  'maccabi',
+  'beitar',
+  'bnei',
+  'ironi',
+  'ashdod',
+  'sakhnin',
+  'beer sheva',
+  'jerusalem',
+  'tel aviv',
+  'haifa',
+  'netanya',
+  'petah tikva',
+];
+
+function normalizeText(value: string | null | undefined) {
+  return (value || '').toLowerCase();
+}
+
+function includesAnyKeyword(value: string, keywords: string[]) {
+  return keywords.some((keyword) => value.includes(keyword));
+}
+
+function formatLiveRoundLabel(value: string) {
+  const normalized = value.trim();
+  const regularSeasonMatch = normalized.match(/^Regular Season\s*-\s*(\d+)$/i);
+  if (regularSeasonMatch) {
+    return `מחזור ${regularSeasonMatch[1]}`;
+  }
+
+  if (/^Regular Season$/i.test(normalized)) {
+    return 'מחזור';
+  }
+
+  return value;
+}
+
+function isIsraeliPriorityItem(item: HomepageLiveSnapshot) {
+  const country = normalizeText(item.countryLabel);
+  const league = normalizeText(item.leagueLabel);
+  const teams = normalizeText(`${item.homeTeamName} ${item.awayTeamName}`);
+
+  if (country.includes('israel')) {
+    return true;
+  }
+
+  if (includesAnyKeyword(league, israeliCompetitionKeywords)) {
+    return true;
+  }
+
+  return includesAnyKeyword(teams, israeliTeamKeywords);
+}
+
+function buildGroups(items: HomepageLiveSnapshot[]) {
+  const groups = new Map<string, LiveGroup>();
+
+  for (const item of items) {
+    const key = `${item.countryLabel}__${item.leagueLabel}`;
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.items.push(item);
+      existing.isIsraeliPriority = existing.isIsraeliPriority || isIsraeliPriorityItem(item);
+      continue;
+    }
+
+    groups.set(key, {
+      id: key,
+      countryLabel: item.countryLabel,
+      countryFlagUrl: item.countryFlagUrl,
+      leagueLabel: item.leagueLabel,
+      items: [item],
+      isIsraeliPriority: isIsraeliPriorityItem(item),
+    });
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      items: [...group.items].sort((a, b) => (a.fixtureId ?? 0) - (b.fixtureId ?? 0)),
+    }))
+    .sort((a, b) => {
+      if (a.isIsraeliPriority !== b.isIsraeliPriority) {
+        return a.isIsraeliPriority ? -1 : 1;
+      }
+
+      const countryCompare = a.countryLabel.localeCompare(b.countryLabel, 'he');
+      if (countryCompare !== 0) return countryCompare;
+      return a.leagueLabel.localeCompare(b.leagueLabel, 'he');
+    });
+}
 
 export default function HomeLivePanel({
   initialItems,
@@ -14,6 +117,7 @@ export default function HomeLivePanel({
   limit?: number;
 }) {
   const [items, setItems] = useState(initialItems);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(initialItems[0]?.id || null);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,52 +151,79 @@ export default function HomeLivePanel({
     };
   }, [selectedTeamId, limit]);
 
+  const groups = useMemo(() => buildGroups(items), [items]);
+
   return (
-    <div className="grid gap-2.5">
-      {items.map((item) => (
-        <article
-          key={item.id}
-          className="rounded-[18px] border border-stone-200 bg-stone-50 p-3 transition hover:border-red-400 hover:bg-white"
-        >
-          <Link href={item.gameHref} className="block">
-            <div className="flex items-center justify-between gap-3">
-              <div className="inline-flex min-w-0 items-center gap-2 text-[11px] font-semibold text-stone-500">
-                {item.countryFlagUrl ? (
-                  <img
-                    src={item.countryFlagUrl}
-                    alt={item.countryLabel}
-                    className="h-3.5 w-5 rounded-sm object-cover"
-                  />
-                ) : null}
-                <span className="truncate">{item.countryLabel}</span>
-                <span className="text-stone-300">•</span>
-                <span className="truncate">{item.leagueLabel}</span>
-              </div>
-              <span className="shrink-0 rounded-full bg-red-700 px-2.5 py-1 text-[11px] font-black text-white">
-                {item.minuteLabel}
-              </span>
-            </div>
-
-            <div className="mt-2 rounded-2xl bg-white px-3 py-2">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                <div className="truncate text-right text-[14px] font-black leading-5 text-stone-900">
-                  {item.homeTeamName}
-                </div>
-                <div className="text-[14px] font-black leading-5 text-stone-900">{item.scoreLabel}</div>
-                <div className="truncate text-left text-[14px] font-black leading-5 text-stone-900">
-                  {item.awayTeamName}
-                </div>
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <section key={group.id} className="overflow-hidden rounded-[22px] border border-stone-200 bg-stone-50">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 bg-white px-4 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {group.countryFlagUrl ? (
+                <img src={group.countryFlagUrl} alt={group.countryLabel} className="h-5 w-7 rounded-sm object-cover" />
+              ) : null}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black text-stone-900">{group.leagueLabel}</div>
+                <div className="truncate text-xs font-semibold text-stone-500">{group.countryLabel}</div>
               </div>
             </div>
+            <div className="rounded-full bg-red-100 px-3 py-1 text-[11px] font-bold text-red-900">{group.items.length} משחקים</div>
+          </div>
 
-            <div className="mt-1.5 text-[11px] text-stone-500">{item.roundLabel}</div>
-          </Link>
+          <div className="divide-y divide-stone-200">
+            {group.items.map((item) => {
+              const expanded = expandedItemId === item.id;
 
-          <LiveEventsDetails item={item} />
-        </article>
+              return (
+                <div key={item.id} className="bg-white">
+                  <div
+                    className="cursor-pointer px-4 py-3 transition hover:bg-red-50"
+                    onClick={() => setExpandedItemId((current) => (current === item.id ? null : item.id))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setExpandedItemId((current) => (current === item.id ? null : item.id));
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-expanded={expanded}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black leading-5 text-stone-900">
+                          {item.homeTeamName} - {item.awayTeamName}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
+                          <span>{formatLiveRoundLabel(item.roundLabel)}</span>
+                          <span className="rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-800">
+                            {expanded ? 'הסתר אירועים' : `${item.eventCount} אירועים`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="inline-flex rounded-full bg-red-700 px-2.5 py-1 text-[11px] font-black text-white">
+                          {item.minuteLabel}
+                        </span>
+                        <span className="min-w-[3.5rem] text-right text-lg font-black text-stone-900">{item.scoreLabel}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {expanded ? (
+                    <div className="border-t border-stone-200 bg-stone-50 px-4 py-4">
+                      <LiveEventsPanel item={item} />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       ))}
 
-      {items.length === 0 ? (
+      {groups.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-5 text-center text-sm text-stone-500">
           נכון לעכשיו אין משחקים בלייב
         </div>
@@ -101,40 +232,37 @@ export default function HomeLivePanel({
   );
 }
 
-function LiveEventsDetails({ item }: { item: HomepageLiveSnapshot }) {
+function LiveEventsPanel({ item }: { item: HomepageLiveSnapshot }) {
   if (!item.events.length) {
-    return <div className="mt-2 text-[11px] text-stone-500">0 אירועים</div>;
+    return <div className="text-sm text-stone-500">אין כרגע אירועים שמורים למשחק הזה.</div>;
   }
 
   return (
-    <details className="mt-2 rounded-2xl border border-stone-200 bg-white p-2.5">
-      <summary className="cursor-pointer list-none text-[11px] font-bold text-red-800 marker:hidden">
-        {`הצג ${item.events.length} אירועים`}
-      </summary>
-      <div className="mt-2 grid gap-2">
-        {item.events.map((event) => (
-          <div key={event.id} className="rounded-2xl bg-stone-50 px-3 py-2">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
+    <div className="grid gap-2 md:grid-cols-2">
+      {item.events.map((event) => (
+        <div key={event.id} className="rounded-2xl border border-stone-200 bg-white px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {event.iconPath ? (
+                <img src={event.iconPath} alt={event.typeLabel} className="h-10 w-10 rounded-2xl object-contain shadow-sm" />
+              ) : (
                 <span
-                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black ${event.iconClassName}`}
+                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-black ${event.iconClassName}`}
                 >
                   {event.iconLabel}
                 </span>
-                <div>
-                  <div className="text-[11px] font-black text-stone-900">{event.typeLabel}</div>
-                  <div className="text-[10px] text-stone-500">{event.teamName}</div>
-                </div>
+              )}
+              <div>
+                <div className="text-xs font-black text-stone-900">{event.typeLabel}</div>
+                <div className="text-[11px] text-stone-500">{event.teamName}</div>
               </div>
-              <span className="text-[10px] font-bold text-stone-500">{event.minuteLabel}</span>
             </div>
-            <div className="mt-1.5 text-xs font-semibold text-stone-800">{event.primaryText}</div>
-            {event.secondaryText ? (
-              <div className="mt-0.5 text-[11px] text-stone-500">{event.secondaryText}</div>
-            ) : null}
+            <span className="text-[11px] font-bold text-stone-500">{event.minuteLabel}</span>
           </div>
-        ))}
-      </div>
-    </details>
+          <div className="mt-2 text-sm font-semibold text-stone-800">{event.primaryText}</div>
+          {event.secondaryText ? <div className="mt-1 text-[11px] text-stone-500">{event.secondaryText}</div> : null}
+        </div>
+      ))}
+    </div>
   );
 }

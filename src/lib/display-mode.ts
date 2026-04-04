@@ -5,7 +5,7 @@ export const DISPLAY_MODE_COOKIE = 'display_mode';
 export type DisplayMode = 'classic' | 'premier';
 
 export function normalizeDisplayMode(value: string | null | undefined): DisplayMode {
-  return value === 'premier' ? 'premier' : 'classic';
+  return 'premier';
 }
 
 export async function getDisplayMode(preferredValue?: string | null): Promise<DisplayMode> {
@@ -14,5 +14,6 @@ export async function getDisplayMode(preferredValue?: string | null): Promise<Di
   }
 
   const cookieStore = await cookies();
-  return normalizeDisplayMode(cookieStore.get(DISPLAY_MODE_COOKIE)?.value);
+  void cookieStore.get(DISPLAY_MODE_COOKIE)?.value;
+  return 'premier';
 }

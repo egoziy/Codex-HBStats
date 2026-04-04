@@ -125,8 +125,8 @@ export async function storeUploadedImage({
   label,
 }: {
   file: File;
-  entityType: 'teams' | 'players';
-  seasonYear: number;
+  entityType: 'teams' | 'players' | 'venues';
+  seasonYear?: number | null;
   folderName: string;
   entityId: string;
   label: string;
@@ -135,9 +135,16 @@ export async function storeUploadedImage({
   const buffer = Buffer.from(arrayBuffer);
   const ext = extensionFromUrl(file.name) || extensionFromContentType(file.type);
   const safeName = `${Date.now()}-${slugify(label || file.name || entityId)}${ext}`;
+  const relativePath =
+    entityType === 'venues'
+      ? path.join('uploads', entityType, slugify(folderName || entityId), `${entityId}-${safeName}`)
+      : path.join(
+          'uploads',
+          entityType,
+          String(seasonYear || 'shared'),
+          slugify(folderName || entityId),
+          `${entityId}-${safeName}`
+        );
 
-  return saveBufferFile(
-    buffer,
-    path.join('uploads', entityType, String(seasonYear), slugify(folderName || entityId), `${entityId}-${safeName}`)
-  );
+  return saveBufferFile(buffer, relativePath);
 }

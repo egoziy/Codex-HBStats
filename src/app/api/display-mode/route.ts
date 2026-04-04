@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { DISPLAY_MODE_COOKIE, normalizeDisplayMode } from '@/lib/display-mode';
+import { DISPLAY_MODE_COOKIE } from '@/lib/display-mode';
 
 export async function POST(request: NextRequest) {
-  const payload = await request.json().catch(() => ({}));
-  const mode = normalizeDisplayMode(payload?.mode);
+  await request.json().catch(() => ({}));
+  const mode = 'premier';
 
   const response = NextResponse.json({ success: true, mode });
   response.cookies.set(DISPLAY_MODE_COOKIE, mode, {

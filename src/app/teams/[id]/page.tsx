@@ -47,6 +47,7 @@ export default async function TeamPage({
       uploads: {
         orderBy: [{ createdAt: 'asc' }],
       },
+      venue: true,
       season: true,
     },
   });
@@ -203,6 +204,8 @@ export default async function TeamPage({
                   <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
                     <span className="rounded-full bg-white/10 px-3 py-1.5">עונה: {team.season.name}</span>
                     <span className="rounded-full bg-white/10 px-3 py-1.5">מאמן: {team.coachHe || team.coach || 'לא הוזן'}</span>
+                    <span className="rounded-full bg-white/10 px-3 py-1.5">אצטדיון: {team.venue?.nameHe || team.stadiumHe || team.venue?.nameEn || 'לא הוזן'}</span>
+                    <span className="rounded-full bg-white/10 px-3 py-1.5">עיר: {team.venue?.cityHe || team.cityHe || team.venue?.cityEn || 'לא הוזנה'}</span>
                     <span className="rounded-full bg-white/10 px-3 py-1.5">מיקום: {standing?.displayPosition ?? '-'}</span>
                     <span className="rounded-full bg-white/10 px-3 py-1.5">נקודות: {standing?.adjustedPoints ?? seasonTeamStat?.points ?? 0}</span>
                   </div>

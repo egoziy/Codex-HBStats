@@ -1,10 +1,12 @@
 import prisma from '@/lib/prisma';
 import { apiFootballFetch, isApiFootballRateLimitError } from '@/lib/api-football';
+import { getAllowedLiveCountryLabels } from '@/lib/live-competition-settings';
 
 export type HomepageLiveEvent = {
   id: string;
   minuteLabel: string;
   typeLabel: string;
+  iconPath: string | null;
   iconLabel: string;
   iconClassName: string;
   teamName: string;
@@ -15,6 +17,9 @@ export type HomepageLiveEvent = {
 export type HomepageLiveSnapshot = {
   id: string;
   fixtureId: number | null;
+  leagueApiFootballId: number | null;
+  homeTeamApiFootballId: number | null;
+  awayTeamApiFootballId: number | null;
   countryLabel: string;
   countryFlagUrl: string | null;
   leagueLabel: string;
@@ -44,7 +49,37 @@ const LIVE_TRANSLATIONS: Record<string, string> = {
 
 function translateLiveText(value: string | null | undefined) {
   if (!value) return '';
+  if (value === 'Israel') return 'ישראל';
+  if (value === 'Liga Leumit') return 'ליגה לאומית';
+  if (value === "Ligat Ha'al" || value === "Lןigat Ha'al") return 'ליגת העל';
+  if (value === 'State Cup') return 'גביע המדינה';
+  if (value === 'Super Cup') return 'אלוף האלופים';
+  if (value === 'Toto Cup Ligat Al') return 'גביע הטוטו';
+  if (value === 'Regular Season') return 'מחזור';
   return LIVE_TRANSLATIONS[value] || value;
+}
+
+function getLiveEventIconPath(eventType: string | null | undefined, detail: string | null | undefined) {
+  const normalizedType = (eventType || '').toLowerCase();
+  const normalizedDetail = (detail || '').toLowerCase();
+
+  if (normalizedType === 'goal') {
+    return '/Icons/event-goal-nav-96.png';
+  }
+
+  if (normalizedType === 'card') {
+    return normalizedDetail === 'red card' ? '/Icons/event-red-card-nav-96.png' : '/Icons/event-yellow-card-nav-96.png';
+  }
+
+  if (normalizedType === 'subst') {
+    return '/Icons/event-sub-in-nav-96.png';
+  }
+
+  if (normalizedType.includes('injur') || normalizedDetail.includes('injur')) {
+    return '/Icons/event-injury-nav-96.png';
+  }
+
+  return null;
 }
 
 function formatLiveMinute(
@@ -81,6 +116,7 @@ function normalizeLiveEvents(rawJson: any): HomepageLiveEvent[] {
         id: `${event?.time?.elapsed || 'e'}-${index}`,
         minuteLabel,
         typeLabel: detail === 'Penalty' ? 'פנדל' : detail === 'Own Goal' ? 'שער עצמי' : 'שער',
+        iconPath: getLiveEventIconPath(event?.type, detail),
         iconLabel: 'ש',
         iconClassName: 'bg-emerald-100 text-emerald-800',
         teamName,
@@ -95,6 +131,7 @@ function normalizeLiveEvents(rawJson: any): HomepageLiveEvent[] {
         id: `${event?.time?.elapsed || 'e'}-${index}`,
         minuteLabel,
         typeLabel: isRed ? 'כרטיס אדום' : 'כרטיס צהוב',
+        iconPath: getLiveEventIconPath(event?.type, detail),
         iconLabel: isRed ? 'א' : 'צ',
         iconClassName: isRed ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800',
         teamName,
@@ -108,6 +145,7 @@ function normalizeLiveEvents(rawJson: any): HomepageLiveEvent[] {
         id: `${event?.time?.elapsed || 'e'}-${index}`,
         minuteLabel,
         typeLabel: 'חילוף',
+        iconPath: getLiveEventIconPath(event?.type, detail),
         iconLabel: 'ח',
         iconClassName: 'bg-sky-100 text-sky-800',
         teamName,
@@ -120,6 +158,7 @@ function normalizeLiveEvents(rawJson: any): HomepageLiveEvent[] {
       id: `${event?.time?.elapsed || 'e'}-${index}`,
       minuteLabel,
       typeLabel: translateLiveText(event?.type) || event?.type || 'אירוע',
+      iconPath: getLiveEventIconPath(event?.type, detail),
       iconLabel: '•',
       iconClassName: 'bg-stone-100 text-stone-700',
       teamName,
@@ -147,6 +186,13 @@ export async function cleanupFutureSeasons() {
 export async function refreshGlobalHomepageLiveSnapshots() {
   const liveRows = await apiFootballFetch('/fixtures?live=all');
   const fixtureIds = liveRows.map((row: any) => row?.fixture?.id).filter((id: unknown): id is number => typeof id === 'number');
+  const teamApiIds = Array.from(
+    new Set(
+      liveRows
+        .flatMap((row: any) => [row?.teams?.home?.id, row?.teams?.away?.id])
+        .filter((id: unknown): id is number => typeof id === 'number')
+    )
+  );
 
   const localGames = fixtureIds.length
     ? await prisma.game.findMany({
@@ -162,11 +208,52 @@ export async function refreshGlobalHomepageLiveSnapshots() {
           competitionId: true,
           homeTeamId: true,
           awayTeamId: true,
+          homeTeam: {
+            select: {
+              nameHe: true,
+              nameEn: true,
+            },
+          },
+          awayTeam: {
+            select: {
+              nameHe: true,
+              nameEn: true,
+            },
+          },
         },
       })
     : [];
 
+  const localTeams = teamApiIds.length
+    ? await prisma.team.findMany({
+        where: {
+          apiFootballId: {
+            in: teamApiIds,
+          },
+        },
+        select: {
+          apiFootballId: true,
+          nameHe: true,
+          nameEn: true,
+          season: {
+            select: {
+              year: true,
+            },
+          },
+        },
+        orderBy: [{ season: { year: 'desc' } }],
+      })
+    : [];
+
   const localGameMap = new Map(localGames.map((game) => [game.apiFootballId, game]));
+  const localTeamMap = new Map<number, (typeof localTeams)[number]>();
+
+  for (const team of localTeams) {
+    if (typeof team.apiFootballId !== 'number') continue;
+    if (!localTeamMap.has(team.apiFootballId)) {
+      localTeamMap.set(team.apiFootballId, team);
+    }
+  }
 
   if (fixtureIds.length) {
     await prisma.liveGameSnapshot.deleteMany({
@@ -190,6 +277,14 @@ export async function refreshGlobalHomepageLiveSnapshots() {
     if (typeof fixtureId !== 'number') continue;
 
     const localGame = localGameMap.get(fixtureId);
+    const localHomeTeam = localGame?.homeTeam || localTeamMap.get(row?.teams?.home?.id);
+    const localAwayTeam = localGame?.awayTeam || localTeamMap.get(row?.teams?.away?.id);
+    const resolvedHomeTeamNameHe =
+      localHomeTeam?.nameHe || translateLiveText(row?.teams?.home?.name) || row?.teams?.home?.name || null;
+    const resolvedHomeTeamNameEn = localHomeTeam?.nameEn || row?.teams?.home?.name || null;
+    const resolvedAwayTeamNameHe =
+      localAwayTeam?.nameHe || translateLiveText(row?.teams?.away?.name) || row?.teams?.away?.name || null;
+    const resolvedAwayTeamNameEn = localAwayTeam?.nameEn || row?.teams?.away?.name || null;
 
     await prisma.liveGameSnapshot.upsert({
       where: {
@@ -213,11 +308,11 @@ export async function refreshGlobalHomepageLiveSnapshots() {
         snapshotAt: new Date(),
         fixtureDate: row?.fixture?.date ? new Date(row.fixture.date) : null,
         homeTeamApiFootballId: row?.teams?.home?.id || null,
-        homeTeamNameEn: row?.teams?.home?.name || null,
-        homeTeamNameHe: translateLiveText(row?.teams?.home?.name) || row?.teams?.home?.name || null,
+        homeTeamNameEn: resolvedHomeTeamNameEn,
+        homeTeamNameHe: resolvedHomeTeamNameHe,
         awayTeamApiFootballId: row?.teams?.away?.id || null,
-        awayTeamNameEn: row?.teams?.away?.name || null,
-        awayTeamNameHe: translateLiveText(row?.teams?.away?.name) || row?.teams?.away?.name || null,
+        awayTeamNameEn: resolvedAwayTeamNameEn,
+        awayTeamNameHe: resolvedAwayTeamNameHe,
         homeScore: row?.goals?.home ?? null,
         awayScore: row?.goals?.away ?? null,
         eventCount: Array.isArray(row?.events) ? row.events.length : 0,
@@ -239,11 +334,11 @@ export async function refreshGlobalHomepageLiveSnapshots() {
         snapshotAt: new Date(),
         fixtureDate: row?.fixture?.date ? new Date(row.fixture.date) : null,
         homeTeamApiFootballId: row?.teams?.home?.id || null,
-        homeTeamNameEn: row?.teams?.home?.name || null,
-        homeTeamNameHe: translateLiveText(row?.teams?.home?.name) || row?.teams?.home?.name || null,
+        homeTeamNameEn: resolvedHomeTeamNameEn,
+        homeTeamNameHe: resolvedHomeTeamNameHe,
         awayTeamApiFootballId: row?.teams?.away?.id || null,
-        awayTeamNameEn: row?.teams?.away?.name || null,
-        awayTeamNameHe: translateLiveText(row?.teams?.away?.name) || row?.teams?.away?.name || null,
+        awayTeamNameEn: resolvedAwayTeamNameEn,
+        awayTeamNameHe: resolvedAwayTeamNameHe,
         homeScore: row?.goals?.home ?? null,
         awayScore: row?.goals?.away ?? null,
         eventCount: Array.isArray(row?.events) ? row.events.length : 0,
@@ -264,6 +359,9 @@ function mapSnapshotToHomepage(snapshot: any): HomepageLiveSnapshot {
   return {
     id: snapshot.id,
     fixtureId: snapshot.apiFootballFixtureId ?? null,
+    leagueApiFootballId: snapshot.leagueApiFootballId ?? null,
+    homeTeamApiFootballId: snapshot.homeTeamApiFootballId ?? null,
+    awayTeamApiFootballId: snapshot.awayTeamApiFootballId ?? null,
     countryLabel,
     countryFlagUrl: rawLeague.flag || null,
     leagueLabel: translateLiveText(snapshot.leagueNameHe || snapshot.leagueNameEn) || 'ליגה',
@@ -279,8 +377,92 @@ function mapSnapshotToHomepage(snapshot: any): HomepageLiveSnapshot {
   };
 }
 
-function sortLiveSnapshots<T extends { countryLabel: string; leagueLabel: string }>(snapshots: T[]) {
+const ISRAELI_LEAGUE_IDS = new Set([383, 385, 1114, 1115]);
+const ISRAELI_TEAM_IDS = new Set([563, 604, 657, 2253, 4195, 4481, 4492, 4495, 4499, 4500, 4507, 4510, 8670, 8681]);
+const ISRAELI_KEYWORDS = [
+  'israel',
+  'ligat ha',
+  'toto cup',
+  'state cup',
+  'winner cup',
+  'hapoel',
+  'maccabi',
+  'beitar',
+  'bnei',
+  'ironi',
+  'beer sheva',
+  'jerusalem',
+  'tel aviv',
+  'haifa',
+  'netanya',
+  'petah tikva',
+  'sakhnin',
+  'ashdod',
+  'kiryat',
+  'katamon',
+  'kfar saba',
+  'nazareth',
+];
+
+function normalizeLiveSortText(value: string | null | undefined) {
+  return String(value || '').toLowerCase();
+}
+
+function includesIsraeliKeyword(value: string) {
+  return ISRAELI_KEYWORDS.some((keyword) => value.includes(keyword));
+}
+
+function isIsraeliLiveSnapshot(snapshot: {
+  countryLabel: string;
+  leagueLabel: string;
+  homeTeamName: string;
+  awayTeamName: string;
+  leagueApiFootballId?: number | null;
+  homeTeamApiFootballId?: number | null;
+  awayTeamApiFootballId?: number | null;
+}) {
+  if (snapshot.leagueApiFootballId && ISRAELI_LEAGUE_IDS.has(snapshot.leagueApiFootballId)) {
+    return true;
+  }
+
+  if (snapshot.homeTeamApiFootballId && ISRAELI_TEAM_IDS.has(snapshot.homeTeamApiFootballId)) {
+    return true;
+  }
+
+  if (snapshot.awayTeamApiFootballId && ISRAELI_TEAM_IDS.has(snapshot.awayTeamApiFootballId)) {
+    return true;
+  }
+
+  const country = normalizeLiveSortText(snapshot.countryLabel);
+  const league = normalizeLiveSortText(snapshot.leagueLabel);
+  const teams = normalizeLiveSortText(`${snapshot.homeTeamName} ${snapshot.awayTeamName}`);
+
+  if (country.includes('israel')) {
+    return true;
+  }
+
+  return includesIsraeliKeyword(league) || includesIsraeliKeyword(teams);
+}
+
+function sortLiveSnapshots<
+  T extends {
+    countryLabel: string;
+    leagueLabel: string;
+    homeTeamName: string;
+    awayTeamName: string;
+    leagueApiFootballId?: number | null;
+    homeTeamApiFootballId?: number | null;
+    awayTeamApiFootballId?: number | null;
+  },
+>(snapshots: T[]) {
   return [...snapshots].sort((a, b) => {
+    const aIsraeli = isIsraeliLiveSnapshot(a);
+    const bIsraeli = isIsraeliLiveSnapshot(b);
+
+    if (aIsraeli !== bIsraeli) {
+      return aIsraeli ? -1 : 1;
+    }
+
     const countryCompare = a.countryLabel.localeCompare(b.countryLabel, 'he');
     if (countryCompare !== 0) return countryCompare;
     return a.leagueLabel.localeCompare(b.leagueLabel, 'he');
@@ -294,14 +476,17 @@ export async function getHomepageLiveSnapshots(
   }
 ) {
   const limit = options?.limit ?? 4;
-  const latestSeason = await prisma.season.findFirst({
-    where: {
-      year: {
-        lte: getCurrentSeasonStartYear(),
+  const [latestSeason, allowedCountryLabels] = await Promise.all([
+    prisma.season.findFirst({
+      where: {
+        year: {
+          lte: getCurrentSeasonStartYear(),
+        },
       },
-    },
-    orderBy: { year: 'desc' },
-  });
+      orderBy: { year: 'desc' },
+    }),
+    getAllowedLiveCountryLabels(),
+  ]);
 
   const latestGlobalSnapshot = await prisma.liveGameSnapshot.findFirst({
     where: { feedScope: 'GLOBAL_HOMEPAGE' },
@@ -346,6 +531,11 @@ export async function getHomepageLiveSnapshots(
   });
 
   const filteredGlobalSnapshots = globalSnapshots.filter((snapshot) => {
+    const snapshotCountry =
+      snapshot.rawJson && typeof snapshot.rawJson === 'object' ? String((snapshot.rawJson as any)?.league?.country || '').trim() : '';
+    if (Array.isArray(allowedCountryLabels) && !allowedCountryLabels.includes(snapshotCountry)) {
+      return false;
+    }
     if (!selectedTeam) return true;
     if (snapshot.game) {
       return snapshot.game.homeTeamId === selectedTeam.id || snapshot.game.awayTeamId === selectedTeam.id;
@@ -361,14 +551,6 @@ export async function getHomepageLiveSnapshots(
             where: {
               seasonId: latestSeason.id,
               feedScope: 'LOCAL',
-              ...(selectedTeam
-                ? {
-                    OR: [
-                      { game: { homeTeamId: selectedTeam.id } },
-                      { game: { awayTeamId: selectedTeam.id } },
-                    ],
-                  }
-                : {}),
             },
             include: {
               game: {
@@ -384,5 +566,79 @@ export async function getHomepageLiveSnapshots(
           })
         : [];
 
-  return sortLiveSnapshots(sourceSnapshots.map(mapSnapshotToHomepage)).slice(0, limit);
+  const countryFilteredSnapshots = Array.isArray(allowedCountryLabels)
+    ? sourceSnapshots.filter((snapshot) => {
+        const snapshotCountry =
+          snapshot.rawJson && typeof snapshot.rawJson === 'object' ? String((snapshot.rawJson as any)?.league?.country || '').trim() : '';
+        return allowedCountryLabels.includes(snapshotCountry);
+      })
+    : sourceSnapshots;
+
+  const filteredSourceSnapshots = selectedTeam
+    ? countryFilteredSnapshots.filter((snapshot) => {
+        if (snapshot.game) {
+          return snapshot.game.homeTeamId === selectedTeam.id || snapshot.game.awayTeamId === selectedTeam.id;
+        }
+        return snapshot.homeTeamApiFootballId === selectedTeam.apiFootballId || snapshot.awayTeamApiFootballId === selectedTeam.apiFootballId;
+      })
+    : countryFilteredSnapshots;
+
+  const teamApiIds = Array.from(
+    new Set(
+      filteredSourceSnapshots
+        .flatMap((snapshot) => [snapshot.homeTeamApiFootballId, snapshot.awayTeamApiFootballId])
+        .filter((id: unknown): id is number => typeof id === 'number')
+    )
+  );
+
+  const localTeams = teamApiIds.length
+    ? await prisma.team.findMany({
+        where: {
+          apiFootballId: {
+            in: teamApiIds,
+          },
+        },
+        select: {
+          apiFootballId: true,
+          nameHe: true,
+          nameEn: true,
+          season: {
+            select: {
+              year: true,
+            },
+          },
+        },
+        orderBy: [{ season: { year: 'desc' } }],
+      })
+    : [];
+
+  const localTeamMap = new Map<number, (typeof localTeams)[number]>();
+
+  for (const team of localTeams) {
+    if (typeof team.apiFootballId !== 'number') continue;
+    if (!localTeamMap.has(team.apiFootballId)) {
+      localTeamMap.set(team.apiFootballId, team);
+    }
+  }
+
+  const normalizedSnapshots = filteredSourceSnapshots.map((snapshot) => {
+    const localHomeTeam =
+      typeof snapshot.homeTeamApiFootballId === 'number'
+        ? localTeamMap.get(snapshot.homeTeamApiFootballId)
+        : null;
+    const localAwayTeam =
+      typeof snapshot.awayTeamApiFootballId === 'number'
+        ? localTeamMap.get(snapshot.awayTeamApiFootballId)
+        : null;
+
+    return {
+      ...snapshot,
+      homeTeamNameHe: localHomeTeam?.nameHe || snapshot.homeTeamNameHe,
+      homeTeamNameEn: localHomeTeam?.nameEn || snapshot.homeTeamNameEn,
+      awayTeamNameHe: localAwayTeam?.nameHe || snapshot.awayTeamNameHe,
+      awayTeamNameEn: localAwayTeam?.nameEn || snapshot.awayTeamNameEn,
+    };
+  });
+
+  return sortLiveSnapshots(normalizedSnapshots.map(mapSnapshotToHomepage)).slice(0, limit);
 }

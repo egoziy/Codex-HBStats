@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SmartFilterForm from '@/components/SmartFilterForm';
 import { derivePlayerDeepStats } from '@/lib/deep-stats';
 import { getDisplayMode } from '@/lib/display-mode';
 import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
@@ -6,6 +7,41 @@ import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
+
+function buildPlayersFilterFields({
+  displayMode,
+  seasons,
+  allTeams,
+}: {
+  displayMode: string;
+  seasons: Array<{ id: string; name: string }>;
+  allTeams: Array<{ id: string; seasonId: string; nameHe: string | null; nameEn: string }>;
+}) {
+  return [
+    {
+      name: 'season',
+      options: seasons.map((season) => ({ value: season.id, label: season.name })),
+      className:
+        displayMode === 'premier'
+          ? 'rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none'
+          : 'rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold',
+    },
+    {
+      name: 'teamId',
+      includeAllOption: true,
+      allLabel: 'כל הקבוצות',
+      options: allTeams.map((team) => ({
+        value: team.id,
+        label: team.nameHe || team.nameEn,
+        meta: { season: [team.seasonId] },
+      })),
+      className:
+        displayMode === 'premier'
+          ? 'rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none'
+          : 'rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold',
+    },
+  ];
+}
 
 export default async function PlayersPage({
   searchParams,
@@ -17,6 +53,14 @@ export default async function PlayersPage({
     orderBy: { year: 'desc' },
     take: 10,
   });
+  const seasonIds = seasons.map((season) => season.id);
+  const allTeams = seasonIds.length
+    ? await prisma.team.findMany({
+        where: { seasonId: { in: seasonIds } },
+        select: { id: true, seasonId: true, nameHe: true, nameEn: true },
+        orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+      })
+    : [];
 
   const selectedSeasonId = searchParams?.season || seasons.find((season) => season.year <= 2025)?.id || seasons[0]?.id;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
@@ -30,6 +74,11 @@ export default async function PlayersPage({
     : [];
 
   const selectedTeamId = searchParams?.teamId || 'all';
+  const playersFilterFields = buildPlayersFilterFields({
+    displayMode,
+    seasons,
+    allTeams,
+  });
 
   const players = selectedSeason
     ? await prisma.player.findMany({
@@ -186,6 +235,7 @@ export default async function PlayersPage({
         selectedSeason={selectedSeason}
         selectedSeasonId={selectedSeasonId || ''}
         teams={teams}
+        allTeams={allTeams}
         selectedTeamId={selectedTeamId}
         visiblePlayers={visiblePlayers}
         mainPlayers={mainPlayers}
@@ -204,7 +254,20 @@ export default async function PlayersPage({
             כאן אפשר לראות תמונות שחקנים, נתוני עונה מרכזיים, ולפתוח פרופיל מלא לכל שחקן.
           </p>
 
-          <form className="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_auto]" action="/players">
+          <SmartFilterForm
+            action="/players"
+            hiddenFields={{ view: displayMode }}
+            fields={playersFilterFields}
+            initialValues={{
+              season: selectedSeason?.id || '',
+              teamId: selectedTeamId,
+            }}
+            formClassName="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_auto]"
+            buttonClassName="rounded-full bg-stone-900 px-5 py-3 font-bold text-white"
+            submitLabel="הצג שחקנים"
+          />
+
+          <form className="hidden" action="/players">
             <select
               name="season"
               defaultValue={selectedSeason?.id || ''}
@@ -340,6 +403,7 @@ function PremierPlayersView({
   selectedSeason,
   selectedSeasonId,
   teams,
+  allTeams,
   selectedTeamId,
   visiblePlayers,
   mainPlayers,
@@ -349,11 +413,17 @@ function PremierPlayersView({
   selectedSeason: { id: string; name: string } | null;
   selectedSeasonId: string;
   teams: Array<{ id: string; nameHe: string | null; nameEn: string }>;
+  allTeams: Array<{ id: string; seasonId: string; nameHe: string | null; nameEn: string }>;
   selectedTeamId: string;
   visiblePlayers: any[];
   mainPlayers: any[];
   zeroStatPlayers: any[];
 }) {
+  const playersFilterFields = buildPlayersFilterFields({
+    displayMode: 'premier',
+    seasons,
+    allTeams,
+  });
   const activePlayers = visiblePlayers.filter((player) => player.stat.gamesPlayed > 0 || player.stat.minutesPlayed > 0);
   const topContributors = [...activePlayers]
     .sort((a, b) => b.stat.goals + b.stat.assists - (a.stat.goals + a.stat.assists))
@@ -374,7 +444,20 @@ function PremierPlayersView({
               </p>
             </div>
 
-            <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" action="/players">
+            <SmartFilterForm
+              action="/players"
+              hiddenFields={{ view: 'premier' }}
+              fields={playersFilterFields}
+              initialValues={{
+                season: selectedSeason?.id || '',
+                teamId: selectedTeamId,
+              }}
+              formClassName="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+              buttonClassName="rounded-2xl bg-white px-5 py-3 text-sm font-black text-[#360065]"
+              submitLabel="הצג שחקנים"
+            />
+
+            <form className="hidden" action="/players">
               <input type="hidden" name="view" value="premier" />
               <select
                 name="season"

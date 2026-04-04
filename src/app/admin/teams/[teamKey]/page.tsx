@@ -47,6 +47,15 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
           : undefined,
     include: {
       season: true,
+      venue: {
+        select: {
+          id: true,
+          nameHe: true,
+          nameEn: true,
+          cityHe: true,
+          cityEn: true,
+        },
+      },
       coachAssignments: {
         orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
       },
@@ -83,6 +92,17 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
     orderBy: { season: { year: 'desc' } },
   });
 
+  const venues = await prisma.venue.findMany({
+    select: {
+      id: true,
+      nameHe: true,
+      nameEn: true,
+      cityHe: true,
+      cityEn: true,
+    },
+    orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+  });
+
   if (!teamFamily.length) {
     notFound();
   }
@@ -97,6 +117,7 @@ export default async function AdminTeamEditorPage({ params, searchParams }: Page
           teamKey={params.teamKey}
           selectedTeam={selectedTeam}
           currentStanding={selectedTeam.standings[0] || null}
+          venues={venues}
           seasonOptions={teamFamily.map((team) => ({
             id: team.season.id,
             name: team.season.name,

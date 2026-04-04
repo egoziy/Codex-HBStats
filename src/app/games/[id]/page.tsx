@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
+import { getEventDisplayLabel, getEventIconPath } from '@/lib/event-display';
 import { getCurrentUser } from '@/lib/auth';
 import { getDisplayMode } from '@/lib/display-mode';
 import { formatPlayerName } from '@/lib/player-display';
@@ -266,29 +267,13 @@ export default async function GamePage({
 
           <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-black text-stone-900">ציר אירועים</h2>
-            <div className="mt-4 space-y-3">
-              {game.events.map((event) => (
-                <article key={event.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-bold text-stone-900">{eventLabels[event.type] || event.type}</div>
-                    <div className="text-sm font-semibold text-stone-600">
-                      {event.minute}
-                      {event.extraMinute ? `+${event.extraMinute}` : ''}
-                      &apos;
-                    </div>
-                  </div>
-                  <div className="mt-2 text-sm text-stone-600">
-                    {event.player ? formatPlayerName(event.player) : 'שחקן לא משויך'}
-                    {event.relatedPlayer ? ` | ${formatPlayerName(event.relatedPlayer)}` : ''}
-                  </div>
-                  {event.notesHe ? <div className="mt-1 text-xs text-stone-500">{event.notesHe}</div> : null}
-                </article>
-              ))}
-              {game.events.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-stone-500">
-                  אין אירועים שמורים למשחק זה.
-                </div>
-              ) : null}
+            <div className="mt-4">
+              <MatchEventTimeline
+                events={game.events}
+                homeTeam={{ id: game.homeTeamId, name: game.homeTeam.nameHe || game.homeTeam.nameEn }}
+                awayTeam={{ id: game.awayTeamId, name: game.awayTeam.nameHe || game.awayTeam.nameEn }}
+                variant="classic"
+              />
             </div>
           </div>
         </section>
@@ -496,20 +481,20 @@ function PremierGameView({
 
         {selectedTab === 'events' ? (
           <>
-          <PremierPanel title="ציר אירועים מלא">
-            <div className="space-y-3">
-              {game.events.map((event: any) => (
-                <PremierEventCard key={event.id} event={event} />
-              ))}
-              {game.events.length === 0 ? <PremierEmptyState text="אין אירועים שמורים למשחק הזה." /> : null}
-            </div>
-          </PremierPanel>
-          {currentUserRole === 'ADMIN' ? <GameAdminQuickEditorClient {...adminEditorProps} /> : null}
+            <PremierPanel title="ציר אירועי המשחק">
+              <MatchEventTimeline
+                events={game.events}
+                homeTeam={{ id: game.homeTeamId, name: homeTeamName }}
+                awayTeam={{ id: game.awayTeamId, name: awayTeamName }}
+                variant="premier"
+              />
+            </PremierPanel>
+            {currentUserRole === 'ADMIN' ? <GameAdminQuickEditorClient {...adminEditorProps} /> : null}
           </>
         ) : null}
 
         {selectedTab === 'lineups' ? (
-          <PremierPanel title="הרכבים ומחליפים">
+          <PremierPanel title="הרכבים ועמדות">
             <div className="mb-4 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
               {homeLineup.formation || awayLineup.formation ? (
                 <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
@@ -590,24 +575,178 @@ function StatPairCard({
   );
 }
 
+function MatchEventTimeline({
+  events,
+  homeTeam,
+  awayTeam,
+  variant,
+}: {
+  events: any[];
+  homeTeam: { id: string; name: string };
+  awayTeam: { id: string; name: string };
+  variant: 'classic' | 'premier';
+}) {
+  if (!events.length) {
+    return variant === 'premier' ? <PremierEmptyState text="אין אירועים שמורים למשחק הזה." /> : (
+      <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-stone-500">
+        אין אירועים שמורים למשחק הזה.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="hidden grid-cols-2 gap-4 px-2 text-xs font-black text-stone-500 md:grid">
+        <div className="text-right">{homeTeam.name}</div>
+        <div className="text-left">{awayTeam.name}</div>
+      </div>
+      <div className="space-y-3">
+        {events.map((event) => {
+          const column = resolveEventColumn(event, homeTeam, awayTeam);
+          const card = variant === 'premier' ? <PremierEventCard event={event} /> : <ClassicEventCard event={event} />;
+
+          return (
+            <div
+              key={event.id}
+              className={
+                column === 'unknown'
+                  ? 'md:grid md:grid-cols-1'
+                  : `md:grid md:grid-cols-2 md:gap-4 ${column === 'home' ? 'md:[&>div]:col-start-1' : 'md:[&>div]:col-start-2'}`
+              }
+            >
+              <div>{card}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ClassicEventCard({ event }: { event: any }) {
+  const participantRows = getEventParticipantRows(event);
+
+  return (
+    <article className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {getEventIconPath(event.type) ? (
+            <img
+              src={getEventIconPath(event.type) || ''}
+              alt={getEventDisplayLabel(event.type)}
+              className="h-10 w-10 rounded-2xl object-contain shadow-sm"
+            />
+          ) : null}
+          <div className="font-bold text-stone-900">{getEventDisplayLabel(event.type)}</div>
+        </div>
+        <div className="text-sm font-semibold text-stone-600">
+          {event.minute}
+          {event.extraMinute ? `+${event.extraMinute}` : ''}
+          &apos;
+        </div>
+      </div>
+      <div className="mt-3 space-y-2">
+        {participantRows.map((row) => (
+          <div
+            key={row.label}
+            className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm ${
+              row.emphasis ? 'bg-white font-bold text-stone-900' : 'bg-stone-100 text-stone-700'
+            }`}
+          >
+            <span>{row.label}</span>
+            <span>{row.value}</span>
+          </div>
+        ))}
+      </div>
+      {event.notesHe ? <div className="mt-1 text-xs text-stone-500">{event.notesHe}</div> : null}
+    </article>
+  );
+}
+
+function resolveEventColumn(
+  event: { teamId?: string | null; team?: string | null },
+  homeTeam: { id: string; name: string },
+  awayTeam: { id: string; name: string }
+) {
+  if (event.teamId && event.teamId === homeTeam.id) return 'home';
+  if (event.teamId && event.teamId === awayTeam.id) return 'away';
+
+  const normalizedTeam = (event.team || '').toLowerCase();
+  if (normalizedTeam && normalizedTeam.includes(homeTeam.name.toLowerCase())) return 'home';
+  if (normalizedTeam && normalizedTeam.includes(awayTeam.name.toLowerCase())) return 'away';
+
+  return 'unknown';
+}
+
 function PremierEventCard({ event }: { event: any }) {
+  const participantRows = getEventParticipantRows(event);
+
   return (
     <article className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="font-bold text-slate-900">{eventLabels[event.type] || event.type}</div>
+        <div className="flex items-center gap-2">
+          {getEventIconPath(event.type) ? (
+            <img
+              src={getEventIconPath(event.type) || ''}
+              alt={getEventDisplayLabel(event.type)}
+              className="h-12 w-12 rounded-2xl object-contain shadow-sm"
+            />
+          ) : null}
+          <div className="font-bold text-slate-900">{getEventDisplayLabel(event.type)}</div>
+        </div>
         <div className="text-sm font-semibold text-slate-500">
           {event.minute}
           {event.extraMinute ? `+${event.extraMinute}` : ''}
           &apos;
         </div>
       </div>
-      <div className="mt-2 text-sm text-slate-700">
-        {event.player ? formatPlayerName(event.player) : 'שחקן לא משויך'}
-        {event.relatedPlayer ? ` | ${formatPlayerName(event.relatedPlayer)}` : ''}
+      <div className="mt-3 space-y-2">
+        {participantRows.map((row) => (
+          <div
+            key={row.label}
+            className={`flex items-center justify-between gap-3 rounded-2xl px-3 py-2 text-sm ${
+              row.emphasis ? 'bg-white font-bold text-slate-900' : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            <span>{row.label}</span>
+            <span>{row.value}</span>
+          </div>
+        ))}
       </div>
       {event.notesHe ? <div className="mt-1 text-xs text-slate-500">{event.notesHe}</div> : null}
     </article>
   );
+}
+
+function getEventParticipantRows(event: any) {
+  const primaryPlayer = event.player ? formatPlayerName(event.player) : 'שחקן לא משויך';
+  const relatedPlayer = event.relatedPlayer ? formatPlayerName(event.relatedPlayer) : null;
+
+  if (event.type === 'SUBSTITUTION_OUT') {
+    return [
+      { label: 'יוצא', value: primaryPlayer, emphasis: true },
+      ...(relatedPlayer ? [{ label: 'נכנס', value: relatedPlayer, emphasis: false }] : []),
+    ];
+  }
+
+  if (event.type === 'SUBSTITUTION_IN') {
+    return [
+      { label: 'נכנס', value: primaryPlayer, emphasis: true },
+      ...(relatedPlayer ? [{ label: 'יוצא', value: relatedPlayer, emphasis: false }] : []),
+    ];
+  }
+
+  if (event.type === 'GOAL' || event.type === 'PENALTY_GOAL' || event.type === 'OWN_GOAL') {
+    return [
+      { label: 'כובש', value: primaryPlayer, emphasis: true },
+      ...(relatedPlayer ? [{ label: 'מבשל', value: relatedPlayer, emphasis: false }] : []),
+    ];
+  }
+
+  return [
+    { label: 'שחקן', value: primaryPlayer, emphasis: true },
+    ...(relatedPlayer ? [{ label: 'שחקן נוסף', value: relatedPlayer, emphasis: false }] : []),
+  ];
 }
 
 function PremierEmptyState({ text }: { text: string }) {

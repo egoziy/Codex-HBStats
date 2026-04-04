@@ -203,10 +203,12 @@ model Venue {
   capacity     Int?
   surface      String?
   imageUrl     String?
+  additionalInfo Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   teams        Team[]   @relation("TeamVenue")
   games        Game[]   @relation("GameVenue")
+  uploads      MediaAsset[] @relation("VenueAssets")
 
   @@index([nameEn])
   @@index([cityEn])
@@ -1002,13 +1004,17 @@ model MediaAsset {
   team           Team?           @relation("TeamAssets", fields: [teamId], references: [id], onDelete: SetNull)
   playerId       String?
   player         Player?         @relation("PlayerAssets", fields: [playerId], references: [id], onDelete: SetNull)
+  venueId        String?
+  venue          Venue?          @relation("VenueAssets", fields: [venueId], references: [id], onDelete: SetNull)
 
   @@index([seasonId])
+  @@index([venueId])
   @@map("media_assets")
 }
 
 enum MediaAssetKind {
   TEAM_LOGO
   PLAYER_PHOTO
+  VENUE_PHOTO
   BANNER
 }

@@ -917,13 +917,25 @@ export async function POST(request: NextRequest) {
               },
             });
 
+      const mergedVenueData = {
+        ...venueData,
+        nameHe: existingVenue?.nameHe || venueData.nameHe,
+        addressHe: existingVenue?.addressHe || venueData.addressHe,
+        cityHe: existingVenue?.cityHe || venueData.cityHe,
+        countryHe: existingVenue?.countryHe || venueData.countryHe,
+        capacity: existingVenue?.capacity ?? venueData.capacity,
+        surface: existingVenue?.surface || venueData.surface,
+        imageUrl: existingVenue?.imageUrl || venueData.imageUrl,
+        additionalInfo: existingVenue?.additionalInfo || undefined,
+      };
+
       const savedVenue = existingVenue
         ? await prisma.venue.update({
             where: { id: existingVenue.id },
-            data: venueData,
+            data: mergedVenueData,
           })
         : await prisma.venue.create({
-            data: venueData,
+            data: mergedVenueData,
           });
 
       venueCache.set(key, savedVenue.id);
@@ -1279,6 +1291,22 @@ export async function POST(request: NextRequest) {
               seasonId: season.id,
             },
           }));
+        const familyExisting =
+          existing ||
+          (apiTeam.id
+            ? await prisma.team.findFirst({
+                where: {
+                  apiFootballId: apiTeam.id,
+                },
+                orderBy: [{ updatedAt: 'desc' }],
+              })
+            : null) ||
+          (await prisma.team.findFirst({
+            where: {
+              nameEn: apiTeam.name,
+            },
+            orderBy: [{ updatedAt: 'desc' }],
+          }));
 
         if (!existing) teamsAdded += 1;
 
@@ -1296,10 +1324,15 @@ export async function POST(request: NextRequest) {
           venuesSaved += 1;
         }
 
+        const resolvedNameHe =
+          existing?.nameHe ||
+          familyExisting?.nameHe ||
+          translateName(apiTeam.name);
+
         const teamData = {
           apiFootballId: apiTeam.id,
           nameEn: apiTeam.name,
-          nameHe: translateName(apiTeam.name),
+          nameHe: resolvedNameHe,
           logoUrl: localLogoUrl || apiTeam.logo || null,
           coach: existing?.coach || null,
           coachHe: existing?.coachHe || null,
@@ -1838,6 +1871,23 @@ export async function POST(request: NextRequest) {
             const dbTeam = teamMap.get(teamName);
             if (!dbTeam) continue;
 
+            const wins = row?.all?.win ?? 0;
+            const draws = row?.all?.draw ?? 0;
+            const importedPoints = row?.points ?? 0;
+            const inferredBasePoints = wins * 3 + draws;
+            const inferredPointsAdjustment = importedPoints - inferredBasePoints;
+            const importedDescriptionEn =
+              typeof row?.description === 'string'
+                ? row.description
+                : Array.isArray(row?.description)
+                  ? row.description.join(', ')
+                  : null;
+            const importedDescriptionHe = importedDescriptionEn ? translateName(importedDescriptionEn) : null;
+            const inferredAdjustmentNoteHe =
+              inferredPointsAdjustment !== 0
+                ? `פער נקודות מיובא מה-API: ${inferredPointsAdjustment > 0 ? `+${inferredPointsAdjustment}` : inferredPointsAdjustment}`
+                : null;
+
             standingsUpdated += 1;
                     await prisma.standing.upsert({
               where: {
@@ -1855,23 +1905,15 @@ export async function POST(request: NextRequest) {
                 losses: row?.all?.lose ?? 0,
                 goalsFor: row?.all?.goals?.for ?? 0,
                 goalsAgainst: row?.all?.goals?.against ?? 0,
-                points: row?.points ?? 0,
+                points: inferredBasePoints,
+                pointsAdjustment: inferredPointsAdjustment,
+                pointsAdjustmentNoteHe: inferredAdjustmentNoteHe,
                 form: row?.form ?? null,
                 goalsDiff: row?.goalsDiff ?? row?.goals_diff ?? 0,
                 groupNameEn: block?.group || block?.name || null,
                 groupNameHe: translateName(block?.group || block?.name),
-                descriptionEn:
-                  typeof row?.description === 'string'
-                    ? row.description
-                    : Array.isArray(row?.description)
-                      ? row.description.join(', ')
-                      : null,
-                descriptionHe:
-                  typeof row?.description === 'string'
-                    ? translateName(row.description)
-                    : Array.isArray(row?.description)
-                      ? translateName(row.description.join(', '))
-                      : null,
+                descriptionEn: importedDescriptionEn,
+                descriptionHe: importedDescriptionHe,
                 statusEn: typeof row?.status === 'string' ? row.status : null,
                 statusHe: typeof row?.status === 'string' ? translateName(row.status) : null,
                 additionalInfo: row as any,
@@ -1887,23 +1929,15 @@ export async function POST(request: NextRequest) {
                 losses: row?.all?.lose ?? 0,
                 goalsFor: row?.all?.goals?.for ?? 0,
                 goalsAgainst: row?.all?.goals?.against ?? 0,
-                points: row?.points ?? 0,
+                points: inferredBasePoints,
+                pointsAdjustment: inferredPointsAdjustment,
+                pointsAdjustmentNoteHe: inferredAdjustmentNoteHe,
                 form: row?.form ?? null,
                 goalsDiff: row?.goalsDiff ?? row?.goals_diff ?? 0,
                 groupNameEn: block?.group || block?.name || null,
                 groupNameHe: translateName(block?.group || block?.name),
-                descriptionEn:
-                  typeof row?.description === 'string'
-                    ? row.description
-                    : Array.isArray(row?.description)
-                      ? row.description.join(', ')
-                      : null,
-                descriptionHe:
-                  typeof row?.description === 'string'
-                    ? translateName(row.description)
-                    : Array.isArray(row?.description)
-                      ? translateName(row.description.join(', '))
-                      : null,
+                descriptionEn: importedDescriptionEn,
+                descriptionHe: importedDescriptionHe,
                 statusEn: typeof row?.status === 'string' ? row.status : null,
                 statusHe: typeof row?.status === 'string' ? translateName(row.status) : null,
                 additionalInfo: row as any,

@@ -1,4 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
+import { getCompetitionDisplayName, getRoundDisplayName } from '@/lib/competition-display';
 import { getCurrentSeasonStartYear, getHomepageLiveSnapshots, type HomepageLiveSnapshot } from '@/lib/home-live';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
@@ -24,7 +25,7 @@ function getTeamLabel(team: { nameHe: string | null; nameEn: string }) {
 }
 
 function getRoundLabel(game: { roundNameHe: string | null; roundNameEn: string | null }) {
-  return game.roundNameHe || game.roundNameEn || null;
+  return getRoundDisplayName(game.roundNameHe, game.roundNameEn);
 }
 
 function gameMatchesPreferredTeam(
@@ -409,7 +410,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         ? {
             id: nextGame.id,
             href: `/games/${nextGame.id}`,
-            competition: nextGame.competition?.nameHe || nextGame.competition?.nameEn || 'ללא מסגרת',
+            competition: getCompetitionDisplayName(nextGame.competition),
             homeTeamName: getTeamLabel(nextGame.homeTeam),
             awayTeamName: getTeamLabel(nextGame.awayTeam),
             dateTime: nextGame.dateTime.toISOString(),
@@ -420,7 +421,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         ? {
             id: lastGame.id,
             href: `/games/${lastGame.id}`,
-            competition: lastGame.competition?.nameHe || lastGame.competition?.nameEn || 'ללא מסגרת',
+            competition: getCompetitionDisplayName(lastGame.competition),
             homeTeamName: getTeamLabel(lastGame.homeTeam),
             awayTeamName: getTeamLabel(lastGame.awayTeam),
             dateTime: lastGame.dateTime.toISOString(),
@@ -440,7 +441,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         id: prediction.id,
         gameId: prediction.game.id,
         href: `/games/${prediction.game.id}`,
-        competition: prediction.game.competition?.nameHe || prediction.game.competition?.nameEn || 'ללא מסגרת',
+        competition: getCompetitionDisplayName(prediction.game.competition),
         homeTeamName: getTeamLabel(prediction.game.homeTeam),
         awayTeamName: getTeamLabel(prediction.game.awayTeam),
         dateTime: prediction.game.dateTime.toISOString(),
@@ -464,7 +465,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
       upcomingMatches: nextRoundGames.map((game) => ({
         id: game.id,
         href: `/games/${game.id}`,
-        competition: game.competition?.nameHe || game.competition?.nameEn || 'ללא מסגרת',
+        competition: getCompetitionDisplayName(game.competition),
         homeTeamName: getTeamLabel(game.homeTeam),
         awayTeamName: getTeamLabel(game.awayTeam),
         dateTime: game.dateTime.toISOString(),

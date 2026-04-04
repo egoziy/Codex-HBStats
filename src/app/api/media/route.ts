@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   const isPrimary = String(formData.get('isPrimary') || '') === 'true';
   const file = formData.get('file');
 
-  if (!entityId || (entityType !== 'team' && entityType !== 'player') || !(file instanceof File)) {
+  if (!entityId || (entityType !== 'team' && entityType !== 'player' && entityType !== 'venue') || !(file instanceof File)) {
     return NextResponse.json({ error: 'Missing upload fields.' }, { status: 400 });
   }
 
@@ -67,6 +67,51 @@ export async function POST(request: NextRequest) {
       await prisma.team.update({
         where: { id: team.id },
         data: { logoUrl: filePath },
+      });
+    }
+
+    return NextResponse.json({ asset, filePath });
+  }
+
+  if (entityType === 'venue') {
+    const venue = await prisma.venue.findUnique({
+      where: { id: entityId },
+    });
+
+    if (!venue) {
+      return NextResponse.json({ error: 'Venue not found.' }, { status: 404 });
+    }
+
+    const filePath = await storeUploadedImage({
+      file,
+      entityType: 'venues',
+      folderName: venue.nameEn,
+      entityId: venue.id,
+      label: title || venue.nameEn,
+    });
+
+    const currentCount = await prisma.mediaAsset.count({
+      where: { venueId: venue.id },
+    });
+
+    const asset = await prisma.mediaAsset.create({
+      data: {
+        kind: MediaAssetKind.VENUE_PHOTO,
+        title: title || null,
+        originalName: file.name,
+        filePath,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        isPrimary,
+        displayOrder: currentCount,
+        venueId: venue.id,
+      },
+    });
+
+    if (isPrimary || !venue.imageUrl) {
+      await prisma.venue.update({
+        where: { id: venue.id },
+        data: { imageUrl: filePath },
       });
     }
 

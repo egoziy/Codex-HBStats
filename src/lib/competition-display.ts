@@ -11,6 +11,10 @@ const ROUND_TRANSLATIONS: Record<string, string> = {
 
 const COMPETITION_TRANSLATIONS: Record<string, string> = {
   "Ligat Ha'al": 'ליגת העל',
+  "Lןigat Ha'al": 'ליגת העל',
+  'State Cup': 'גביע המדינה',
+  'Super Cup': 'אלוף האלופים',
+  'Toto Cup Ligat Al': 'גביע הטוטו',
 };
 
 export function getCompetitionDisplayName(competition?: {

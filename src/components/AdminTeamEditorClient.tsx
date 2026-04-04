@@ -52,6 +52,14 @@ type Team = {
   countryHe: string | null;
   cityHe: string | null;
   stadiumHe: string | null;
+  venueId: string | null;
+  venue: {
+    id: string;
+    nameHe: string;
+    nameEn: string;
+    cityHe: string | null;
+    cityEn: string | null;
+  } | null;
   additionalInfo: any;
   players: Player[];
   uploads: Upload[];
@@ -80,16 +88,26 @@ type SeasonOption = {
   year: number;
 };
 
+type VenueOption = {
+  id: string;
+  nameHe: string;
+  nameEn: string;
+  cityHe: string | null;
+  cityEn: string | null;
+};
+
 export default function AdminTeamEditorClient({
   teamKey,
   selectedTeam,
   currentStanding,
   seasonOptions,
+  venues,
 }: {
   teamKey: string;
   selectedTeam: Team;
   currentStanding: Standing | null;
   seasonOptions: SeasonOption[];
+  venues: VenueOption[];
 }) {
   const router = useRouter();
   const latestCoachAssignment = getLatestCoachAssignment(selectedTeam.coachAssignments || []);
@@ -161,7 +179,7 @@ export default function AdminTeamEditorClient({
         coachAssignmentId: teamForm.coachAssignmentId || null,
         countryHe: teamForm.countryHe,
         cityHe: teamForm.cityHe,
-        stadiumHe: teamForm.stadiumHe,
+        venueId: teamForm.venueId || null,
         logoUrl: teamForm.logoUrl,
         notesHe: teamForm.notesHe,
       }),
@@ -383,7 +401,20 @@ export default function AdminTeamEditorClient({
           <Field label="מאמן בעברית" value={teamForm.coachHe} onChange={(value) => setTeamForm((current) => ({ ...current, coachHe: value }))} />
           <Field label="מדינה בעברית" value={teamForm.countryHe} onChange={(value) => setTeamForm((current) => ({ ...current, countryHe: value }))} />
           <Field label="עיר בעברית" value={teamForm.cityHe} onChange={(value) => setTeamForm((current) => ({ ...current, cityHe: value }))} />
-          <Field label="אצטדיון בעברית" value={teamForm.stadiumHe} onChange={(value) => setTeamForm((current) => ({ ...current, stadiumHe: value }))} />
+          <VenueSelect
+            label="אצטדיון"
+            value={teamForm.venueId}
+            venues={venues}
+            onChange={(venueId) => {
+              const selectedVenue = venues.find((venue) => venue.id === venueId) || null;
+              setTeamForm((current) => ({
+                ...current,
+                venueId,
+                stadiumHe: selectedVenue?.nameHe || '',
+                cityHe: selectedVenue?.cityHe || current.cityHe,
+              }));
+            }}
+          />
           <Field label="כתובת לוגו" value={teamForm.logoUrl} onChange={(value) => setTeamForm((current) => ({ ...current, logoUrl: value }))} />
           <Field label="Coach (EN)" value={teamForm.coach} onChange={(value) => setTeamForm((current) => ({ ...current, coach: value }))} />
           <label className="block md:col-span-2">
@@ -750,6 +781,37 @@ function Field({
   );
 }
 
+function VenueSelect({
+  label,
+  value,
+  venues,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  venues: VenueOption[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-bold text-stone-700">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none transition focus:border-red-500"
+      >
+        <option value="">ללא שיוך אצטדיון</option>
+        {venues.map((venue) => (
+          <option key={venue.id} value={venue.id}>
+            {venue.nameHe || venue.nameEn}
+            {venue.cityHe || venue.cityEn ? ` - ${venue.cityHe || venue.cityEn}` : ''}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function buildPlayersState(players: Player[]) {
   return players.map((player) => ({
     ...player,
@@ -779,8 +841,9 @@ function buildTeamForm(team: Team, latestCoachAssignment: CoachAssignment | null
     coachHe: latestCoachAssignment?.coachNameHe || team.coachHe || '',
     coachAssignmentId: latestCoachAssignment?.id || '',
     countryHe: team.countryHe || '',
-    cityHe: team.cityHe || '',
-    stadiumHe: team.stadiumHe || '',
+    cityHe: team.venue?.cityHe || team.cityHe || '',
+    venueId: team.venueId || '',
+    stadiumHe: team.venue?.nameHe || team.stadiumHe || '',
     logoUrl: team.logoUrl || '',
     notesHe: team.additionalInfo?.notesHe || '',
   };

@@ -168,6 +168,19 @@ export default function GameAdminQuickEditorClient({
   const [gameMessage, setGameMessage] = useState('');
   const [eventMessage, setEventMessage] = useState('');
 
+  async function parseResponsePayload(response: Response) {
+    const text = await response.text().catch(() => '');
+    if (!text) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text };
+    }
+  }
+
   const playersByTeam = useMemo(() => {
     return new Map(
       teams.map((team) => [
@@ -180,33 +193,37 @@ export default function GameAdminQuickEditorClient({
   async function saveGame() {
     setGameMessage('');
 
-    const response = await fetch('/api/games', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        id: game.id,
-        dateTime: gameForm.dateTime,
-        status: gameForm.status,
-        homeScore: gameForm.homeScore,
-        awayScore: gameForm.awayScore,
-        roundNameHe: gameForm.roundNameHe,
-        roundNameEn: gameForm.roundNameEn,
-        refereeHe: gameForm.refereeHe,
-        refereeEn: gameForm.refereeEn,
-      }),
-    });
+    try {
+      const response = await fetch('/api/games', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          id: game.id,
+          dateTime: gameForm.dateTime,
+          status: gameForm.status,
+          homeScore: gameForm.homeScore,
+          awayScore: gameForm.awayScore,
+          roundNameHe: gameForm.roundNameHe,
+          roundNameEn: gameForm.roundNameEn,
+          refereeHe: gameForm.refereeHe,
+          refereeEn: gameForm.refereeEn,
+        }),
+      });
 
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      setGameMessage(payload?.error || 'שמירת המשחק נכשלה.');
-      return;
+      const payload = await parseResponsePayload(response);
+      if (!response.ok) {
+        setGameMessage(payload?.error || 'שמירת המשחק נכשלה.');
+        return;
+      }
+
+      setGameMessage('נתוני המשחק נשמרו.');
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch {
+      setGameMessage('שמירת המשחק נכשלה בגלל בעיית תקשורת עם השרת.');
     }
-
-    setGameMessage('נתוני המשחק נשמרו.');
-    startTransition(() => {
-      router.refresh();
-    });
   }
 
   async function createEvent() {
@@ -217,37 +234,41 @@ export default function GameAdminQuickEditorClient({
       teams.find((team) => team.id === newEventForm.teamId)?.nameEn ||
       '';
 
-    const response = await fetch('/api/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        gameId: game.id,
-        minute: newEventForm.minute,
-        extraMinute: newEventForm.extraMinute,
-        type: newEventForm.type,
-        team: teamLabel,
-        teamId: newEventForm.teamId,
-        playerId: newEventForm.playerId || null,
-        relatedPlayerId: newEventForm.relatedPlayerId || null,
-        assistPlayerId: newEventForm.assistPlayerId || null,
-        notesHe: newEventForm.notesHe,
-        notesEn: newEventForm.notesEn,
-        sortOrder: newEventForm.sortOrder,
-      }),
-    });
+    try {
+      const response = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          gameId: game.id,
+          minute: newEventForm.minute,
+          extraMinute: newEventForm.extraMinute,
+          type: newEventForm.type,
+          team: teamLabel,
+          teamId: newEventForm.teamId,
+          playerId: newEventForm.playerId || null,
+          relatedPlayerId: newEventForm.relatedPlayerId || null,
+          assistPlayerId: newEventForm.assistPlayerId || null,
+          notesHe: newEventForm.notesHe,
+          notesEn: newEventForm.notesEn,
+          sortOrder: newEventForm.sortOrder,
+        }),
+      });
 
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      setEventMessage(payload?.error || 'הוספת האירוע נכשלה.');
-      return;
+      const payload = await parseResponsePayload(response);
+      if (!response.ok) {
+        setEventMessage(payload?.error || 'הוספת האירוע נכשלה.');
+        return;
+      }
+
+      setEventMessage('האירוע נוסף.');
+      setNewEventForm(buildNewEventForm(newEventForm.teamId));
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch {
+      setEventMessage('הוספת האירוע נכשלה בגלל בעיית תקשורת עם השרת.');
     }
-
-    setEventMessage('האירוע נוסף.');
-    setNewEventForm(buildNewEventForm(newEventForm.teamId));
-    startTransition(() => {
-      router.refresh();
-    });
   }
 
   return (
@@ -362,6 +383,19 @@ function EventRowEditor({
   const [form, setForm] = useState(() => buildEventForm(event, defaultTeamId));
   const [message, setMessage] = useState('');
 
+  async function parseResponsePayload(response: Response) {
+    const text = await response.text().catch(() => '');
+    if (!text) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text };
+    }
+  }
+
   const availablePlayers = useMemo(() => {
     return players.filter((player) => player.teamId === form.teamId);
   }, [players, form.teamId]);
@@ -374,51 +408,59 @@ function EventRowEditor({
       teams.find((team) => team.id === form.teamId)?.nameEn ||
       event.team;
 
-    const response = await fetch('/api/events', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        id: event.id,
-        minute: form.minute,
-        extraMinute: form.extraMinute,
-        type: form.type,
-        team: teamLabel,
-        teamId: form.teamId,
-        playerId: form.playerId || null,
-        relatedPlayerId: form.relatedPlayerId || null,
-        assistPlayerId: form.assistPlayerId || null,
-        notesHe: form.notesHe,
-        notesEn: form.notesEn,
-        sortOrder: form.sortOrder,
-      }),
-    });
+    try {
+      const response = await fetch('/api/events', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          id: event.id,
+          minute: form.minute,
+          extraMinute: form.extraMinute,
+          type: form.type,
+          team: teamLabel,
+          teamId: form.teamId,
+          playerId: form.playerId || null,
+          relatedPlayerId: form.relatedPlayerId || null,
+          assistPlayerId: form.assistPlayerId || null,
+          notesHe: form.notesHe,
+          notesEn: form.notesEn,
+          sortOrder: form.sortOrder,
+        }),
+      });
 
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      setMessage(payload?.error || 'שמירת האירוע נכשלה.');
-      return;
+      const payload = await parseResponsePayload(response);
+      if (!response.ok) {
+        setMessage(payload?.error || 'שמירת האירוע נכשלה.');
+        return;
+      }
+
+      setMessage('האירוע נשמר.');
+      onSaved();
+    } catch {
+      setMessage('שמירת האירוע נכשלה בגלל בעיית תקשורת עם השרת.');
     }
-
-    setMessage('האירוע נשמר.');
-    onSaved();
   }
 
   async function deleteEvent() {
     setMessage('');
 
-    const response = await fetch(`/api/events?id=${event.id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
+    try {
+      const response = await fetch(`/api/events?id=${event.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
 
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      setMessage(payload?.error || 'מחיקת האירוע נכשלה.');
-      return;
+      const payload = await parseResponsePayload(response);
+      if (!response.ok) {
+        setMessage(payload?.error || 'מחיקת האירוע נכשלה.');
+        return;
+      }
+
+      onSaved();
+    } catch {
+      setMessage('מחיקת האירוע נכשלה בגלל בעיית תקשורת עם השרת.');
     }
-
-    onSaved();
   }
 
   return (

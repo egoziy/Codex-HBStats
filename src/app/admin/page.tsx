@@ -1,9 +1,13 @@
 import Link from 'next/link';
+import AdminLiveCountriesClient from '@/components/AdminLiveCountriesClient';
+import AdminHomepageLiveSettingsClient from '@/components/AdminHomepageLiveSettingsClient';
 import AdminPlayerDisplaySettingsClient from '@/components/AdminPlayerDisplaySettingsClient';
 import AdminTelegramSourcesClient from '@/components/AdminTelegramSourcesClient';
 import AdminManagerClient from '@/components/AdminManagerClient';
 import { buildAdminCoverageRows } from '@/lib/admin-data-coverage';
 import { getCurrentUser } from '@/lib/auth';
+import { getHomepageLiveLimitSetting } from '@/lib/homepage-live-settings';
+import { getAllowedLiveCountryLabels } from '@/lib/live-competition-settings';
 import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import prisma from '@/lib/prisma';
 import { DEFAULT_TELEGRAM_SOURCES, normalizeTelegramSource } from '@/lib/telegram';
@@ -38,7 +42,7 @@ export default async function AdminPage({
     );
   }
 
-  const [teams, seasons, fetchJobs, telegramSourcesSetting, displayZeroStatPlayers, coverageSeasons] = await Promise.all([
+  const [teams, seasons, fetchJobs, telegramSourcesSetting, displayZeroStatPlayers, homepageLiveLimit, liveCountryLabels, liveSnapshots, coverageSeasons] = await Promise.all([
     prisma.team.findMany({
       include: { season: true },
       orderBy: [{ updatedAt: 'desc' }],
@@ -54,6 +58,18 @@ export default async function AdminPage({
       where: { key: 'telegram_sources' },
     }),
     getDisplayZeroStatPlayersSetting(),
+    getHomepageLiveLimitSetting(),
+    getAllowedLiveCountryLabels(),
+    prisma.liveGameSnapshot.findMany({
+      where: {
+        feedScope: 'GLOBAL_HOMEPAGE',
+      },
+      select: {
+        rawJson: true,
+      },
+      orderBy: [{ snapshotAt: 'desc' }],
+      take: 250,
+    }),
     prisma.season.findMany({
       orderBy: { year: 'desc' },
       include: {
@@ -228,6 +244,16 @@ export default async function AdminPage({
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
   const coverageRows = buildAdminCoverageRows(coverageSeasons);
+  const liveCountries = Array.from(
+    new Set(
+      liveSnapshots
+        .map((snapshot) => {
+          const country = snapshot.rawJson && typeof snapshot.rawJson === 'object' ? (snapshot.rawJson as any)?.league?.country : null;
+          return typeof country === 'string' && country.trim() ? country.trim() : null;
+        })
+        .filter((country): country is string => Boolean(country))
+    )
+  ).sort((a, b) => a.localeCompare(b, 'he'));
 
   const rawData = selectedSeason
     ? await prisma.season.findUnique({
@@ -443,8 +469,13 @@ export default async function AdminPage({
             <Link href={`/admin/games?season=${selectedSeason?.id || ''}`} className="rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700">
               עורך משחקים מלא
             </Link>
+            <Link href="/admin/venues" className="rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700">
+              ניהול אצטדיונים
+            </Link>
           </div>
         </section>
+        <AdminLiveCountriesClient options={liveCountries} initialSelectedCountries={liveCountryLabels || liveCountries} />
+        <AdminHomepageLiveSettingsClient initialHomepageLiveLimit={homepageLiveLimit} />
         <AdminPlayerDisplaySettingsClient initialDisplayZeroStatPlayers={displayZeroStatPlayers} />
         <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
         <AdminManagerClient

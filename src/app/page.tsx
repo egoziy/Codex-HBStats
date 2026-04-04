@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth';
+import { getCompetitionDisplayName, getRoundDisplayName } from '@/lib/competition-display';
 import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
@@ -9,6 +10,7 @@ import {
   normalizeTelegramSource,
   type TelegramChannelMessage,
 } from '@/lib/telegram';
+import { getHomepageLiveLimitSetting } from '@/lib/homepage-live-settings';
 import { getCurrentSeasonStartYear, getHomepageLiveSnapshots } from '@/lib/home-live';
 import HomeLivePanel from '@/components/HomeLivePanel';
 
@@ -43,7 +45,7 @@ function getTeamLabel(team: { nameHe: string | null; nameEn: string }) {
 }
 
 function getRoundLabel(game: { roundNameHe: string | null; roundNameEn: string | null }) {
-  return game.roundNameHe || game.roundNameEn || null;
+  return getRoundDisplayName(game.roundNameHe, game.roundNameEn);
 }
 
 function getStatusLabel(status: string) {
@@ -119,7 +121,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   }
 
   const now = new Date();
-  const [storedUser, seasonTeams, rawStandings, telegramSourcesSetting] = await Promise.all([
+  const [storedUser, seasonTeams, rawStandings, telegramSourcesSetting, homepageLiveLimit] = await Promise.all([
     viewer
       ? prisma.user.findUnique({
           where: { id: viewer.id },
@@ -135,6 +137,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     prisma.siteSetting.findUnique({
       where: { key: 'telegram_sources' },
     }),
+    getHomepageLiveLimitSetting(),
   ]);
   const configuredTelegramSourcesRaw = Array.isArray(telegramSourcesSetting?.valueJson)
     ? (telegramSourcesSetting.valueJson as Array<Record<string, unknown>>)
@@ -220,7 +223,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
         take: 24,
       }),
       fetchTelegramMessagesFromSources(effectiveTelegramSources, 5).catch(() => []),
-      getHomepageLiveSnapshots(null, { limit: 6 }),
+      getHomepageLiveSnapshots(null, { limit: homepageLiveLimit }),
     ]);
 
   const nextGame = nextGamesRaw
@@ -340,7 +343,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
             </Panel>
 
             <Panel eyebrow="Live" title="לייב" actionHref="/live" actionLabel="לכל המשחקים">
-              <HomeLivePanel initialItems={initialLiveItems} selectedTeamId={null} limit={4} />
+              <HomeLivePanel initialItems={initialLiveItems} selectedTeamId={null} limit={homepageLiveLimit} />
             </Panel>
 
             <Panel eyebrow="Next Round" title="המשחקים הבאים" actionHref="/games" actionLabel="לוח משחקים">
@@ -349,7 +352,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                   <Link key={game.id} href={`/games/${game.id}`} className="rounded-[18px] border border-stone-200 bg-stone-50 p-3 transition hover:border-stone-400 hover:bg-white">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-[11px] font-semibold text-stone-500">{game.competition?.nameHe || game.competition?.nameEn || 'ללא מסגרת'}</div>
+                        <div className="truncate text-[11px] font-semibold text-stone-500">{getCompetitionDisplayName(game.competition)}</div>
                         <div className="mt-1 text-sm font-black leading-5 text-stone-900">{getTeamLabel(game.homeTeam)} - {getTeamLabel(game.awayTeam)}</div>
                         <div className="mt-1 text-[11px] text-stone-500">{formatDate(game.dateTime, true)}</div>
                       </div>
@@ -524,7 +527,7 @@ function GameSpotlightCard({ game, predictionLabel }: { game: { id: string; date
     <Link href={`/games/${game.id}`} className="block rounded-[22px] border border-red-200 bg-[linear-gradient(180deg,#fff8f6_0%,#fff_100%)] p-3 transition hover:border-red-400 hover:shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold text-stone-500">{game.competition?.nameHe || game.competition?.nameEn || 'ללא מסגרת'}</div>
+          <div className="text-[11px] font-semibold text-stone-500">{getCompetitionDisplayName(game.competition)}</div>
           <div className="mt-1 text-lg font-black leading-6 text-stone-900 md:text-base">{getTeamLabel(game.homeTeam)} - {getTeamLabel(game.awayTeam)}</div>
           <div className="mt-1 text-[11px] text-stone-500">{formatDate(game.dateTime, true)}</div>
         </div>

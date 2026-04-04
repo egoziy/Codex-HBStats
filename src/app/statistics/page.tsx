@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import StatisticsLeaderboardsClient from '@/components/StatisticsLeaderboardsClient';
-import { getCompetitionDisplayName } from '@/lib/competition-display';
+import { getCompetitionDisplayName, getRoundDisplayName } from '@/lib/competition-display';
 import { getDisplayMode } from '@/lib/display-mode';
 import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import { formatPlayerName, formatPlayerPosition } from '@/lib/player-display';
@@ -214,6 +214,7 @@ export default async function StatisticsPage({
               },
             },
           },
+          orderBy: { dateTime: 'asc' },
         })
       : [],
   ]);
@@ -297,8 +298,20 @@ export default async function StatisticsPage({
     }
   }
 
-  const goalsLeaders = [...leaderRows].sort((a, b) => b.totals.goals - a.totals.goals).slice(0, 10);
-  const assistsLeaders = [...leaderRows].sort((a, b) => b.totals.assists - a.totals.assists).slice(0, 10);
+  const goalsLeaders = [...leaderRows]
+    .sort((a, b) => {
+      const effectiveGoalsA = Math.max(a.totals.goals, countScoringEventsForPlayer(leaderGames, a.player.id));
+      const effectiveGoalsB = Math.max(b.totals.goals, countScoringEventsForPlayer(leaderGames, b.player.id));
+      return effectiveGoalsB - effectiveGoalsA || b.totals.assists - a.totals.assists;
+    })
+    .slice(0, 10);
+  const assistsLeaders = [...leaderRows]
+    .sort((a, b) => {
+      const effectiveAssistsA = Math.max(a.totals.assists, countAssistEventsForPlayer(leaderGames, a.player.id));
+      const effectiveAssistsB = Math.max(b.totals.assists, countAssistEventsForPlayer(leaderGames, b.player.id));
+      return effectiveAssistsB - effectiveAssistsA || b.totals.goals - a.totals.goals;
+    })
+    .slice(0, 10);
   const passesLeaders = [...leaderRows].sort((a, b) => b.totalPasses - a.totalPasses).slice(0, 10);
   const cleanSheetLeaders = [...leaderRows]
     .filter((row) => cleanSheetMap.has(row.player.id))
@@ -799,7 +812,7 @@ function eventMinuteLabel(event: { minute: number; extraMinute: number | null })
 }
 
 function roundLabel(game: { roundNameHe: string | null; roundNameEn: string | null }) {
-  return game.roundNameHe || game.roundNameEn || '-';
+  return getRoundDisplayName(game.roundNameHe, game.roundNameEn);
 }
 
 function matchLabel(game: { homeTeam: { nameHe: string | null; nameEn: string }; awayTeam: { nameHe: string | null; nameEn: string } }) {
@@ -830,6 +843,20 @@ function didPlayerAppearInGame(game: any, playerId: string) {
   return game.lineupEntries.some((entry: any) => entry.playerId === playerId);
 }
 
+function countScoringEventsForPlayer(games: Array<any>, playerId: string) {
+  return games.reduce(
+    (sum, game) => sum + game.events.filter((event: any) => isScoringEventForPlayer(event, playerId)).length,
+    0
+  );
+}
+
+function countAssistEventsForPlayer(games: Array<any>, playerId: string) {
+  return games.reduce(
+    (sum, game) => sum + game.events.filter((event: any) => isAssistEventForPlayer(event, playerId)).length,
+    0
+  );
+}
+
 function buildLeaderboardCards({
   goalsLeaders,
   assistsLeaders,
@@ -848,12 +875,8 @@ function buildLeaderboardCards({
   const goalsCard = {
     title: 'מלך השערים',
     valueLabel: 'שערים',
-    rows: goalsLeaders.map((row) => ({
-      playerId: row.player.id,
-      playerName: formatPlayerName(row.player),
-      teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
-      value: row.totals.goals,
-      details: leaderGames.flatMap((game) =>
+    rows: goalsLeaders.map((row) => {
+      const details = leaderGames.flatMap((game) =>
         game.events
           .filter((event: any) => isScoringEventForPlayer(event, row.player.id))
           .map((event: any) => ({
@@ -863,22 +886,26 @@ function buildLeaderboardCards({
             valueLabel: event.type === 'PENALTY_GOAL' ? 'שער בפנדל' : 'שער',
             minuteLabel: eventMinuteLabel(event),
             scoreLabel: scoreLabel(game),
-            note: game.competition?.nameHe || game.competition?.nameEn || null,
+            note: getCompetitionLabel(game.competition),
           }))
-      ),
-      emptyMessage: 'אין פירוט שערים מקומי זמין עבור השחקן הזה.',
-    })),
+      );
+
+      return {
+        playerId: row.player.id,
+        playerName: formatPlayerName(row.player),
+        teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
+        value: Math.max(row.totals.goals, details.length),
+        details,
+        emptyMessage: 'אין פירוט שערים מקומי זמין עבור השחקן הזה.',
+      };
+    }),
   };
 
   const assistsCard = {
     title: 'מלך הבישולים',
     valueLabel: 'בישולים',
-    rows: assistsLeaders.map((row) => ({
-      playerId: row.player.id,
-      playerName: formatPlayerName(row.player),
-      teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
-      value: row.totals.assists,
-      details: leaderGames.flatMap((game) =>
+    rows: assistsLeaders.map((row) => {
+      const details = leaderGames.flatMap((game) =>
         game.events
           .filter((event: any) => isAssistEventForPlayer(event, row.player.id))
           .map((event: any) => ({
@@ -888,11 +915,19 @@ function buildLeaderboardCards({
             valueLabel: 'בישול',
             minuteLabel: eventMinuteLabel(event),
             scoreLabel: scoreLabel(game),
-            note: game.competition?.nameHe || game.competition?.nameEn || null,
+            note: getCompetitionLabel(game.competition),
           }))
-      ),
-      emptyMessage: 'אין פירוט בישולים מקומי זמין עבור השחקן הזה.',
-    })),
+      );
+
+      return {
+        playerId: row.player.id,
+        playerName: formatPlayerName(row.player),
+        teamName: row.player.team?.nameHe || row.player.team?.nameEn || '-',
+        value: Math.max(row.totals.assists, details.length),
+        details,
+        emptyMessage: 'אין פירוט בישולים מקומי זמין עבור השחקן הזה.',
+      };
+    }),
   };
 
   const passesCard = {
@@ -968,7 +1003,7 @@ function buildLeaderboardCards({
           valueLabel: 'רשת נקייה',
           minuteLabel: null,
           scoreLabel: scoreLabel(game),
-          note: game.competition?.nameHe || game.competition?.nameEn || null,
+          note: getCompetitionLabel(game.competition),
         })),
       emptyMessage: 'אין פירוט רשתות נקיות מקומי זמין עבור השחקן הזה.',
     })),

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth';
+import SmartFilterForm from '@/components/SmartFilterForm';
 import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
@@ -36,6 +37,34 @@ export default async function GamesPage({
     orderBy: { year: 'desc' },
     take: 10,
   });
+  const seasonIds = seasons.map((season) => season.id);
+  const [allFilterTeams, allFilterGames] = seasonIds.length
+    ? await Promise.all([
+        prisma.team.findMany({
+          where: { seasonId: { in: seasonIds } },
+          select: { id: true, seasonId: true, nameHe: true, nameEn: true },
+          orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+        }),
+        prisma.game.findMany({
+          where: { seasonId: { in: seasonIds } },
+          select: {
+            seasonId: true,
+            competitionId: true,
+            roundNameHe: true,
+            roundNameEn: true,
+            homeTeamId: true,
+            awayTeamId: true,
+            competition: {
+              select: {
+                id: true,
+                nameHe: true,
+                nameEn: true,
+              },
+            },
+          },
+        }),
+      ])
+    : [[], []];
 
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
@@ -92,6 +121,127 @@ export default async function GamesPage({
 
   const selectedRound = searchParams?.round || 'all';
 
+  const gamesFilterFields = (() => {
+    const competitionMap = new Map<string, { value: string; label: string; seasonMeta: Set<string> }>();
+    const roundMap = new Map<
+      string,
+      { value: string; label: string; seasonMeta: Set<string>; competitionMeta: Set<string> }
+    >();
+    const teamMap = new Map<
+      string,
+      { value: string; label: string; seasonMeta: Set<string>; competitionMeta: Set<string>; roundMeta: Set<string> }
+    >();
+
+    for (const game of allFilterGames) {
+      if (game.competitionId && game.competition) {
+        const competitionEntry = competitionMap.get(game.competitionId);
+        if (competitionEntry) {
+          competitionEntry.seasonMeta.add(game.seasonId);
+        } else {
+          competitionMap.set(game.competitionId, {
+            value: game.competitionId,
+            label: getCompetitionDisplayName(game.competition),
+            seasonMeta: new Set([game.seasonId]),
+          });
+        }
+      }
+
+      const roundValue = game.roundNameHe || game.roundNameEn;
+      if (roundValue) {
+        const roundKey = `${game.seasonId}__${roundValue}`;
+        const roundEntry = roundMap.get(roundKey);
+        if (roundEntry) {
+          if (game.competitionId) roundEntry.competitionMeta.add(game.competitionId);
+        } else {
+          roundMap.set(roundKey, {
+            value: roundValue,
+            label: getRoundDisplayName(roundValue, roundValue),
+            seasonMeta: new Set([game.seasonId]),
+            competitionMeta: new Set(game.competitionId ? [game.competitionId] : []),
+          });
+        }
+      }
+
+      for (const teamId of [game.homeTeamId, game.awayTeamId]) {
+        const team = allFilterTeams.find((entry) => entry.id === teamId);
+        if (!team) continue;
+
+        const teamEntry = teamMap.get(teamId);
+        if (teamEntry) {
+          teamEntry.seasonMeta.add(game.seasonId);
+          if (game.competitionId) teamEntry.competitionMeta.add(game.competitionId);
+          if (roundValue) teamEntry.roundMeta.add(roundValue);
+        } else {
+          teamMap.set(teamId, {
+            value: teamId,
+            label: team.nameHe || team.nameEn,
+            seasonMeta: new Set([game.seasonId]),
+            competitionMeta: new Set(game.competitionId ? [game.competitionId] : []),
+            roundMeta: new Set(roundValue ? [roundValue] : []),
+          });
+        }
+      }
+    }
+
+    const selectClassName = `rounded-2xl px-4 py-3 font-semibold ${
+      displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'
+    }`;
+
+    return [
+      {
+        name: 'season',
+        options: seasons.map((season) => ({ value: season.id, label: season.name })),
+        className: selectClassName,
+      },
+      {
+        name: 'competitionId',
+        includeAllOption: true,
+        allLabel: 'כל המסגרות',
+        options: Array.from(competitionMap.values())
+          .sort((a, b) => a.label.localeCompare(b.label, 'he'))
+          .map((option) => ({
+            value: option.value,
+            label: option.label,
+            meta: { season: Array.from(option.seasonMeta) },
+          })),
+        className: selectClassName,
+      },
+      {
+        name: 'round',
+        includeAllOption: true,
+        allLabel: 'כל המחזורים',
+        options: Array.from(roundMap.values())
+          .sort((a, b) => a.label.localeCompare(b.label, 'he'))
+          .map((option) => ({
+            value: option.value,
+            label: option.label,
+            meta: {
+              season: Array.from(option.seasonMeta),
+              competitionId: Array.from(option.competitionMeta),
+            },
+          })),
+        className: selectClassName,
+      },
+      {
+        name: 'teamId',
+        includeAllOption: true,
+        allLabel: 'כל הקבוצות',
+        options: Array.from(teamMap.values())
+          .sort((a, b) => a.label.localeCompare(b.label, 'he'))
+          .map((option) => ({
+            value: option.value,
+            label: option.label,
+            meta: {
+              season: Array.from(option.seasonMeta),
+              competitionId: Array.from(option.competitionMeta),
+              round: Array.from(option.roundMeta),
+            },
+          })),
+        className: selectClassName,
+      },
+    ];
+  })();
+
   const games = selectedSeason
     ? await prisma.game.findMany({
         where: {
@@ -135,7 +285,22 @@ export default async function GamesPage({
             בחרו עונה, ליגה או גביע, מחזור וקבוצה כדי לראות את רשימת המשחקים ואת האירועים המרכזיים בכל משחק.
           </p>
 
-          <form className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]" action="/games">
+          <SmartFilterForm
+            action="/games"
+            hiddenFields={{ view: displayMode }}
+            fields={gamesFilterFields}
+            initialValues={{
+              season: selectedSeason?.id || '',
+              competitionId: selectedCompetitionId,
+              round: selectedRound,
+              teamId: selectedTeamId,
+            }}
+            formClassName="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]"
+            buttonClassName="rounded-full bg-stone-900 px-5 py-3 font-bold text-white"
+            submitLabel="סנן משחקים"
+          />
+
+          <form className="hidden" action="/games">
             <input type="hidden" name="view" value={displayMode} />
             <select
               name="season"
