@@ -5,6 +5,7 @@ import { getCompetitionById } from '@/lib/competitions';
 import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { sortStandings, type StandingWithDerived } from '@/lib/standings';
+import { TeamLogo } from '@/components/MediaImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -426,6 +427,12 @@ export default async function StandingsPage({
                       <Link href={`/teams/${row.teamId}`} className="block font-bold text-stone-900 transition hover:text-red-800">
                         {getDisplayTeamName(row.team)}
                       </Link>
+                      {row.pointsAdjustment < 0 ? (
+                        <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                          <span>▼</span>
+                          <span>{Math.abs(row.pointsAdjustment)} נק׳</span>
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-4 text-center font-medium">{row.played}</td>
                     <td className="px-4 py-4 text-center font-medium">{row.wins}</td>
@@ -445,6 +452,25 @@ export default async function StandingsPage({
 
           {!hasStoredStandings && !canDeriveTable ? (
             <div className="p-8 text-center text-sm text-stone-500">אין כרגע מספיק נתונים כדי להציג טבלה לעונה או למחזור שנבחרו.</div>
+          ) : null}
+
+          {standings.some((r) => r.pointsAdjustment < 0) ? (
+            <div className="border-t border-stone-100 px-6 py-4">
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">הורדות נקודות</div>
+              <div className="flex flex-wrap gap-3">
+                {standings
+                  .filter((r) => r.pointsAdjustment < 0)
+                  .map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs">
+                      <span className="font-black text-red-700">▼ {Math.abs(r.pointsAdjustment)}</span>
+                      <span className="font-semibold text-stone-700">{getDisplayTeamName(r.team)}</span>
+                      {r.pointsAdjustmentNoteHe ? (
+                        <span className="text-stone-500">— {r.pointsAdjustmentNoteHe}</span>
+                      ) : null}
+                    </div>
+                  ))}
+              </div>
+            </div>
           ) : null}
         </section>
       </div>
@@ -632,14 +658,21 @@ function PremierStandingsView({
                       </td>
                       <td className="px-4 py-4">
                         <Link href={`/teams/${row.teamId}?view=premier`} className="flex items-center gap-3 transition hover:text-[#5f00b8]">
-                          {row.team.logoUrl ? (
-                            <img src={row.team.logoUrl} alt={getDisplayTeamName(row.team)} className="h-8 w-8 rounded-full bg-white object-contain" />
-                          ) : (
-                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#efe7ff] text-[10px] font-black text-[#5f00b8]">
-                              {getDisplayTeamName(row.team).slice(0, 2)}
-                            </div>
-                          )}
-                          <div className="font-black text-slate-950">{getDisplayTeamName(row.team)}</div>
+                          <TeamLogo
+                            src={row.team.logoUrl}
+                            alt={getDisplayTeamName(row.team)}
+                            className="h-8 w-8 rounded-full bg-white object-contain"
+                            fallbackClassName="flex h-8 w-8 items-center justify-center rounded-full bg-[#efe7ff] text-[10px] font-black text-[#5f00b8]"
+                          />
+                          <div>
+                            <div className="font-black text-slate-950">{getDisplayTeamName(row.team)}</div>
+                            {row.pointsAdjustment < 0 ? (
+                              <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                <span>▼</span>
+                                <span>{Math.abs(row.pointsAdjustment)} נק׳</span>
+                              </div>
+                            ) : null}
+                          </div>
                         </Link>
                       </td>
                       <td className="px-4 py-4 text-center font-bold">{row.played}</td>
@@ -659,11 +692,12 @@ function PremierStandingsView({
                       <td className="px-4 py-4 text-center">
                         {opponent ? (
                           <div className="flex items-center justify-center">
-                            {opponent.logoUrl ? (
-                              <img src={opponent.logoUrl} alt={getDisplayTeamName(opponent)} className="h-8 w-8 rounded-full bg-white object-contain" />
-                            ) : (
-                              <div className="text-xs font-bold text-slate-500">{getDisplayTeamName(opponent)}</div>
-                            )}
+                            <TeamLogo
+                              src={opponent.logoUrl}
+                              alt={getDisplayTeamName(opponent)}
+                              className="h-8 w-8 rounded-full bg-white object-contain"
+                              fallbackClassName="text-xs font-bold text-slate-500"
+                            />
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400">-</span>
@@ -680,6 +714,25 @@ function PremierStandingsView({
           {!hasStoredStandings && !canDeriveTable ? (
             <div className="px-6 py-8 text-center text-sm font-semibold text-slate-500">
               עדיין אין מספיק נתונים כדי להציג טבלה לעונה או למחזור הזה.
+            </div>
+          ) : null}
+
+          {standings.some((r) => r.pointsAdjustment < 0) ? (
+            <div className="border-t border-slate-100 px-6 py-4">
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">הורדות נקודות</div>
+              <div className="flex flex-wrap gap-3">
+                {standings
+                  .filter((r) => r.pointsAdjustment < 0)
+                  .map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs">
+                      <span className="font-black text-red-700">▼ {Math.abs(r.pointsAdjustment)}</span>
+                      <span className="font-semibold text-slate-700">{getDisplayTeamName(r.team)}</span>
+                      {r.pointsAdjustmentNoteHe ? (
+                        <span className="text-slate-500">— {r.pointsAdjustmentNoteHe}</span>
+                      ) : null}
+                    </div>
+                  ))}
+              </div>
             </div>
           ) : null}
         </section>

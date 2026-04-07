@@ -10,6 +10,7 @@ type AggregatedStatRow = {
   key: string;
   seasonName: string;
   competitionName: string;
+  teamName: string;
   goals: number;
   assists: number;
   shots: number;
@@ -24,7 +25,7 @@ type AggregatedStatRow = {
 };
 
 type PlayerGameFilter = 'all' | 'starts' | 'bench' | 'sub-in' | 'sub-off';
-type PlayerPremierTab = 'overview' | 'stats' | 'games' | 'career';
+type PlayerPremierTab = 'overview' | 'stats' | 'games' | 'career' | 'achievements';
 type LeaderboardFallbackMap = Map<string, { goals: number; assists: number }>;
 
 type PlayerSeasonEntry = {
@@ -136,6 +137,33 @@ export default async function PlayerPage({
         })
       : [];
 
+  const playerOrCondition = [
+    ...(linkedPlayerIds.length > 0 ? [{ playerId: { in: linkedPlayerIds } }] : []),
+    ...(linkedApiFootballIds.length > 0 ? [{ apiFootballPlayerId: { in: linkedApiFootballIds } }] : []),
+  ];
+
+  const [transfers, trophies, sidelinedEntries] = playerOrCondition.length > 0
+    ? await Promise.all([
+        prisma.playerTransfer.findMany({
+          where: { OR: playerOrCondition },
+          orderBy: { transferDate: 'desc' },
+        }),
+        prisma.playerTrophy.findMany({
+          where: { OR: playerOrCondition },
+          orderBy: [{ seasonLabel: 'desc' }, { leagueNameEn: 'asc' }],
+        }),
+        prisma.playerSidelinedEntry.findMany({
+          where: { OR: playerOrCondition },
+          orderBy: { startDate: 'desc' },
+        }),
+      ])
+    : [[], [], []];
+
+  const now = new Date();
+  const currentSidelined = sidelinedEntries.find(
+    (entry) => !entry.endDate || entry.endDate > now
+  );
+
   const canonicalPlayer = linkedPlayers.find((player) => player.id === canonicalPlayerId) || linkedPlayers[0];
   const latestSeasonEntry = [...linkedPlayers].sort(
     (left, right) => right.team.season.year - left.team.season.year || +new Date(right.updatedAt) - +new Date(left.updatedAt)
@@ -245,52 +273,67 @@ export default async function PlayerPage({
   );
 
   const leaderboardFallbacks = buildLeaderboardFallbackMap(leaderboardEntries);
-  const aggregatedStats = Array.from(
-    seasonPlayers
-      .flatMap((player) => player.playerStats)
-      .reduce((map, stat) => {
-        const key = `${stat.seasonId || 'all'}-${stat.competitionId || 'all'}`;
-        const existing = map.get(key);
-        const fallback = leaderboardFallbacks.get(key);
-        const goals = Math.max(stat.goals, fallback?.goals || 0);
-        const assists = Math.max(stat.assists, fallback?.assists || 0);
 
-        if (!existing) {
-          map.set(key, {
-            key,
-            seasonName: stat.season?.name || stat.seasonLabelHe || stat.seasonLabelEn || '-',
-            competitionName: stat.competition?.nameHe || stat.competition?.nameEn || 'כולל',
-            goals,
-            assists,
-            shots: stat.shots,
-            keyPasses: stat.keyPasses,
-            minutesPlayed: stat.minutesPlayed,
-            starts: stat.starts,
-            substituteAppearances: stat.substituteAppearances,
-            timesSubbedOff: stat.timesSubbedOff,
-            yellowCards: stat.yellowCards,
-            redCards: stat.redCards,
-            gamesPlayed: stat.gamesPlayed,
-          } satisfies AggregatedStatRow);
+  function buildAggregatedStats(players: typeof linkedPlayers): AggregatedStatRow[] {
+    return Array.from(
+      players
+        .flatMap((player) =>
+          player.playerStats.map((stat) => ({
+            ...stat,
+            _teamName: player.team.nameHe || player.team.nameEn,
+            _teamId: player.team.id,
+          }))
+        )
+        .reduce((map, stat) => {
+          // Key includes teamId so seasons with different teams produce separate rows
+          const key = `${stat.seasonId || 'all'}-${stat._teamId}-${stat.competitionId || 'all'}`;
+          const existing = map.get(key);
+          const fallback = leaderboardFallbacks.get(`${stat.seasonId || 'all'}-${stat.competitionId || 'all'}`);
+          const goals = Math.max(stat.goals, fallback?.goals || 0);
+          const assists = Math.max(stat.assists, fallback?.assists || 0);
+
+          if (!existing) {
+            map.set(key, {
+              key,
+              seasonName: stat.season?.name || stat.seasonLabelHe || stat.seasonLabelEn || '-',
+              competitionName: stat.competition?.nameHe || stat.competition?.nameEn || 'כולל',
+              teamName: stat._teamName,
+              goals,
+              assists,
+              shots: stat.shots,
+              keyPasses: stat.keyPasses,
+              minutesPlayed: stat.minutesPlayed,
+              starts: stat.starts,
+              substituteAppearances: stat.substituteAppearances,
+              timesSubbedOff: stat.timesSubbedOff,
+              yellowCards: stat.yellowCards,
+              redCards: stat.redCards,
+              gamesPlayed: stat.gamesPlayed,
+            } satisfies AggregatedStatRow);
+            return map;
+          }
+
+          existing.goals += goals;
+          existing.assists += assists;
+          existing.shots += stat.shots;
+          existing.keyPasses += stat.keyPasses;
+          existing.minutesPlayed += stat.minutesPlayed;
+          existing.starts += stat.starts;
+          existing.substituteAppearances += stat.substituteAppearances;
+          existing.timesSubbedOff += stat.timesSubbedOff;
+          existing.yellowCards += stat.yellowCards;
+          existing.redCards += stat.redCards;
+          existing.gamesPlayed += stat.gamesPlayed;
+
           return map;
-        }
+        }, new Map<string, AggregatedStatRow>())
+        .values()
+    ).sort((left, right) => right.seasonName.localeCompare(left.seasonName) || left.competitionName.localeCompare(right.competitionName));
+  }
 
-        existing.goals += goals;
-        existing.assists += assists;
-        existing.shots += stat.shots;
-        existing.keyPasses += stat.keyPasses;
-        existing.minutesPlayed += stat.minutesPlayed;
-        existing.starts += stat.starts;
-        existing.substituteAppearances += stat.substituteAppearances;
-        existing.timesSubbedOff += stat.timesSubbedOff;
-        existing.yellowCards += stat.yellowCards;
-        existing.redCards += stat.redCards;
-        existing.gamesPlayed += stat.gamesPlayed;
-
-        return map;
-      }, new Map<string, AggregatedStatRow>())
-      .values()
-  ).sort((left, right) => right.seasonName.localeCompare(left.seasonName) || left.competitionName.localeCompare(right.competitionName));
+  const aggregatedStats = buildAggregatedStats(seasonPlayers);
+  // Career: all seasons across all linked player entries
+  const careerStats = buildAggregatedStats(linkedPlayers);
   const selectedSeasonStats = aggregatedStats.filter((stat) => stat.key.startsWith(`${selectedSeasonId}-`));
   const derivedTotals = {
     ...derivedTotalsBase,
@@ -333,12 +376,17 @@ export default async function PlayerPage({
         availableSeasons={availableSeasons}
         derivedTotals={derivedTotals}
         aggregatedStats={aggregatedStats}
+        careerStats={careerStats}
         seasonPlayers={seasonPlayers}
         uploadsCount={uploads.length}
         activeTab={activeTab}
         activeGameFilter={activeGameFilter}
         playerGameRows={playerGameRows}
         filteredPlayerGameRows={filteredPlayerGameRows}
+        transfers={transfers}
+        trophies={trophies}
+        sidelinedEntries={sidelinedEntries}
+        currentSidelined={currentSidelined || null}
       />
     );
   }
@@ -596,12 +644,17 @@ function PremierPlayerView({
   availableSeasons,
   derivedTotals,
   aggregatedStats,
+  careerStats,
   seasonPlayers,
   uploadsCount,
   activeTab,
   activeGameFilter,
   playerGameRows,
   filteredPlayerGameRows,
+  transfers,
+  trophies,
+  sidelinedEntries,
+  currentSidelined,
 }: {
   canonicalPlayer: any;
   canonicalPlayerId: string;
@@ -624,13 +677,33 @@ function PremierPlayerView({
     timesSubbedOff: number;
   };
   aggregatedStats: AggregatedStatRow[];
+  careerStats: AggregatedStatRow[];
   seasonPlayers: any[];
   uploadsCount: number;
   activeTab: PlayerPremierTab;
   activeGameFilter: PlayerGameFilter;
   playerGameRows: Array<ReturnType<typeof buildPlayerGameRow> extends infer T ? Exclude<T, null> : never>;
   filteredPlayerGameRows: Array<ReturnType<typeof buildPlayerGameRow> extends infer T ? Exclude<T, null> : never>;
+  transfers: Array<{ id: string; transferDate: Date | null; transferTypeEn: string | null; transferTypeHe: string | null; sourceTeamNameEn: string | null; sourceTeamNameHe: string | null; sourceTeamLogoUrl: string | null; destinationTeamNameEn: string | null; destinationTeamNameHe: string | null; destinationTeamLogoUrl: string | null }>;
+  trophies: Array<{ id: string; leagueNameEn: string; leagueNameHe: string | null; seasonLabel: string | null; placeEn: string | null; placeHe: string | null; countryEn: string | null; countryHe: string | null }>;
+  sidelinedEntries: Array<{ id: string; typeEn: string; typeHe: string | null; startDate: Date | null; endDate: Date | null }>;
+  currentSidelined: { typeEn: string; typeHe: string | null; startDate: Date | null } | null;
 }) {
+  // Resolve Hebrew name: prefer split fields, fall back to splitting nameHe
+  const nameParts =
+    canonicalPlayer.nameHe && !/[a-zA-Z]/.test(canonicalPlayer.nameHe)
+      ? canonicalPlayer.nameHe.trim().split(/\s+/)
+      : null;
+  const displayFirstHe =
+    canonicalPlayer.firstNameHe ||
+    (nameParts && nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : null) ||
+    canonicalPlayer.firstNameEn ||
+    '';
+  const displayLastHe =
+    canonicalPlayer.lastNameHe ||
+    (nameParts ? nameParts[nameParts.length - 1] : null) ||
+    canonicalPlayer.lastNameEn ||
+    playerDisplayName;
   const apiStats = aggregatePlayerApiStats(seasonPlayers);
   const overviewFacts = [
     { label: 'לאום', value: canonicalPlayer.nationalityHe || canonicalPlayer.nationalityEn || 'לא צוין' },
@@ -700,8 +773,8 @@ function PremierPlayerView({
                     <div className="flex h-32 w-24 items-center justify-center rounded-[24px] bg-white/35 text-xs font-black text-slate-700">ללא תמונה</div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="text-lg font-medium text-white/90">{canonicalPlayer.firstNameHe || canonicalPlayer.firstNameEn || ''}</div>
-                    <h1 className="text-5xl font-black leading-none text-white">{canonicalPlayer.lastNameHe || canonicalPlayer.lastNameEn || playerDisplayName}</h1>
+                    <div className="text-lg font-medium text-white/90">{displayFirstHe}</div>
+                    <h1 className="text-5xl font-black leading-none text-white">{displayLastHe}</h1>
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-white/85">
                       <span>{displayPlayerEntry.team.nameHe || displayPlayerEntry.team.nameEn}</span>
                       <span>•</span>
@@ -709,6 +782,12 @@ function PremierPlayerView({
                       <span>•</span>
                       <span>{formatPlayerPosition(displayPlayerEntry.position)}</span>
                     </div>
+                    {currentSidelined ? (
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-red-500/30 px-3 py-1 text-xs font-bold text-red-100">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-300" />
+                        לא זמין — {currentSidelined.typeHe || currentSidelined.typeEn}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -729,6 +808,55 @@ function PremierPlayerView({
                 <MiniSummary label="שערים במערכת" value={String(aggregatedStats.reduce((sum, row) => sum + row.goals, 0))} />
                 <MiniSummary label="תמונות" value={String(uploadsCount)} />
               </div>
+
+              {/* Transfers in overview */}
+              {transfers.length > 0 ? (
+                <div className="mt-5 border-t border-slate-100 pt-4">
+                  <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">העברות</div>
+                  <div className="mt-2 space-y-2">
+                    {transfers.slice(0, 5).map((t) => (
+                      <div key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-xs text-slate-400">{t.transferDate ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(t.transferDate) : '—'}</span>
+                        <div className="flex items-center gap-1">
+                          {t.sourceTeamLogoUrl ? <img src={t.sourceTeamLogoUrl} alt="" className="h-4 w-4 object-contain" /> : null}
+                          <span className="font-semibold text-slate-700">{t.sourceTeamNameHe || t.sourceTeamNameEn || '?'}</span>
+                        </div>
+                        <span className="text-slate-300">←</span>
+                        <div className="flex items-center gap-1">
+                          {t.destinationTeamLogoUrl ? <img src={t.destinationTeamLogoUrl} alt="" className="h-4 w-4 object-contain" /> : null}
+                          <span className="font-semibold text-slate-700">{t.destinationTeamNameHe || t.destinationTeamNameEn || '?'}</span>
+                        </div>
+                        {t.transferTypeHe || t.transferTypeEn ? (
+                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">{t.transferTypeHe || t.transferTypeEn}</span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Sidelined / Injury History in overview */}
+              {sidelinedEntries.length > 0 ? (
+                <div className="mt-5 border-t border-slate-100 pt-4">
+                  <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">פציעות והשעיות</div>
+                  <div className="mt-2 space-y-1.5">
+                    {sidelinedEntries.slice(0, 6).map((s) => {
+                      const isActive = !s.endDate || s.endDate > new Date();
+                      return (
+                        <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${isActive ? 'bg-red-50' : 'bg-slate-50'}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-red-500' : 'bg-slate-300'}`} />
+                          <span className="font-semibold text-slate-700">{s.typeHe || s.typeEn}</span>
+                          <span className="text-xs text-slate-400">
+                            {s.startDate ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(s.startDate) : ''}
+                            {s.endDate ? ` — ${new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(s.endDate)}` : ' — טרם חזר'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               </section>
             ) : null}
           </div>
@@ -755,6 +883,9 @@ function PremierPlayerView({
                   </Link>
                   <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'career')} className={`border-b-4 pb-2 transition ${activeTab === 'career' ? 'border-[#3d0067] font-black text-[#23003d]' : 'border-transparent hover:text-[#4f0086]'}`}>
                     קריירה
+                  </Link>
+                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'achievements')} className={`border-b-4 pb-2 transition ${activeTab === 'achievements' ? 'border-[#3d0067] font-black text-[#23003d]' : 'border-transparent hover:text-[#4f0086]'}`}>
+                    הישגים
                   </Link>
                 </nav>
               )}
@@ -827,10 +958,10 @@ function PremierPlayerView({
                 </tr>
               </thead>
               <tbody>
-                {aggregatedStats.map((stat) => (
+                {careerStats.map((stat) => (
                   <tr key={stat.key} className="border-b border-slate-100">
                     <td className="px-3 py-3 font-semibold text-slate-800">{stat.seasonName}</td>
-                    <td className="px-3 py-3 text-slate-700">{displayPlayerEntry.team.nameHe || displayPlayerEntry.team.nameEn}</td>
+                    <td className="px-3 py-3 text-slate-700">{stat.teamName}</td>
                     <td className="px-3 py-3 text-slate-700">{stat.competitionName}</td>
                     <td className="px-3 py-3 font-bold text-slate-900">{stat.gamesPlayed}</td>
                     <td className="px-3 py-3 font-bold text-[#5f00ad]">{stat.goals}</td>
@@ -841,6 +972,49 @@ function PremierPlayerView({
               </tbody>
             </table>
           </div>
+
+          </section>
+        ) : null}
+
+        {activeTab === 'achievements' ? (
+          <section id="achievements" className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+            <div className="mb-4">
+              <h2 className="text-2xl font-black text-[#23003d]">גביעים והישגים</h2>
+              <p className="mt-1 text-sm text-slate-500">תארים, גביעים והישגים שנשמרו לשחקן לאורך הקריירה.</p>
+            </div>
+            {(() => {
+              const unique = Array.from(
+                trophies.reduce((map, t) => {
+                  const key = `${t.leagueNameEn}|${t.seasonLabel}|${t.placeEn}`;
+                  if (!map.has(key)) map.set(key, t);
+                  return map;
+                }, new Map<string, typeof trophies[0]>()).values()
+              );
+              return unique.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {unique.map((t, i) => (
+                    <div key={`${t.id}-${i}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{t.placeEn === 'Winner' ? '🏆' : t.placeEn === 'Runner-up' || t.placeEn === '2nd Place' ? '🥈' : '🏅'}</span>
+                        <div>
+                          <div className="font-bold text-slate-800">{t.leagueNameHe || t.leagueNameEn}</div>
+                          <div className="mt-0.5 text-xs text-slate-500">
+                            {t.seasonLabel || ''} · {t.placeHe || t.placeEn || ''}
+                          </div>
+                          {t.countryHe || t.countryEn ? (
+                            <div className="mt-0.5 text-[10px] text-slate-400">{t.countryHe || t.countryEn}</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                  אין הישגים שמורים לשחקן הזה.
+                </div>
+              );
+            })()}
           </section>
         ) : null}
 
@@ -1072,7 +1246,7 @@ function buildPlayerGameRow(
 }
 
 function normalizePremierTab(value: string | undefined): PlayerPremierTab {
-  if (value === 'overview' || value === 'games' || value === 'career') {
+  if (value === 'overview' || value === 'games' || value === 'career' || value === 'achievements') {
     return value;
   }
 

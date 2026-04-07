@@ -5,6 +5,7 @@ import { getDisplayMode } from '@/lib/display-mode';
 import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
+import { PlayerPhoto } from '@/components/MediaImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -309,17 +310,12 @@ export default async function PlayersPage({
                 className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm transition hover:border-red-300"
               >
                 <div className="flex items-center gap-4">
-                  {displayPhoto ? (
-                    <img
-                      src={displayPhoto}
-                      alt={playerDisplayName}
-                      className="h-20 w-20 rounded-full border border-stone-200 bg-stone-50 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-stone-300 bg-stone-50 text-xs text-stone-400">
-                      ללא תמונה
-                    </div>
-                  )}
+                  <PlayerPhoto
+                    src={displayPhoto}
+                    alt={playerDisplayName}
+                    className="h-20 w-20 rounded-full border border-stone-200 bg-stone-50 object-cover"
+                    fallbackClassName="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-stone-300 bg-stone-50 text-xs text-stone-400"
+                  />
                   <div>
                     <h2 className="text-xl font-black text-stone-900">{playerDisplayName}</h2>
                     <div className="mt-1 text-sm text-stone-500">{player.team.nameHe || player.team.nameEn}</div>
@@ -365,17 +361,12 @@ export default async function PlayersPage({
                     className="rounded-[24px] border border-stone-200 bg-stone-50 p-5 shadow-sm transition hover:border-stone-300"
                   >
                     <div className="flex items-center gap-4">
-                      {displayPhoto ? (
-                        <img
-                          src={displayPhoto}
-                          alt={playerDisplayName}
-                          className="h-20 w-20 rounded-full border border-stone-200 bg-white object-cover grayscale"
-                        />
-                      ) : (
-                        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-stone-300 bg-white text-xs text-stone-400">
-                          ללא תמונה
-                        </div>
-                      )}
+                      <PlayerPhoto
+                        src={displayPhoto}
+                        alt={playerDisplayName}
+                        className="h-20 w-20 rounded-full border border-stone-200 bg-white object-cover grayscale"
+                        fallbackClassName="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-stone-300 bg-white text-xs text-stone-400"
+                      />
                       <div>
                         <div className="mb-1 inline-flex rounded-full bg-stone-200 px-3 py-1 text-xs font-bold text-stone-600">
                           0 סטטיסטיקות
@@ -508,13 +499,12 @@ function PremierPlayersView({
                     #{index + 1} מוביל
                   </div>
                   <div className="flex items-center gap-4">
-                    {displayPhoto ? (
-                      <img src={displayPhoto} alt={formatPlayerName(player)} className="h-20 w-20 rounded-full bg-[#f7f8ff] object-cover" />
-                    ) : (
-                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#f0f3ff] text-xs font-black text-slate-500">
-                        ללא תמונה
-                      </div>
-                    )}
+                    <PlayerPhoto
+                      src={displayPhoto}
+                      alt={formatPlayerName(player)}
+                      className="h-20 w-20 rounded-full bg-[#f7f8ff] object-cover"
+                      fallbackClassName="flex h-20 w-20 items-center justify-center rounded-full bg-[#f0f3ff] text-xs font-black text-slate-500"
+                    />
                     <div>
                       <div className="text-xl font-black text-slate-950">{formatPlayerName(player)}</div>
                       <div className="mt-1 text-sm font-semibold text-slate-500">{player.team.nameHe || player.team.nameEn}</div>
@@ -568,11 +558,12 @@ function PremierPlayersView({
                           href={`/players/${player.canonicalPlayerId || player.id}?season=${selectedSeasonId}&view=premier`}
                           className="flex items-center gap-3"
                         >
-                          {displayPhoto ? (
-                            <img src={displayPhoto} alt={formatPlayerName(player)} className={`h-11 w-11 rounded-full object-cover ${player.isZeroStatPlayer ? 'grayscale' : ''}`} />
-                          ) : (
-                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#eef2ff] text-[11px] font-black text-slate-500">PL</div>
-                          )}
+                          <PlayerPhoto
+                            src={displayPhoto}
+                            alt={formatPlayerName(player)}
+                            className={`h-11 w-11 rounded-full object-cover ${player.isZeroStatPlayer ? 'grayscale' : ''}`}
+                            fallbackClassName="flex h-11 w-11 items-center justify-center rounded-full bg-[#eef2ff] text-[11px] font-black text-slate-500"
+                          />
                           <div>
                             <div className={`font-black ${player.isZeroStatPlayer ? 'text-slate-500' : 'text-slate-950'}`}>{formatPlayerName(player)}</div>
                             <div className="text-xs text-slate-500">

@@ -30,7 +30,9 @@ type EventItem = {
   notesHe: string | null;
   notesEn: string | null;
   playerId: string | null;
+  participantName: string | null;
   relatedPlayerId: string | null;
+  relatedParticipantName: string | null;
   assistPlayerId: string | null;
   player: { id: string; nameHe: string; nameEn: string } | null;
   relatedPlayer: { id: string; nameHe: string; nameEn: string } | null;
@@ -53,7 +55,9 @@ type EventFormState = {
   type: string;
   teamId: string;
   playerId: string;
+  participantName: string;
   relatedPlayerId: string;
+  relatedParticipantName: string;
   assistPlayerId: string;
   notesHe: string;
   notesEn: string;
@@ -118,7 +122,9 @@ function buildEventForm(event: EventItem, defaultTeamId: string): EventFormState
     type: event.type,
     teamId: event.teamId || defaultTeamId,
     playerId: event.playerId || '',
+    participantName: event.participantName || '',
     relatedPlayerId: event.relatedPlayerId || '',
+    relatedParticipantName: event.relatedParticipantName || '',
     assistPlayerId: event.assistPlayerId || '',
     notesHe: event.notesHe || '',
     notesEn: event.notesEn || '',
@@ -133,7 +139,9 @@ function buildNewEventForm(defaultTeamId: string): EventFormState {
     type: 'GOAL',
     teamId: defaultTeamId,
     playerId: '',
+    participantName: '',
     relatedPlayerId: '',
+    relatedParticipantName: '',
     assistPlayerId: '',
     notesHe: '',
     notesEn: '',
@@ -247,7 +255,9 @@ export default function GameAdminQuickEditorClient({
           team: teamLabel,
           teamId: newEventForm.teamId,
           playerId: newEventForm.playerId || null,
+          participantName: newEventForm.participantName || null,
           relatedPlayerId: newEventForm.relatedPlayerId || null,
+          relatedParticipantName: newEventForm.relatedParticipantName || null,
           assistPlayerId: newEventForm.assistPlayerId || null,
           notesHe: newEventForm.notesHe,
           notesEn: newEventForm.notesEn,
@@ -331,10 +341,8 @@ export default function GameAdminQuickEditorClient({
             <SelectField label="קבוצה" value={newEventForm.teamId} onChange={(value) => setNewEventForm((current) => ({ ...current, teamId: value, playerId: '', relatedPlayerId: '', assistPlayerId: '' }))} options={teams.map((team) => ({ value: team.id, label: team.nameHe || team.nameEn }))} />
             <SelectField label="שחקן" value={newEventForm.playerId} onChange={(value) => setNewEventForm((current) => ({ ...current, playerId: value }))} options={(playersByTeam.get(newEventForm.teamId) || []).map((player) => ({ value: player.id, label: formatPlayerName(player) }))} />
             <SelectField label="שחקן קשור" value={newEventForm.relatedPlayerId} onChange={(value) => setNewEventForm((current) => ({ ...current, relatedPlayerId: value }))} options={players.map((player) => ({ value: player.id, label: `${formatPlayerName(player)} · ${player.team.nameHe || player.team.nameEn}` }))} />
-            <SelectField label="שחקן בישול" value={newEventForm.assistPlayerId} onChange={(value) => setNewEventForm((current) => ({ ...current, assistPlayerId: value }))} options={players.map((player) => ({ value: player.id, label: `${formatPlayerName(player)} · ${player.team.nameHe || player.team.nameEn}` }))} />
             <Field label="סדר" type="number" value={newEventForm.sortOrder} onChange={(value) => setNewEventForm((current) => ({ ...current, sortOrder: value }))} />
             <Field label="הערה בעברית" value={newEventForm.notesHe} onChange={(value) => setNewEventForm((current) => ({ ...current, notesHe: value }))} />
-            <Field label="הערה באנגלית" value={newEventForm.notesEn} onChange={(value) => setNewEventForm((current) => ({ ...current, notesEn: value }))} />
           </div>
 
           {eventMessage ? <div className="mt-4 text-sm font-semibold text-stone-600">{eventMessage}</div> : null}
@@ -421,7 +429,9 @@ function EventRowEditor({
           team: teamLabel,
           teamId: form.teamId,
           playerId: form.playerId || null,
+          participantName: form.participantName || null,
           relatedPlayerId: form.relatedPlayerId || null,
+          relatedParticipantName: form.relatedParticipantName || null,
           assistPlayerId: form.assistPlayerId || null,
           notesHe: form.notesHe,
           notesEn: form.notesEn,
@@ -494,9 +504,7 @@ function EventRowEditor({
         <Field label="סדר" type="number" value={form.sortOrder} onChange={(value) => setForm((current) => ({ ...current, sortOrder: value }))} />
         <SelectField label="שחקן" value={form.playerId} onChange={(value) => setForm((current) => ({ ...current, playerId: value }))} options={availablePlayers.map((player) => ({ value: player.id, label: formatPlayerName(player) }))} />
         <SelectField label="שחקן קשור" value={form.relatedPlayerId} onChange={(value) => setForm((current) => ({ ...current, relatedPlayerId: value }))} options={players.map((player) => ({ value: player.id, label: `${formatPlayerName(player)} · ${player.team.nameHe || player.team.nameEn}` }))} />
-        <SelectField label="שחקן בישול" value={form.assistPlayerId} onChange={(value) => setForm((current) => ({ ...current, assistPlayerId: value }))} options={players.map((player) => ({ value: player.id, label: `${formatPlayerName(player)} · ${player.team.nameHe || player.team.nameEn}` }))} />
         <Field label="הערה בעברית" value={form.notesHe} onChange={(value) => setForm((current) => ({ ...current, notesHe: value }))} />
-        <Field label="הערה באנגלית" value={form.notesEn} onChange={(value) => setForm((current) => ({ ...current, notesEn: value }))} />
       </div>
 
       {message ? <div className="mt-3 text-sm font-semibold text-stone-600">{message}</div> : null}

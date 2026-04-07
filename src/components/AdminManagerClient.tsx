@@ -493,25 +493,7 @@ export default function AdminManagerClient({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,#7f1d1d,#1f2937)] p-8 text-white shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
-        <h1 className="text-3xl font-black md:text-4xl">אזור אדמין</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-white/80 md:text-base">
-          מכאן אפשר למשוך נתונים, לנהל קבוצות ושחקנים, ולעבור לדפי עריכה לפי עונה.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/admin/games" className="rounded-full bg-white px-5 py-3 text-sm font-bold text-stone-900">
-            ניהול משחקים ואירועים
-          </Link>
-          <Link
-            href={`/admin?season=${seasons.find((season) => season.id === selectedSeasonId)?.id || seasons[0]?.id || ''}`}
-            className="rounded-full border border-white/30 px-5 py-3 text-sm font-bold text-white"
-          >
-            עונה נבחרת
-          </Link>
-        </div>
-      </section>
-
+    <div className="space-y-4">
       <Accordion
         title="משיכת נתונים"
         open={openSection === 'fetch'}
@@ -562,47 +544,21 @@ export default function AdminManagerClient({
 
           {rawData ? (
             <>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="קבוצות" value={String(rawData.teams.length)} />
-                <MetricCard label="שחקנים בסגלים" value={String(rawPlayers.length)} />
-                <MetricCard label="משחקים" value={String(rawData.games.length)} />
-                <MetricCard label="אירועי משחק" value={String(rawEvents.length)} />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="הרכבים" value={String(rawLineups.length)} />
-                <MetricCard label="שורות טבלה" value={String(rawData.standings.length)} />
-                <MetricCard label="סטטיסטיקות שחקן" value={String(rawData.playerStats.length)} />
-                <MetricCard label="סטטיסטיקות קבוצה" value={String(rawData.teamStats.length)} />
-                <MetricCard label="מלכי שערים/בישולים" value={String(rawData.leaderboardEntries.length)} />
-                <MetricCard label="פציעות" value={String(rawData.injuries.length)} />
-                <MetricCard label="העברות" value={String(rawData.transfers.length)} />
-                <MetricCard label="תארים" value={String(rawData.trophies.length)} />
-                <MetricCard label="תחזיות" value={String(rawData.predictions.length)} />
-                <MetricCard label="ראש בראש" value={String(rawData.headToHeadEntries.length)} />
-                <MetricCard label="יחסים" value={String(rawData.oddsValues.length)} />
-                <MetricCard label="לייב" value={String(rawData.liveSnapshots.length)} />
-                <MetricCard label="עבודות משיכה" value={String(rawData.fetchJobs.length)} />
-              </div>
-
-              <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 font-bold text-stone-900">סוג נתונים</div>
-                <div className="flex flex-wrap gap-2">
-                  {rawViewOptions.map((option) => (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => setRawView(option.key)}
-                      className={`rounded-full px-4 py-2 text-sm font-bold ${
-                        rawView === option.key
-                          ? 'bg-stone-900 text-white'
-                          : 'border border-stone-300 bg-stone-50 text-stone-700'
-                      }`}
-                    >
-                      {option.label} ({option.count})
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-2">
+                {rawViewOptions.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setRawView(option.key)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                      rawView === option.key
+                        ? 'bg-stone-900 text-white'
+                        : 'bg-white text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    {option.label} <span className="text-[10px] opacity-60">{option.count}</span>
+                  </button>
+                ))}
               </div>
 
               {rawView === 'competitions' ? <RawCompetitionsView rawData={rawData} /> : null}
@@ -1495,16 +1451,16 @@ function Accordion({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[24px] border border-stone-200 bg-stone-50 p-4 shadow-sm">
+    <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between rounded-2xl bg-white px-5 py-4 text-right"
+        className="flex w-full items-center justify-between px-5 py-3 text-right"
       >
-        <span className="text-xl font-black text-stone-900">{title}</span>
-        <span className="text-2xl font-bold text-stone-500">{open ? '−' : '+'}</span>
+        <span className="text-lg font-black text-stone-900">{title}</span>
+        <span className="text-xl font-bold text-stone-400">{open ? '▲' : '▼'}</span>
       </button>
-      {open ? <div className="mt-4">{children}</div> : null}
+      {open ? <div className="border-t border-stone-100 p-4">{children}</div> : null}
     </section>
   );
 }

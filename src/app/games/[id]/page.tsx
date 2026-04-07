@@ -57,7 +57,14 @@ export default async function GamePage({
       },
       lineupEntries: {
         include: {
-          player: true,
+          player: {
+            select: {
+              nameHe: true,
+              nameEn: true,
+              photoUrl: true,
+              position: true,
+            },
+          },
           team: true,
         },
         orderBy: [{ role: 'asc' }, { positionGrid: 'asc' }, { jerseyNumber: 'asc' }, { participantName: 'asc' }],
@@ -122,7 +129,9 @@ export default async function GamePage({
         notesHe: event.notesHe,
         notesEn: event.notesEn,
         playerId: event.playerId,
+        participantName: (event as any).participantName ?? null,
         relatedPlayerId: event.relatedPlayerId,
+        relatedParticipantName: (event as any).relatedParticipantName ?? null,
         assistPlayerId: event.assistPlayerId,
         player: event.player,
         relatedPlayer: event.relatedPlayer,
@@ -719,32 +728,38 @@ function PremierEventCard({ event }: { event: any }) {
 }
 
 function getEventParticipantRows(event: any) {
-  const primaryPlayer = event.player ? formatPlayerName(event.player) : 'שחקן לא משויך';
-  const relatedPlayer = event.relatedPlayer ? formatPlayerName(event.relatedPlayer) : null;
+  const primaryPlayer =
+    event.player ? formatPlayerName(event.player) :
+    event.participantName ? event.participantName :
+    null;
+  const relatedPlayer =
+    event.relatedPlayer ? formatPlayerName(event.relatedPlayer) :
+    event.relatedParticipantName ? event.relatedParticipantName :
+    null;
 
   if (event.type === 'SUBSTITUTION_OUT') {
     return [
-      { label: 'יוצא', value: primaryPlayer, emphasis: true },
+      { label: 'יוצא', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
       ...(relatedPlayer ? [{ label: 'נכנס', value: relatedPlayer, emphasis: false }] : []),
     ];
   }
 
   if (event.type === 'SUBSTITUTION_IN') {
     return [
-      { label: 'נכנס', value: primaryPlayer, emphasis: true },
+      { label: 'נכנס', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
       ...(relatedPlayer ? [{ label: 'יוצא', value: relatedPlayer, emphasis: false }] : []),
     ];
   }
 
   if (event.type === 'GOAL' || event.type === 'PENALTY_GOAL' || event.type === 'OWN_GOAL') {
     return [
-      { label: 'כובש', value: primaryPlayer, emphasis: true },
+      { label: 'כובש', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
       ...(relatedPlayer ? [{ label: 'מבשל', value: relatedPlayer, emphasis: false }] : []),
     ];
   }
 
   return [
-    { label: 'שחקן', value: primaryPlayer, emphasis: true },
+    { label: 'שחקן', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
     ...(relatedPlayer ? [{ label: 'שחקן נוסף', value: relatedPlayer, emphasis: false }] : []),
   ];
 }
@@ -781,7 +796,7 @@ function TeamLineupCard({
       </div>
 
       {lineup.starters.length > 0 ? (
-        <FootballPitch side={side} starters={lineup.starters} />
+        <FootballPitch side={side} starters={lineup.starters} formation={lineup.formation} />
       ) : (
         <div className="mt-4 rounded-2xl border border-dashed border-stone-300 bg-white p-5 text-center text-sm text-stone-500">
           אין הרכב פותח שמור לקבוצה זו.
@@ -807,33 +822,78 @@ function TeamLineupCard({
   );
 }
 
+type LineupPlayer = { id: string; displayName: string; photoUrl: string | null; jerseyNumber: number | null; positionName: string | null; positionGrid: string | null; playerPosition: string | null };
+
 function FootballPitch({
   side,
   starters,
+  formation,
 }: {
   side: 'home' | 'away';
-  starters: Array<{ id: string; displayName: string; jerseyNumber: number | null; positionName: string | null; positionGrid: string | null }>;
+  starters: LineupPlayer[];
+  formation: string | null;
 }) {
-  const rows = buildFormationRows(starters, side);
+  const rows = buildFormationRows(starters, side, formation);
 
   return (
-    <div className="mt-4 overflow-hidden rounded-[24px] border border-emerald-900/20 bg-[linear-gradient(180deg,#0f5132,#0b3b2a)] p-4 shadow-inner">
-      <div className="rounded-[22px] border border-white/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-3">
-        <div className="relative overflow-hidden rounded-[18px] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.10),transparent_48%),linear-gradient(180deg,#166534,#14532d)] px-3 py-4">
-          <div className="pointer-events-none absolute inset-3 rounded-[14px] border border-white/20" />
-          <div className="pointer-events-none absolute inset-x-3 top-1/2 h-px bg-white/20" />
-          <div className="pointer-events-none absolute left-1/2 top-1/2 h-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" />
+    <div className="mt-4 overflow-hidden rounded-[24px] shadow-[0_8px_30px_rgba(0,60,30,0.25)]">
+      {/* Pitch background with stripe pattern */}
+      <div className="relative bg-[#1a8a4a]">
+        {/* Grass stripes */}
+        <div className="pointer-events-none absolute inset-0" style={{
+          backgroundImage: 'repeating-linear-gradient(180deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 40px, transparent 40px, transparent 80px)',
+        }} />
 
-          <div className="relative z-10 grid gap-4">
+        <div className="relative px-4 py-6">
+          {/* Outer pitch border */}
+          <div className="pointer-events-none absolute inset-x-3 inset-y-4 rounded-lg border-2 border-white/30" />
+          {/* Halfway line */}
+          <div className="pointer-events-none absolute inset-x-3 top-1/2 h-0.5 bg-white/30" />
+          {/* Center circle */}
+          <div className="pointer-events-none absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/30" />
+          {/* Center dot */}
+          <div className="pointer-events-none absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/40" />
+          {/* Top penalty area */}
+          <div className="pointer-events-none absolute left-1/2 top-4 h-12 w-36 -translate-x-1/2 rounded-b-lg border-x-2 border-b-2 border-white/25" />
+          {/* Top goal area */}
+          <div className="pointer-events-none absolute left-1/2 top-4 h-5 w-20 -translate-x-1/2 rounded-b border-x-2 border-b-2 border-white/20" />
+          {/* Bottom penalty area */}
+          <div className="pointer-events-none absolute bottom-4 left-1/2 h-12 w-36 -translate-x-1/2 rounded-t-lg border-x-2 border-t-2 border-white/25" />
+          {/* Bottom goal area */}
+          <div className="pointer-events-none absolute bottom-4 left-1/2 h-5 w-20 -translate-x-1/2 rounded-t border-x-2 border-t-2 border-white/20" />
+          {/* Corner arcs (decorative) */}
+          <div className="pointer-events-none absolute left-3 top-4 h-4 w-4 rounded-br-full border-b-2 border-r-2 border-white/20" />
+          <div className="pointer-events-none absolute right-3 top-4 h-4 w-4 rounded-bl-full border-b-2 border-l-2 border-white/20" />
+          <div className="pointer-events-none absolute bottom-4 left-3 h-4 w-4 rounded-tr-full border-t-2 border-r-2 border-white/20" />
+          <div className="pointer-events-none absolute bottom-4 right-3 h-4 w-4 rounded-tl-full border-t-2 border-l-2 border-white/20" />
+
+          {/* Player rows */}
+          <div className="relative z-10 grid gap-5 py-2">
             {rows.map((row, index) => (
-              <div key={`${side}-${index}`} className="flex flex-wrap items-center justify-center gap-3">
+              <div key={`${side}-${index}`} className="flex items-start justify-center gap-2 sm:gap-4">
                 {row.map((player) => (
-                  <div key={player.id} className="min-w-[74px] max-w-[96px] text-center">
-                    <div className="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-full border-2 border-white/25 bg-white/90 text-sm font-black text-emerald-900 shadow-sm">
-                      {player.jerseyNumber ?? '?'}
+                  <div key={player.id} className="w-[72px] text-center sm:w-[84px]">
+                    <div className="group relative mx-auto h-11 w-11 sm:h-12 sm:w-12">
+                      {player.photoUrl ? (
+                        <img
+                          src={player.photoUrl}
+                          alt={player.displayName}
+                          className="h-full w-full rounded-full border-2 border-white/60 object-cover shadow-[0_2px_12px_rgba(0,0,0,0.3)]"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center rounded-full border-2 border-white/50 bg-white/90 text-sm font-black text-[#1a6b3a] shadow-[0_2px_12px_rgba(0,0,0,0.3)]">
+                          {player.jerseyNumber ?? '?'}
+                        </div>
+                      )}
+                      {player.photoUrl ? (
+                        <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-black text-[#1a6b3a] shadow-sm">
+                          {player.jerseyNumber ?? ''}
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="mt-1 text-[11px] font-bold leading-4 text-white">{player.displayName}</div>
-                    <div className="text-[10px] text-emerald-100/80">{player.positionName || 'שחקן'}</div>
+                    <div className="mt-1.5 text-[11px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                      {player.displayName}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1161,7 +1221,7 @@ function buildTeamLineup(
       positionName: string | null;
       positionGrid: string | null;
       jerseyNumber: number | null;
-      player: { nameHe: string; nameEn: string } | null;
+      player: { nameHe: string; nameEn: string; photoUrl: string | null; position: string | null } | null;
       teamId: string;
     }>;
   },
@@ -1187,41 +1247,132 @@ function mapLineupPlayer(entry: {
   positionName: string | null;
   positionGrid: string | null;
   jerseyNumber: number | null;
-  player: { nameHe: string; nameEn: string } | null;
+  player: { nameHe: string; nameEn: string; photoUrl: string | null; position: string | null } | null;
 }) {
   return {
     id: entry.id,
     displayName: entry.player ? formatPlayerName(entry.player) : entry.participantName || 'שחקן',
+    photoUrl: entry.player?.photoUrl || null,
     positionName: entry.positionName,
     positionGrid: entry.positionGrid,
     jerseyNumber: entry.jerseyNumber,
+    playerPosition: entry.player?.position || null,
   };
 }
 
-function buildFormationRows(
-  starters: Array<{ id: string; displayName: string; jerseyNumber: number | null; positionName: string | null; positionGrid: string | null }>,
-  side: 'home' | 'away'
-) {
-  const grouped = new Map<number, typeof starters>();
+function resolvePositionGroup(player: LineupPlayer): 'G' | 'D' | 'M' | 'F' {
+  // 1. positionName from lineup entry (API grid data: G, D, M, F)
+  const posChar = player.positionName?.charAt(0)?.toUpperCase();
+  if (posChar === 'G' || posChar === 'D' || posChar === 'M' || posChar === 'F') return posChar;
 
-  for (const player of starters) {
-    const row = Number(player.positionGrid?.split(':')[0] || 0);
-    const existing = grouped.get(row) || [];
-    existing.push(player);
-    grouped.set(row, existing);
+  // 2. playerPosition from Player model (Goalkeeper, Defender, Midfielder, Attacker)
+  const pp = player.playerPosition?.toLowerCase();
+  if (pp) {
+    if (pp.includes('goal')) return 'G';
+    if (pp.includes('def')) return 'D';
+    if (pp.includes('mid')) return 'M';
+    if (pp.includes('att') || pp.includes('forw') || pp.includes('strik')) return 'F';
   }
 
-  const sortedRows = Array.from(grouped.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([, players]) =>
-      [...players].sort((a, b) => {
-        const aCol = Number(a.positionGrid?.split(':')[1] || 0);
-        const bCol = Number(b.positionGrid?.split(':')[1] || 0);
-        return side === 'home' ? aCol - bCol : bCol - aCol;
-      })
-    );
+  return 'M'; // default fallback
+}
 
+function buildFormationRows(
+  starters: LineupPlayer[],
+  side: 'home' | 'away',
+  formation: string | null
+) {
+  const hasGridData = starters.some((p) => p.positionGrid);
+
+  let sortedRows: LineupPlayer[][];
+
+  if (hasGridData) {
+    // Group by positionGrid row number
+    const grouped = new Map<number, LineupPlayer[]>();
+    for (const player of starters) {
+      const row = Number(player.positionGrid?.split(':')[0] || 0);
+      const existing = grouped.get(row) || [];
+      existing.push(player);
+      grouped.set(row, existing);
+    }
+    sortedRows = Array.from(grouped.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, players]) =>
+        [...players].sort((a, b) => {
+          const aCol = Number(a.positionGrid?.split(':')[1] || 0);
+          const bCol = Number(b.positionGrid?.split(':')[1] || 0);
+          return aCol - bCol;
+        })
+      );
+  } else {
+    // No grid data — sort by known position, then distribute into formation rows
+    const knownCount = starters.filter((p) => {
+      const g = resolvePositionGroup(p);
+      // Only count as "known" if it came from actual data, not the 'M' fallback
+      const posChar = p.positionName?.charAt(0)?.toUpperCase();
+      const pp = p.playerPosition?.toLowerCase();
+      return posChar === 'G' || posChar === 'D' || posChar === 'M' || posChar === 'F' ||
+        (pp && (pp.includes('goal') || pp.includes('def') || pp.includes('mid') || pp.includes('att') || pp.includes('forw')));
+    }).length;
+
+    if (knownCount >= Math.ceil(starters.length * 0.7)) {
+      // Enough position data — group by position
+      const posOrder: Array<'G' | 'D' | 'M' | 'F'> = ['G', 'D', 'M', 'F'];
+      const grouped = new Map<string, LineupPlayer[]>();
+      for (const player of starters) {
+        const pos = resolvePositionGroup(player);
+        const existing = grouped.get(pos) || [];
+        existing.push(player);
+        grouped.set(pos, existing);
+      }
+      sortedRows = posOrder
+        .filter((pos) => grouped.has(pos))
+        .map((pos) => grouped.get(pos)!);
+    } else {
+      // Not enough position data — sort known positions to front, then split by formation
+      const posWeight = { G: 0, D: 1, M: 2, F: 3 } as const;
+      const sorted = [...starters].sort((a, b) => {
+        const aKnown = hasKnownPosition(a);
+        const bKnown = hasKnownPosition(b);
+        if (aKnown && !bKnown) return -1;
+        if (!aKnown && bKnown) return 1;
+        if (aKnown && bKnown) return posWeight[resolvePositionGroup(a)] - posWeight[resolvePositionGroup(b)];
+        return 0;
+      });
+
+      const lineSizes = formation
+        ? [1, ...formation.split('-').map(Number).filter((n) => !Number.isNaN(n) && n > 0)]
+        : getDefaultLineSizes(sorted.length);
+
+      sortedRows = [];
+      let offset = 0;
+      for (const size of lineSizes) {
+        sortedRows.push(sorted.slice(offset, offset + size));
+        offset += size;
+      }
+      if (offset < sorted.length && sortedRows.length > 0) {
+        sortedRows[sortedRows.length - 1].push(...sorted.slice(offset));
+      }
+    }
+  }
+
+  // Home: GK at top (defense → attack top-to-bottom), Away: reversed
   return side === 'home' ? sortedRows : [...sortedRows].reverse();
+}
+
+function hasKnownPosition(player: LineupPlayer): boolean {
+  const posChar = player.positionName?.charAt(0)?.toUpperCase();
+  if (posChar === 'G' || posChar === 'D' || posChar === 'M' || posChar === 'F') return true;
+  const pp = player.playerPosition?.toLowerCase();
+  return Boolean(pp && (pp.includes('goal') || pp.includes('def') || pp.includes('mid') || pp.includes('att') || pp.includes('forw') || pp.includes('strik')));
+}
+
+function getDefaultLineSizes(playerCount: number): number[] {
+  if (playerCount === 11) return [1, 4, 3, 3];
+  if (playerCount === 10) return [1, 4, 3, 2];
+  if (playerCount >= 7) return [1, 3, 3, playerCount - 7];
+  const perRow = Math.ceil(playerCount / 3);
+  return [1, perRow, perRow, Math.max(1, playerCount - 1 - perRow * 2)].filter((n) => n > 0);
 }
 
 function normalizeGamePremierTab(value: string | null | undefined): GamePremierTab {

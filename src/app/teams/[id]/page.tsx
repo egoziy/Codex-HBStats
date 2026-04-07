@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 import { derivePlayerDeepStats, deriveTeamDeepStats } from '@/lib/deep-stats';
 import { getDisplayMode } from '@/lib/display-mode';
 import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
+import TeamInjuryManager from '@/components/TeamInjuryManager';
 
 type TeamPremierTab = 'overview' | 'matches' | 'squad' | 'stats' | 'referees';
 
@@ -56,6 +58,7 @@ export default async function TeamPage({
     notFound();
   }
 
+  const currentUser = await getCurrentUser();
   const now = new Date();
 
   const [seasonStandings, teamGames] = await Promise.all([
@@ -123,6 +126,57 @@ export default async function TeamPage({
     }),
   ]);
 
+  // Fetch currently sidelined/injured players
+  const playerIds = team.players.map((p) => p.id);
+  const apiFootballPlayerIds = team.players.map((p) => p.apiFootballId).filter((v): v is number => typeof v === 'number');
+  const sidelinedEntries = playerIds.length > 0
+    ? await prisma.playerSidelinedEntry.findMany({
+        where: {
+          AND: [
+            {
+              OR: [
+                ...(playerIds.length > 0 ? [{ playerId: { in: playerIds } }] : []),
+                ...(apiFootballPlayerIds.length > 0 ? [{ apiFootballPlayerId: { in: apiFootballPlayerIds } }] : []),
+              ],
+            },
+            {
+              OR: [{ endDate: null }, { endDate: { gt: now } }],
+            },
+          ],
+        },
+        orderBy: { startDate: 'desc' },
+      })
+    : [];
+
+  // Build lookup: playerId → sidelined entry
+  const sidelinedByPlayerId = new Map<string, typeof sidelinedEntries[0]>();
+  const sidelinedByApiId = new Map<number, typeof sidelinedEntries[0]>();
+  for (const entry of sidelinedEntries) {
+    if (entry.playerId) sidelinedByPlayerId.set(entry.playerId, entry);
+    if (entry.apiFootballPlayerId) sidelinedByApiId.set(entry.apiFootballPlayerId, entry);
+  }
+
+  function getPlayerSidelined(player: { id: string; apiFootballId: number | null }) {
+    return sidelinedByPlayerId.get(player.id) || (player.apiFootballId ? sidelinedByApiId.get(player.apiFootballId) : undefined) || null;
+  }
+
+  const unavailablePlayers = team.players
+    .map((player) => {
+      const entry = getPlayerSidelined(player);
+      if (!entry) return null;
+      return {
+        id: player.id,
+        canonicalPlayerId: player.canonicalPlayerId,
+        name: formatPlayerName(player),
+        photo: player.photoUrl || player.uploads[0]?.filePath || null,
+        position: player.position,
+        injuryType: entry.typeHe || entry.typeEn,
+        startDate: entry.startDate,
+        endDate: entry.endDate,
+      };
+    })
+    .filter((p): p is NonNullable<typeof p> => p !== null);
+
   const sortedStandings = sortStandings(seasonStandings);
   const standing = sortedStandings.find((row) => row.teamId === team.id) || null;
   const standingIndex = sortedStandings.findIndex((row) => row.teamId === team.id);
@@ -180,6 +234,17 @@ export default async function TeamPage({
       right.games - left.games ||
       right.latestGameAt.getTime() - left.latestGameAt.getTime()
   )[0] || null;
+
+  const adminPlayerOptions = team.players.map((p) => ({ id: p.id, name: formatPlayerName(p) }));
+  const adminSidelinedEntries = sidelinedEntries.map((entry) => ({
+    id: entry.id,
+    playerName: entry.playerNameHe || entry.playerNameEn || '?',
+    playerId: entry.playerId,
+    typeHe: entry.typeHe,
+    typeEn: entry.typeEn,
+    startDate: entry.startDate?.toISOString() || null,
+    endDate: entry.endDate?.toISOString() || null,
+  }));
 
   return (
     <div className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#eef3ff_100%)]' : 'bg-[linear-gradient(180deg,#f7efe3_0%,#efe3d3_100%)]'}`}>
@@ -413,32 +478,68 @@ export default async function TeamPage({
           </Panel>
 
           <Panel title="שחקני הסגל">
+            {unavailablePlayers.length > 0 ? (
+              <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+                <div className="mb-2 text-sm font-black text-red-800">שחקנים לא זמינים ({unavailablePlayers.length})</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {unavailablePlayers.map((player) => (
+                    <Link
+                      key={player.id}
+                      href={`/players/${player.canonicalPlayerId || player.id}`}
+                      className="flex items-center gap-3 rounded-xl bg-white/80 px-3 py-2 transition hover:bg-white"
+                    >
+                      {player.photo ? (
+                        <img src={player.photo} alt={player.name} className="h-9 w-9 rounded-full object-cover opacity-60" />
+                      ) : null}
+                      <div>
+                        <div className="text-sm font-bold text-stone-700">{player.name}</div>
+                        <div className="text-xs text-red-600">{player.injuryType}</div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-2">
-              {team.players.map((player) => (
-                <Link
-                  key={player.id}
-                  href={`/players/${player.id}`}
-                  className="rounded-2xl border border-stone-200 bg-stone-50 p-4 transition hover:border-red-300"
-                >
-                  <div className="flex items-center gap-3">
-                    {player.photoUrl || player.uploads[0]?.filePath ? (
-                      <img
-                        src={player.photoUrl || player.uploads[0]?.filePath || ''}
-                        alt={formatPlayerName(player)}
-                        className="h-14 w-14 rounded-full bg-white object-cover"
-                      />
-                    ) : null}
-                    <div>
-                      <div className="font-bold text-stone-900">{formatPlayerName(player)}</div>
-                      <div className="mt-1 text-sm text-stone-500">{player.position || 'ללא עמדה'}</div>
-                      <div className="mt-2 text-xs text-stone-400">#{player.jerseyNumber ?? '-'}</div>
+              {team.players.map((player) => {
+                const sidelined = getPlayerSidelined(player);
+                return (
+                  <Link
+                    key={player.id}
+                    href={`/players/${player.id}`}
+                    className={`rounded-2xl border p-4 transition hover:border-red-300 ${sidelined ? 'border-red-200 bg-red-50/40' : 'border-stone-200 bg-stone-50'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {player.photoUrl || player.uploads[0]?.filePath ? (
+                        <img
+                          src={player.photoUrl || player.uploads[0]?.filePath || ''}
+                          alt={formatPlayerName(player)}
+                          className={`h-14 w-14 rounded-full bg-white object-cover ${sidelined ? 'opacity-50' : ''}`}
+                        />
+                      ) : null}
+                      <div>
+                        <div className="font-bold text-stone-900">{formatPlayerName(player)}</div>
+                        <div className="mt-1 text-sm text-stone-500">{player.position || 'ללא עמדה'}</div>
+                        {sidelined ? (
+                          <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                            {sidelined.typeHe || sidelined.typeEn}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-xs text-stone-400">#{player.jerseyNumber ?? '-'}</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           </Panel>
         </section>
+        ) : null}
+
+        {currentUser?.role === 'ADMIN' && (displayMode !== 'premier' || selectedTab === 'squad') ? (
+          <TeamInjuryManager players={adminPlayerOptions} sidelinedEntries={adminSidelinedEntries} />
         ) : null}
 
         {displayMode !== 'premier' || selectedTab === 'overview' || selectedTab === 'referees' || selectedTab === 'stats' ? (

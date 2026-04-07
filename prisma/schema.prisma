@@ -372,11 +372,13 @@ model GameEvent {
   game             Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
   teamId           String?
   eventTeam        Team?          @relation("EventTeam", fields: [teamId], references: [id], onDelete: SetNull)
-  playerId         String?
-  player           Player?        @relation("PrimaryPlayer", fields: [playerId], references: [id], onDelete: SetNull)
-  relatedPlayerId  String?
-  relatedPlayer    Player?        @relation("RelatedPlayer", fields: [relatedPlayerId], references: [id], onDelete: SetNull)
-  assistPlayerId   String?
+  playerId              String?
+  player                Player?        @relation("PrimaryPlayer", fields: [playerId], references: [id], onDelete: SetNull)
+  participantName       String?
+  relatedPlayerId       String?
+  relatedPlayer         Player?        @relation("RelatedPlayer", fields: [relatedPlayerId], references: [id], onDelete: SetNull)
+  relatedParticipantName String?
+  assistPlayerId        String?
 
   @@index([gameId, sortOrder])
   @@map("game_events")

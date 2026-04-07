@@ -74,7 +74,9 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const gameId = parseOptionalString(body?.gameId);
   const playerId = parseOptionalString(body?.playerId);
+  const participantName = parseOptionalString(body?.participantName);
   const relatedPlayerId = parseOptionalString(body?.relatedPlayerId);
+  const relatedParticipantName = parseOptionalString(body?.relatedParticipantName);
   const assistPlayerId = parseOptionalString(body?.assistPlayerId);
   const team = parseOptionalString(body?.team);
   const teamId = parseOptionalString(body?.teamId);
@@ -112,7 +114,9 @@ export async function POST(request: NextRequest) {
         data: {
           gameId,
           playerId: playerId || null,
+          participantName: participantName || null,
           relatedPlayerId: relatedPlayerId || null,
+          relatedParticipantName: relatedParticipantName || null,
           assistPlayerId: assistPlayerId || null,
           minute,
           extraMinute,
@@ -158,7 +162,9 @@ export async function PUT(request: NextRequest) {
   const extraMinute = parseOptionalInteger(body?.extraMinute);
   const sortOrder = parseOptionalInteger(body?.sortOrder);
   const playerId = parseOptionalString(body?.playerId);
+  const participantName = parseOptionalString(body?.participantName);
   const relatedPlayerId = parseOptionalString(body?.relatedPlayerId);
+  const relatedParticipantName = parseOptionalString(body?.relatedParticipantName);
   const assistPlayerId = parseOptionalString(body?.assistPlayerId);
   const team = parseOptionalString(body?.team);
   const teamId = parseOptionalString(body?.teamId);
@@ -186,7 +192,9 @@ export async function PUT(request: NextRequest) {
           ...(extraMinute !== undefined && { extraMinute }),
           ...(sortOrder !== undefined && { sortOrder }),
           ...(playerId !== undefined && { playerId }),
+          ...(participantName !== undefined && { participantName }),
           ...(relatedPlayerId !== undefined && { relatedPlayerId }),
+          ...(relatedParticipantName !== undefined && { relatedParticipantName }),
           ...(assistPlayerId !== undefined && { assistPlayerId }),
           ...(team !== undefined && { team }),
           ...(teamId !== undefined && { teamId }),

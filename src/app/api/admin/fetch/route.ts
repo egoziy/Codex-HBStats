@@ -8,6 +8,7 @@ import { getCompetitionById } from '@/lib/competitions';
 import { derivePlayerDeepStats, deriveTeamDeepStats } from '@/lib/deep-stats';
 import { cleanupFutureSeasons } from '@/lib/home-live';
 import { storePlayerPhotoLocally, storeTeamLogoLocally } from '@/lib/media-storage';
+import { transliterateSeasonPlayers } from '@/lib/player-transliteration';
 
 type FetchBody = {
   season?: string;
@@ -1577,6 +1578,9 @@ export async function POST(request: NextRequest) {
       steps = completeStep(steps, 'players', playersAdded, undefined, playersFetched);
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
+      // Auto-transliterate any untranslated player names after import
+      await transliterateSeasonPlayers(season.id).catch(() => null);
+
       await prisma.competitionSeason.update({
         where: { id: competitionSeason.id },
         data: {
@@ -1989,26 +1993,40 @@ export async function POST(request: NextRequest) {
         await prisma.gameEvent.deleteMany({ where: { gameId: game.id } });
 
         for (const [eventIndex, event] of eventRows.entries()) {
-          const player = event?.player?.name
+          const playerName = event?.player?.name || null;
+          const playerApiId = event?.player?.id || null;
+          const player = playerApiId
             ? await prisma.player.findFirst({
                 where: {
-                  nameEn: event.player.name,
-                  team: {
-                    seasonId: season.id,
-                  },
+                  apiFootballId: playerApiId,
+                  team: { seasonId: season.id },
                 },
               })
-            : null;
-          const relatedPlayer = event?.assist?.name
+            : playerName
+              ? await prisma.player.findFirst({
+                  where: {
+                    nameEn: playerName,
+                    team: { seasonId: season.id },
+                  },
+                })
+              : null;
+          const assistName = event?.assist?.name || null;
+          const assistApiId = event?.assist?.id || null;
+          const relatedPlayer = assistApiId
             ? await prisma.player.findFirst({
                 where: {
-                  nameEn: event.assist.name,
-                  team: {
-                    seasonId: season.id,
-                  },
+                  apiFootballId: assistApiId,
+                  team: { seasonId: season.id },
                 },
               })
-            : null;
+            : assistName
+              ? await prisma.player.findFirst({
+                  where: {
+                    nameEn: assistName,
+                    team: { seasonId: season.id },
+                  },
+                })
+              : null;
           const eventTeam = event?.team?.name ? teamMap.get(event.team.name) : null;
 
           await prisma.gameEvent.create({
@@ -2022,7 +2040,9 @@ export async function POST(request: NextRequest) {
               notesHe: translateName(event?.detail),
               icon: event?.type || null,
               playerId: player?.id || null,
+              participantName: playerName,
               relatedPlayerId: relatedPlayer?.id || null,
+              relatedParticipantName: assistName,
               gameId: game.id,
               teamId: eventTeam?.id || null,
             },

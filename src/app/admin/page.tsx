@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import AdminCollapsible from '@/components/AdminCollapsible';
 import AdminLiveCountriesClient from '@/components/AdminLiveCountriesClient';
 import AdminHomepageLiveSettingsClient from '@/components/AdminHomepageLiveSettingsClient';
 import AdminPlayerDisplaySettingsClient from '@/components/AdminPlayerDisplaySettingsClient';
@@ -456,37 +457,65 @@ export default async function AdminPage({
     }))
     .sort((a, b) => a.displayNameEn.localeCompare(b.displayNameEn));
 
+  const adminTab = (searchParams as any)?.adminTab || 'data';
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-          <h2 className="text-2xl font-black text-stone-900">קיצורי עריכה</h2>
-          <p className="mt-2 text-sm text-stone-600">גישה מהירה למסכי עריכה פשוטים יותר, בנוסף לעורכים המלאים.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link href={`/admin/quick-edit?season=${selectedSeason?.id || ''}`} className="rounded-full bg-stone-900 px-5 py-3 text-sm font-bold text-white">
-              עריכה מהירה לשחקנים ואירועים
-            </Link>
-            <Link href={`/admin/games?season=${selectedSeason?.id || ''}`} className="rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700">
-              עורך משחקים מלא
-            </Link>
-            <Link href="/admin/venues" className="rounded-full border border-stone-300 px-5 py-3 text-sm font-bold text-stone-700">
-              ניהול אצטדיונים
-            </Link>
+      <div className="mx-auto max-w-6xl space-y-5">
+        {/* Compact header with quick links */}
+        <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#7f1d1d,#1f2937)] px-6 py-5 text-white shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h1 className="text-2xl font-black">אזור אדמין</h1>
+            <div className="flex flex-wrap gap-2 text-xs font-bold">
+              <Link href={`/admin/quick-edit?season=${selectedSeason?.id || ''}`} className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">עריכה מהירה</Link>
+              <Link href={`/admin/games?season=${selectedSeason?.id || ''}`} className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">משחקים</Link>
+              <Link href="/admin/venues" className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">אצטדיונים</Link>
+            </div>
           </div>
         </section>
-        <AdminLiveCountriesClient options={liveCountries} initialSelectedCountries={liveCountryLabels || liveCountries} />
-        <AdminHomepageLiveSettingsClient initialHomepageLiveLimit={homepageLiveLimit} />
-        <AdminPlayerDisplaySettingsClient initialDisplayZeroStatPlayers={displayZeroStatPlayers} />
-        <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
-        <AdminManagerClient
-          teams={groupedTeams}
-          fetchTeams={teams}
-          fetchJobs={fetchJobs}
-          seasons={seasons}
-          selectedSeasonId={selectedSeason?.id || null}
-          rawData={rawData}
-          coverageRows={coverageRows}
-        />
+
+        {/* Tab navigation */}
+        <nav className="flex flex-wrap gap-2">
+          {[
+            { key: 'data', label: 'נתונים ומשיכה' },
+            { key: 'settings', label: 'הגדרות' },
+          ].map((tab) => (
+            <Link
+              key={tab.key}
+              href={`/admin?season=${selectedSeason?.id || ''}&adminTab=${tab.key}`}
+              className={`rounded-full px-5 py-2.5 text-sm font-bold transition ${
+                adminTab === tab.key
+                  ? 'bg-stone-900 text-white shadow-sm'
+                  : 'bg-white text-stone-600 hover:bg-stone-100'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Settings tab */}
+        {adminTab === 'settings' ? (
+          <div className="space-y-4">
+            <AdminLiveCountriesClient options={liveCountries} initialSelectedCountries={liveCountryLabels || liveCountries} />
+            <AdminHomepageLiveSettingsClient initialHomepageLiveLimit={homepageLiveLimit} />
+            <AdminPlayerDisplaySettingsClient initialDisplayZeroStatPlayers={displayZeroStatPlayers} />
+            <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
+          </div>
+        ) : null}
+
+        {/* Data tab (default) */}
+        {adminTab === 'data' ? (
+          <AdminManagerClient
+            teams={groupedTeams}
+            fetchTeams={teams}
+            fetchJobs={fetchJobs}
+            seasons={seasons}
+            selectedSeasonId={selectedSeason?.id || null}
+            rawData={rawData}
+            coverageRows={coverageRows}
+          />
+        ) : null}
       </div>
     </div>
   );
