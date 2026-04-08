@@ -96,7 +96,8 @@ src/lib/
 ├── home-live.ts             ← נתוני לייב + תרגום לעברית
 ├── media-storage.ts         ← שמירת תמונות מ-API
 ├── telegram.ts              ← אינטגרציית חדשות טלגרם
-└── competitions.ts          ← רשימת ליגות נתמכות
+├── competitions.ts          ← רשימת ליגות נתמכות
+└── admin-data-coverage.ts   ← חישוב כיסוי נתונים + המלצות עדכון
 ```
 
 **`deep-stats.ts`** — הלב של חישוב הסטטיסטיקות:
@@ -146,6 +147,9 @@ Input: Standing[] from DB (or derived from games)
     │  Player  │  │  GameEvent             │
     │          │  │  GameLineupEntry       │
     │          │  │  GameStatistics        │
+    │          │  │  GamePrediction        │
+    │          │  │  GameOddsValue         │
+    │          │  │  GameHeadToHeadEntry   │
     └────┬─────┘  └────────────────────────┘
          │
    ┌─────┴──────────────────────────┐
@@ -308,7 +312,39 @@ Transaction:
 Client: router.refresh() → Server re-renders page with new event
 ```
 
-### D. ניהול פציעות (Team Page)
+### D. ניתוח תחזיות ויחסים (Predictions Page)
+
+```
+GET /predictions?season={sid}
+        │
+        ▼
+Server Component: PredictionsPage
+        │
+        ├─ Prisma: gamesWithOdds (COMPLETED + Match Winner odds)
+        ├─ Prisma: gamesWithPredictions (COMPLETED + prediction)
+        │
+        ├─ Compute per game:
+        │   ├─ Average odds per selection (Home/Draw/Away) across bookmakers
+        │   ├─ Favorite = lowest average odd
+        │   ├─ favoriteWon = favorite === actual result
+        │   ├─ isUpset = favorite lost + result odd > 3.0
+        │   └─ API prediction accuracy (percentHome/Draw/Away → predicted vs actual)
+        │
+        ├─ Summary:
+        │   ├─ favoriteAccuracy = favoriteWins / totalGames × 100
+        │   ├─ Result distribution (home/draw/away counts + %)
+        │   └─ API prediction accuracy
+        │
+        ▼
+HTML: summary cards + distribution bars + odds table + predictions table
+```
+
+**כיסוי נתונים:**
+- Odds נמשכים עבור משחקים עתידיים/חיים וגם **משחקים שהסתיימו בלי odds**
+- API-Football לא מכסה כל ליגה (למשל גביע המדינה — 0 odds)
+- אחרי משיכה מוצלחת שלא החזירה תוצאות, הכיסוי לא מסמן שוב
+
+### E. ניהול פציעות (Team Page)
 
 ```
 אדמין בדף קבוצה (tab=squad)

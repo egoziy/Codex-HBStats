@@ -46,6 +46,7 @@ src/
     teams/[id]/charts/         # גרפים לקבוצה
     standings/                 # טבלת ליגה (מחושבת / API)
     statistics/                # מלכי שערים ובישולים
+    predictions/               # ניתוח תחזיות ויחסים מול תוצאות בפועל
     venues/                    # אצטדיונים — סינון עונה/ליגה/עיר
     compare/                   # השוואות עונתיות
     live/                      # משחקים חיים
@@ -76,7 +77,7 @@ scripts/
 - **Team** — קבוצה (nameEn/He, logo, coach, venue, season)
 - **Player** — שחקן (nameEn/He, firstName/lastName, position, nationality, photo, age, height)
   - `canonicalPlayerId` — מקשר אותו שחקן בין עונות שונות
-- **Game** — משחק (dateTime, status, scores, homeTeam, awayTeam, competition, season)
+- **Game** — משחק (dateTime, status, scores, homePenalty/awayPenalty, homeTeam, awayTeam, competition, season)
 - **Venue** — אצטדיון (nameEn/He, city, capacity, surface, image)
 - **Referee** — שופט (nameEn/He)
 
@@ -127,6 +128,13 @@ scripts/
 5. **פוסט-עיבוד:** תעתיק שמות שחקנים לעברית, חישוב deep stats
 
 Rate limiting: 250ms מינימום בין בקשות, 4 ניסיונות עם exponential backoff.
+
+### חכמת כיסוי נתונים
+פאנל הכיסוי באדמין בודק אילו נתונים חסרים ומציע משיכה:
+- **אירועים/הרכבים** — נספרים per-game, מסומן STALE אם >10% חסרים
+- **Odds/Predictions** — מסומן STALE אם אין בכלל למשחקים שהסתיימו
+- **אחרי משיכה מוצלחת** — אם ניסינו למשוך וה-API החזיר ריק, לא מסמן שוב (ה-API לא מכיל)
+- **פנדלים** — `homePenalty`/`awayPenalty` נשמרים מ-API ומוצגים ליד התוצאה; ניתן לעריכה ידנית
 
 ### חישוב סטטיסטיקות
 `src/lib/deep-stats.ts` — מחשב שערים/בישולים/כרטיסים מתוך אירועי משחק:

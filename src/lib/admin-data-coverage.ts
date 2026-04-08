@@ -216,6 +216,7 @@ function getStatusMeta({
   lastFetchAt,
   latestCoverageUpdateAt,
   hasMissingEventData,
+  hasMissingOddsData,
 }: {
   hasAnyData: boolean;
   seasonEnded: boolean;
@@ -224,6 +225,7 @@ function getStatusMeta({
   lastFetchAt: Date | null;
   latestCoverageUpdateAt: Date | null;
   hasMissingEventData?: boolean;
+  hasMissingOddsData?: boolean;
 }) {
   if (!hasAnyData) {
     return {
@@ -234,11 +236,15 @@ function getStatusMeta({
   }
 
   if ((seasonEnded || competitionFinished) && !hasUpcomingOrLive) {
-    if (hasMissingEventData) {
+    const missingParts: string[] = [];
+    if (hasMissingEventData) missingParts.push('אירועים');
+    if (hasMissingOddsData) missingParts.push('תחזיות/יחסים');
+
+    if (missingParts.length > 0) {
       return {
         status: 'STALE' as const,
-        statusLabel: 'חסרים אירועים',
-        statusNote: 'יש משחקים שהסתיימו בלי אירועים או הרכבים — ניתן למשוך אותם.',
+        statusLabel: `חסרים ${missingParts.join(' + ')}`,
+        statusNote: `יש משחקים שהסתיימו בלי ${missingParts.join(' ו')} — ניתן למשוך אותם.`,
       };
     }
     return {
@@ -447,9 +453,24 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
         scopedOdds.length +
         scopedLive.length;
 
+      const completedGamesCount = scopedGames.filter((g) => g.status === 'COMPLETED').length;
       const completedGamesWithoutEvents = scopedGames.filter(
         (game) => game.status === 'COMPLETED' && (game._count?.events || 0) === 0
       ).length;
+      // Only flag missing events if >10% of completed games lack them AND we haven't already tried fetching
+      const hasCompletedEventsFetch = scopedJobs.some((job) => {
+        const steps = Array.isArray(job.stepsJson) ? job.stepsJson as Array<Record<string, unknown>> : [];
+        return steps.some((s) => s.key === 'events' && (s.status === 'done' || s.status === 'completed'));
+      });
+      const significantMissingEvents = completedGamesCount > 0
+        && completedGamesWithoutEvents > Math.max(2, completedGamesCount * 0.1)
+        && !hasCompletedEventsFetch;
+      // Only flag missing odds if we never tried fetching them (no completed fetch job with odds)
+      const hasCompletedOddsFetch = scopedJobs.some((job) => {
+        const steps = Array.isArray(job.stepsJson) ? job.stepsJson as Array<Record<string, unknown>> : [];
+        return steps.some((s) => s.key === 'odds' && (s.status === 'done' || s.status === 'completed'));
+      });
+      const hasMissingOdds = completedGamesCount > 3 && scopedOdds.length === 0 && !hasCompletedOddsFetch;
       const statusMeta = getStatusMeta({
         hasAnyData: totalCount > 0,
         seasonEnded,
@@ -457,7 +478,8 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
         hasUpcomingOrLive,
         lastFetchAt: latestFetchAt,
         latestCoverageUpdateAt,
-        hasMissingEventData: completedGamesWithoutEvents > 0,
+        hasMissingEventData: significantMissingEvents,
+        hasMissingOddsData: hasMissingOdds,
       });
 
       const teamRows: AdminCoverageTeamRow[] = teamsInScope
@@ -515,9 +537,14 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
             teamH2H.length +
             teamOdds.length +
             teamLive.length;
+          const teamCompletedCount = teamGames.filter((g) => g.status === 'COMPLETED').length;
           const teamCompletedWithoutEvents = teamGames.filter(
             (game) => game.status === 'COMPLETED' && (game._count?.events || 0) === 0
           ).length;
+          const teamSignificantMissingEvents = teamCompletedCount > 0
+            && teamCompletedWithoutEvents > Math.max(2, teamCompletedCount * 0.1)
+            && !hasCompletedEventsFetch;
+          const teamMissingOdds = teamCompletedCount > 3 && teamOdds.length === 0 && !hasCompletedOddsFetch;
           const teamStatusMeta = getStatusMeta({
             hasAnyData: teamTotalCount > 0 || team._count.players > 0,
             seasonEnded,
@@ -525,7 +552,8 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
             hasUpcomingOrLive: teamHasUpcomingOrLive,
             lastFetchAt: latestTeamFetchAt,
             latestCoverageUpdateAt: latestTeamUpdateAt,
-            hasMissingEventData: teamCompletedWithoutEvents > 0,
+            hasMissingEventData: teamSignificantMissingEvents,
+            hasMissingOddsData: teamMissingOdds,
           });
 
           return {

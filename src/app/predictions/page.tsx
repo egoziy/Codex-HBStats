@@ -83,9 +83,9 @@ export default async function PredictionsPage({
     const drawOdds = game.oddsValues.filter((o) => o.selectionValue === 'Draw');
     const awayOdds = game.oddsValues.filter((o) => o.selectionValue === 'Away');
 
-    const avgHome = homeOdds.length ? homeOdds.reduce((s, o) => s + o.odd, 0) / homeOdds.length : null;
-    const avgDraw = drawOdds.length ? drawOdds.reduce((s, o) => s + o.odd, 0) / drawOdds.length : null;
-    const avgAway = awayOdds.length ? awayOdds.reduce((s, o) => s + o.odd, 0) / awayOdds.length : null;
+    const avgHome = homeOdds.length ? homeOdds.reduce((s, o) => s + Number(o.odd), 0) / homeOdds.length : null;
+    const avgDraw = drawOdds.length ? drawOdds.reduce((s, o) => s + Number(o.odd), 0) / drawOdds.length : null;
+    const avgAway = awayOdds.length ? awayOdds.reduce((s, o) => s + Number(o.odd), 0) / awayOdds.length : null;
 
     // Favorite = lowest average odd
     let favorite: GameResult = 'home';
@@ -245,7 +245,7 @@ export default async function PredictionsPage({
                         </Link>
                         <div className="text-[10px] text-slate-400">{row.competition}</div>
                       </td>
-                      <td className="px-3 py-3 font-black text-slate-900">{row.homeScore}-{row.awayScore}</td>
+                      <td className="px-3 py-3 font-black text-slate-900">{row.awayScore}-{row.homeScore}</td>
                       <td className={`px-3 py-3 font-semibold ${row.favorite === 'home' ? 'text-emerald-700' : 'text-slate-500'}`}>
                         {formatOdd(row.avgHome)}
                       </td>
@@ -303,7 +303,7 @@ export default async function PredictionsPage({
                           {row.homeTeam} - {row.awayTeam}
                         </Link>
                       </td>
-                      <td className="px-3 py-3 font-black text-slate-900">{row.homeScore}-{row.awayScore}</td>
+                      <td className="px-3 py-3 font-black text-slate-900">{row.awayScore}-{row.homeScore}</td>
                       <td className="px-3 py-3 font-semibold text-emerald-700">{row.pHome}%</td>
                       <td className="px-3 py-3 font-semibold text-amber-700">{row.pDraw}%</td>
                       <td className="px-3 py-3 font-semibold text-blue-700">{row.pAway}%</td>

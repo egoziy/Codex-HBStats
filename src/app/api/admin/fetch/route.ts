@@ -2641,16 +2641,19 @@ export async function POST(request: NextRequest) {
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
     }
 
-    const scopedUpcomingGames = await prisma.game.findMany({
+    const scopedPredictionOddsGames = await prisma.game.findMany({
       where: {
         seasonId: season.id,
         competitionId: competition.id,
-        status: {
-          in: ['SCHEDULED', 'ONGOING'],
-        },
+        // Include upcoming/live games AND completed games missing odds/predictions
+        OR: [
+          { status: { in: ['SCHEDULED', 'ONGOING'] } },
+          { status: 'COMPLETED', prediction: null },
+          { status: 'COMPLETED', oddsValues: { none: {} } },
+        ],
         ...(selectedDbTeam?.id
           ? {
-              OR: [{ homeTeamId: selectedDbTeam.id }, { awayTeamId: selectedDbTeam.id }],
+              AND: [{ OR: [{ homeTeamId: selectedDbTeam.id }, { awayTeamId: selectedDbTeam.id }] }],
             }
           : {}),
       },
@@ -2687,7 +2690,7 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'predictions', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
-      const predictionTargetGames = scopedUpcomingGames.filter((game) => {
+      const predictionTargetGames = scopedPredictionOddsGames.filter((game) => {
         return (
           !game.prediction ||
           game.status === 'ONGOING' ||
@@ -2767,7 +2770,7 @@ export async function POST(request: NextRequest) {
         steps,
         'predictions',
         predictionsSaved,
-        scopedUpcomingGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים עתידיים או חיים לסנכרון',
+        scopedPredictionOddsGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים שדורשים סנכרון',
         predictionsFetched
       );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
@@ -2777,7 +2780,7 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'h2h', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
-      const h2hTargetGames = scopedUpcomingGames.filter((game) => {
+      const h2hTargetGames = scopedPredictionOddsGames.filter((game) => {
         const latestH2hUpdate = game.headToHeadEntries[0]?.updatedAt || null;
         return (
           !game.headToHeadEntries.length ||
@@ -2840,7 +2843,7 @@ export async function POST(request: NextRequest) {
         steps,
         'h2h',
         h2hSaved,
-        scopedUpcomingGames.length ? '5 מפגשים אחרונים לכל משחק עתידי או חי' : 'אין משחקים עתידיים או חיים לסנכרון',
+        scopedPredictionOddsGames.length ? '5 מפגשים אחרונים לכל משחק עתידי או חי' : 'אין משחקים שדורשים סנכרון',
         h2hFetched
       );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
@@ -2850,7 +2853,7 @@ export async function POST(request: NextRequest) {
       steps = markStep(steps, 'odds', 'running');
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
 
-      const oddsTargetGames = scopedUpcomingGames.filter((game) => {
+      const oddsTargetGames = scopedPredictionOddsGames.filter((game) => {
         const latestOddsUpdate = getMostRecentDate([
           game.oddsValues[0]?.oddsUpdatedAt || null,
           game.oddsValues[0]?.updatedAt || null,
@@ -2938,7 +2941,7 @@ export async function POST(request: NextRequest) {
         steps,
         'odds',
         oddsSaved,
-        scopedUpcomingGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים עתידיים או חיים לסנכרון',
+        scopedPredictionOddsGames.length ? 'משחקים עתידיים או חיים בלבד' : 'אין משחקים שדורשים סנכרון',
         oddsFetched
       );
       await updateFetchJob(job.id, steps, FetchJobStatus.RUNNING);
