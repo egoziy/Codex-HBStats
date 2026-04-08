@@ -478,6 +478,7 @@ export default async function AdminPage({
               <Link href="/admin/venues" className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">אצטדיונים</Link>
               <Link href="/admin/scrape" className="rounded-full bg-blue-500/30 px-3 py-1.5 transition hover:bg-blue-500/50">סריקת אתרים</Link>
               <Link href="/admin/merge" className="rounded-full bg-purple-500/30 px-3 py-1.5 transition hover:bg-purple-500/50">מיזוג נתונים</Link>
+              <Link href="/admin/setup" className="rounded-full bg-emerald-500/30 px-3 py-1.5 transition hover:bg-emerald-500/50">ייבוא מלא</Link>
             </div>
           </div>
         </section>
