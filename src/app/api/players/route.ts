@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(player, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to create player', details: error.message },
+      { error: 'Failed to create player' },
       { status: 400 }
     );
   }
@@ -157,7 +157,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(player);
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update player', details: error.message },
+      { error: 'Failed to update player' },
       { status: 400 }
     );
   }
@@ -187,7 +187,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to delete player', details: error.message },
+      { error: 'Failed to delete player' },
       { status: 400 }
     );
   }

@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(team, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to create team', details: error.message },
+      { error: 'Failed to create team' },
       { status: 400 }
     );
   }
@@ -327,7 +327,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(refreshedTeam || team);
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update team', details: error.message },
+      { error: 'Failed to update team' },
       { status: 400 }
     );
   }
@@ -357,7 +357,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to delete team', details: error.message },
+      { error: 'Failed to delete team' },
       { status: 400 }
     );
   }

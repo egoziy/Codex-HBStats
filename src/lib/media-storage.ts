@@ -35,7 +35,13 @@ async function saveRemoteFile(remoteUrl: string, targetRelativePath: string) {
 
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
-  const absolutePath = path.join(process.cwd(), 'public', targetRelativePath);
+  const baseDir = path.resolve(process.cwd(), 'public', 'uploads');
+  const absolutePath = path.resolve(process.cwd(), 'public', targetRelativePath);
+
+  // Prevent path traversal
+  if (!absolutePath.startsWith(baseDir)) {
+    throw new Error('Invalid file path');
+  }
 
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, buffer);
@@ -44,7 +50,13 @@ async function saveRemoteFile(remoteUrl: string, targetRelativePath: string) {
 }
 
 async function saveBufferFile(buffer: Buffer, targetRelativePath: string) {
-  const absolutePath = path.join(process.cwd(), 'public', targetRelativePath);
+  const baseDir = path.resolve(process.cwd(), 'public', 'uploads');
+  const absolutePath = path.resolve(process.cwd(), 'public', targetRelativePath);
+
+  // Prevent path traversal
+  if (!absolutePath.startsWith(baseDir)) {
+    throw new Error('Invalid file path');
+  }
 
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, buffer);

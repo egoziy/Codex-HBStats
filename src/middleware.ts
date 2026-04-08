@@ -1,15 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Simple in-memory rate limiter for public endpoints
+const publicRateMap = new Map<string, { count: number; resetAt: number }>();
+const PUBLIC_RATE_LIMIT = 30; // requests per window
+const PUBLIC_RATE_WINDOW_MS = 10_000; // 10 seconds
+
+function checkPublicRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = publicRateMap.get(ip);
+  if (!record || now > record.resetAt) {
+    publicRateMap.set(ip, { count: 1, resetAt: now + PUBLIC_RATE_WINDOW_MS });
+    return true;
+  }
+  record.count++;
+  return record.count <= PUBLIC_RATE_LIMIT;
+}
+
 /**
- * Next.js Middleware — CSRF protection + admin route guard
- *
- * Runs on every API request. Validates Origin header for mutating requests
- * to prevent cross-site request forgery.
+ * Next.js Middleware — CSRF protection + rate limiting
  */
 export function middleware(request: NextRequest) {
   const method = request.method.toUpperCase();
+  const pathname = request.nextUrl.pathname;
 
-  // Only check mutating requests
+  // Rate limit public API endpoints (GET)
+  if (method === 'GET' && pathname.startsWith('/api/') && !pathname.startsWith('/api/admin/')) {
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
+    if (!checkPublicRateLimit(ip)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+  }
+
+  // CSRF: only check mutating requests
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
     return NextResponse.next();
   }

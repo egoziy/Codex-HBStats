@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(event, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: 'Failed to create event', details: error.message }, { status: 400 });
+    return NextResponse.json({ error: 'Failed to create event' }, { status: 400 });
   }
 }
 
@@ -216,7 +216,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json(updatedEvent);
   } catch (error: any) {
-    return NextResponse.json({ error: 'Failed to update event', details: error.message }, { status: 400 });
+    return NextResponse.json({ error: 'Failed to update event' }, { status: 400 });
   }
 }
 
@@ -249,6 +249,6 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: 'Failed to delete event', details: error.message }, { status: 400 });
+    return NextResponse.json({ error: 'Failed to delete event' }, { status: 400 });
   }
 }

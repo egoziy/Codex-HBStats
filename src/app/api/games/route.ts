@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(game, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to create game', details: error.message },
+      { error: 'Failed to create game' },
       { status: 400 }
     );
   }
@@ -295,7 +295,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(game);
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update game', details: error.message },
+      { error: 'Failed to update game' },
       { status: 400 }
     );
   }
@@ -325,7 +325,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to delete game', details: error.message },
+      { error: 'Failed to delete game' },
       { status: 400 }
     );
   }

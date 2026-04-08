@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(refreshed || venue, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to create venue', details: error.message },
+      { error: 'Failed to create venue' },
       { status: 400 }
     );
   }
@@ -248,7 +248,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(refreshed);
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update venue', details: error.message },
+      { error: 'Failed to update venue' },
       { status: 400 }
     );
   }

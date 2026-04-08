@@ -83,7 +83,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(standing);
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update standing adjustment', details: error.message },
+      { error: 'Failed to update standing adjustment' },
       { status: 400 }
     );
   }

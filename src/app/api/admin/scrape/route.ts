@@ -3,6 +3,9 @@ import { getRequestUser } from '@/lib/auth';
 import { scrapeAndSaveTeam, scrapeAndSavePlayer, scrapeAllSport5, SPORT5_TEAMS } from '@/lib/sport5-scraper';
 import prisma from '@/lib/prisma';
 
+// Concurrency lock — prevent multiple simultaneous scrape operations
+let scrapeInProgress = false;
+
 export async function POST(request: NextRequest) {
   const auth = await getRequestUser(request);
   if (!auth || auth.role !== 'ADMIN') {
@@ -37,9 +40,17 @@ export async function POST(request: NextRequest) {
 
     // Scrape ALL teams and all their players
     if (action === 'scrape-all') {
-      const folderIds = body?.folderIds || undefined;
-      const result = await scrapeAllSport5(folderIds);
-      return NextResponse.json({ success: true, ...result });
+      if (scrapeInProgress) {
+        return NextResponse.json({ error: 'סריקה כבר רצה. חכה שתסתיים.' }, { status: 429 });
+      }
+      scrapeInProgress = true;
+      try {
+        const folderIds = body?.folderIds || undefined;
+        const result = await scrapeAllSport5(folderIds);
+        return NextResponse.json({ success: true, ...result });
+      } finally {
+        scrapeInProgress = false;
+      }
     }
 
     // Get scrape status/summary
@@ -62,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ error: 'Scrape failed', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Scrape failed' }, { status: 500 });
   }
 }
 
