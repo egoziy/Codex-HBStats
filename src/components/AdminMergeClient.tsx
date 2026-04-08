@@ -13,7 +13,11 @@ type PreviewChange = {
   reason?: string;
 };
 
-export default function AdminMergeClient() {
+export default function AdminMergeClient({
+  availableSeasons,
+}: {
+  availableSeasons: Record<string, string[]>;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState('');
@@ -99,7 +103,7 @@ export default function AdminMergeClient() {
         </p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
-          <select value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
+          <select value={selectedSource} onChange={(e) => { setSelectedSource(e.target.value); setSelectedSeason(''); }} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
             <option value="footballOrgIl">football.org.il (IFA)</option>
             <option value="sport5">sport5.co.il</option>
           </select>
@@ -108,7 +112,12 @@ export default function AdminMergeClient() {
             <option value="players">סטטיסטיקות שחקנים</option>
             <option value="all">הכל</option>
           </select>
-          <input type="text" value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)} placeholder="עונה (ריק = הכל)" className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm" />
+          <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
+            <option value="">כל העונות</option>
+            {(availableSeasons[selectedSource] || []).map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
           {!previewData ? (
             <button onClick={runPreview} disabled={isRunning} className="rounded-full bg-stone-900 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
               {isRunning ? 'עובד...' : 'תצוגה מקדימה'}

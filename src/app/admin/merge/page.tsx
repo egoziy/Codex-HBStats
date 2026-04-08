@@ -18,7 +18,7 @@ export default async function AdminMergePage() {
     );
   }
 
-  const [mergeOps, scrapedStats] = await Promise.all([
+  const [mergeOps, scrapedStats, ifaSeasons, sport5Seasons] = await Promise.all([
     prisma.mergeOperation.findMany({
       orderBy: { createdAt: 'desc' },
       take: 20,
@@ -28,6 +28,8 @@ export default async function AdminMergePage() {
       prisma.scrapedPlayerSeason.count({ where: { source: 'sport5' } }),
       prisma.scrapedStanding.count({ where: { source: 'footballOrgIl' } }),
     ]),
+    prisma.scrapedStanding.groupBy({ by: ['season'], where: { source: 'footballOrgIl' }, orderBy: { season: 'desc' } }).then((rows) => rows.map((r) => r.season)),
+    prisma.scrapedPlayerSeason.groupBy({ by: ['season'], where: { source: 'sport5' }, orderBy: { season: 'desc' } }).then((rows) => rows.map((r) => r.season)),
   ]);
 
   const statusColors: Record<string, string> = {
@@ -83,7 +85,7 @@ export default async function AdminMergePage() {
         </section>
 
         {/* Merge controls */}
-        <AdminMergeClient />
+        <AdminMergeClient availableSeasons={{ footballOrgIl: ifaSeasons, sport5: sport5Seasons }} />
 
         {/* Merge history */}
         {mergeOps.length > 0 ? (
