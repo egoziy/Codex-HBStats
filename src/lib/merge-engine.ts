@@ -308,11 +308,23 @@ export async function previewStandingsMerge(
   const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
   const seasonMap = new Map(dbSeasons.map((s) => [s.name, s.id]));
 
+  // Collect seasons that need to be created
+  const missingSeasonsSet = new Set<string>();
+
   for (const scraped of scrapedStandings) {
     const dbSeasonName = normalizeSeasonName(scraped.season);
-    const seasonId = seasonMap.get(dbSeasonName);
+    let seasonId = seasonMap.get(dbSeasonName);
     if (!seasonId) {
-      changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: `עונה ${dbSeasonName} לא נמצאה ב-DB`, fields: {} });
+      missingSeasonsSet.add(dbSeasonName);
+      // Still allow showing as "create" — season will be created during execute
+      const resolved = resolveTeamNames(scraped.teamNameHe);
+      changes.push({
+        type: 'create', entity: 'standing',
+        scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
+        matchedName: `[חדש] ${resolved.nameHe}`,
+        reason: `ייצור עונה ${dbSeasonName} + קבוצה + שורת טבלה`,
+        fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
+      });
       continue;
     }
 
@@ -441,8 +453,23 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
         const scrapedSeason = change.scrapedName.match(/\(([^)]+)\)/)?.[1] || '';
         const dbSeasonName = normalizeSeasonName(scrapedSeason);
         const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
-        const seasonId = dbSeasons.find((s) => s.name === dbSeasonName)?.id;
-        if (!seasonId) { errors.push(`Season ${dbSeasonName} not found`); continue; }
+        let seasonId = dbSeasons.find((s) => s.name === dbSeasonName)?.id;
+
+        // Create season if it doesn't exist
+        if (!seasonId) {
+          const yearMatch = dbSeasonName.match(/^(\d{4})/);
+          const year = yearMatch ? parseInt(yearMatch[1], 10) : 0;
+          if (year > 0) {
+            const newSeason = await prisma.season.create({
+              data: { year, name: dbSeasonName, startDate: new Date(`${year}-08-01`), endDate: new Date(`${year + 1}-06-30`) },
+            });
+            seasonId = newSeason.id;
+            snapshots.push({ id: newSeason.id, entity: 'season', original: {}, action: 'create' });
+          } else {
+            errors.push(`Cannot create season: ${dbSeasonName}`);
+            continue;
+          }
+        }
 
         // Find or create team
         const isNewTeam = change.matchedName?.startsWith('[חדש]');
@@ -526,8 +553,12 @@ export async function rollbackMerge(mergeId: string): Promise<{ reverted: number
           reverted++;
         }
         if (snap.entity === 'team') {
-          // Delete team (cascade will remove standings too)
           await prisma.team.delete({ where: { id: snap.id } }).catch(() => null);
+          reverted++;
+        }
+        if (snap.entity === 'season') {
+          // Delete season (cascade removes teams, standings, etc.)
+          await prisma.season.delete({ where: { id: snap.id } }).catch(() => null);
           reverted++;
         }
       } else {
