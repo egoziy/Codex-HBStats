@@ -30,6 +30,7 @@ const navLinks: NavItem[] = [
   { href: '/games', label: 'משחקים', iconSrc: '/Icons/games-nav-96.png' },
   { href: '/players', label: 'שחקנים', iconSrc: '/Icons/players-nav-96.png' },
   { href: '/statistics', label: 'סטטיסטיקות', iconSrc: '/Icons/stats-nav-96.png' },
+  { href: '/predictions', label: 'תחזיות', iconSrc: '/Icons/stats-nav-96.png' },
   { href: '/compare', label: 'השוואת עונות', iconSrc: '/Icons/compare-nav-96.png' },
   { href: '/admin', label: 'אדמין', iconSrc: '/Icons/admin-nav-96.png' },
 ];
