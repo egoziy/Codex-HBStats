@@ -76,6 +76,11 @@ export async function scrapeAndSaveTeam(folderId: number): Promise<{ players: nu
   const seen = new Set<string>();
   const players: Array<{ sourceId: string; name: string; slug: string }> = [];
 
+  // Clean HTML entities from names
+  function cleanName(raw: string): string {
+    return raw.replace(/&#39;/g, "'").replace(/&#\d+;/g, '').replace(/&\w+;/g, '').trim();
+  }
+
   let match;
   while ((match = playerPattern.exec(html)) !== null) {
     const playerId = match[2];
@@ -85,7 +90,7 @@ export async function scrapeAndSaveTeam(folderId: number): Promise<{ players: nu
     // Find name next to this link
     const nameRe = new RegExp(`/Player/\\d+/${playerId}/[^"]+\"[^>]*>([^<]+)`, 'g');
     const nameMatch = nameRe.exec(html);
-    const name = nameMatch?.[1]?.trim() || decodeURIComponent(match[3]).replace(/-/g, ' ');
+    const name = cleanName(nameMatch?.[1] || decodeURIComponent(match[3]).replace(/-/g, ' '));
 
     players.push({ sourceId: playerId, name, slug: match[3] });
   }

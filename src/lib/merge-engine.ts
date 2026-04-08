@@ -18,7 +18,13 @@ import prisma from '@/lib/prisma';
 // ──────────────────────────────────────────────
 
 function normalizeName(name: string): string {
-  return name.replace(/['"״׳\-\.`]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return name
+    .replace(/&#\d+;/g, '')       // HTML entities like &#39;
+    .replace(/&\w+;/g, '')        // Named HTML entities like &amp;
+    .replace(/['"״׳\-\.`']/g, '') // Quotes, dashes, dots
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 function namesMatch(a: string, b: string): boolean {
