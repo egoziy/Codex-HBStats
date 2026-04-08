@@ -563,6 +563,10 @@ model CompetitionLeaderboardEntry {
 enum LeaderboardCategory {
   TOP_SCORERS
   TOP_ASSISTS
+  TOP_YELLOW_CARDS
+  TOP_RED_CARDS
+  TOP_SUBSTITUTED_IN
+  TOP_SUBSTITUTED_OUT
 }
 
 model GameStatistics {
