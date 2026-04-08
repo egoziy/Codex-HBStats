@@ -147,6 +147,7 @@ type PreviewChange = {
   matchedId?: string;
   fields: Record<string, { old: any; new: any }>;
   reason?: string;
+  leagueNameHe?: string; // for standings — to resolve competitionId
 };
 
 type MergePreview = {
@@ -319,7 +320,7 @@ export async function previewStandingsMerge(
       // Still allow showing as "create" — season will be created during execute
       const resolved = resolveTeamNames(scraped.teamNameHe);
       changes.push({
-        type: 'create', entity: 'standing',
+        type: 'create', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || change?.leagueNameHe || undefined,
         scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
         matchedName: `[חדש] ${resolved.nameHe}`,
         reason: `ייצור עונה ${dbSeasonName} + קבוצה + שורת טבלה`,
@@ -345,14 +346,14 @@ export async function previewStandingsMerge(
         if (existing.goalsAgainst === 0 && scraped.goalsAgainst > 0) fields.goalsAgainst = { old: 0, new: scraped.goalsAgainst };
         if (existing.points === 0 && scraped.points > 0) fields.points = { old: 0, new: scraped.points };
         if (Object.keys(fields).length > 0) {
-          changes.push({ type: 'update', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, matchedName: matchedTeam.nameHe, matchedId: existing.id, fields });
+          changes.push({ type: 'update', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || change?.leagueNameHe || undefined, scrapedName: `${scraped.teamNameHe} (${scraped.season})`, matchedName: matchedTeam.nameHe, matchedId: existing.id, fields });
         } else {
-          changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: 'כל השדות מלאים', fields: {} });
+          changes.push({ type: 'skip', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || change?.leagueNameHe || undefined, scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: 'כל השדות מלאים', fields: {} });
         }
       } else {
         // Team exists but no standing — create
         changes.push({
-          type: 'create', entity: 'standing',
+          type: 'create', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || change?.leagueNameHe || undefined,
           scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
           matchedName: matchedTeam.nameHe,
           fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
@@ -362,7 +363,7 @@ export async function previewStandingsMerge(
       // No team in DB — propose creating team + standing
       const resolved = resolveTeamNames(scraped.teamNameHe);
       changes.push({
-        type: 'create', entity: 'standing',
+        type: 'create', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || change?.leagueNameHe || undefined,
         scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
         matchedName: `[חדש] ${resolved.nameHe}`,
         reason: 'ייצור קבוצה חדשה + שורת טבלה',
@@ -444,9 +445,9 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
           originalFields[field] = (original as any)[field];
           updateData[field] = newVal;
         }
-        snapshots.push({ id: change.matchedId, entity: 'standing', original: originalFields, action: 'update' });
+        snapshots.push({ id: change.matchedId, entity: 'standing', leagueNameHe: scraped?.leagueNameHe || change?.leagueNameHe || undefined, original: originalFields, action: 'update' });
         await prisma.standing.update({ where: { id: change.matchedId }, data: updateData });
-        applied.push({ id: change.matchedId, entity: 'standing', fields: updateData });
+        applied.push({ id: change.matchedId, entity: 'standing', leagueNameHe: scraped?.leagueNameHe || change?.leagueNameHe || undefined, fields: updateData });
       }
 
       if (change.entity === 'standing' && change.type === 'create') {
@@ -492,10 +493,30 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
           teamId = team.id;
         }
 
+        // Resolve competition from league name
+        let competitionId: string | null = null;
+        const leagueName = change.leagueNameHe || '';
+        if (leagueName.includes('לאומית')) {
+          competitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 382 } }))?.id || null;
+        } else {
+          // Default to Liga Ha'al (apiFootballId=383) for all top-flight league names
+          competitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 383 } }))?.id || null;
+        }
+
+        // Ensure CompetitionSeason exists
+        if (competitionId) {
+          await prisma.competitionSeason.upsert({
+            where: { competitionId_seasonId: { competitionId, seasonId } },
+            update: {},
+            create: { competitionId, seasonId },
+          }).catch(() => null);
+        }
+
         const created = await prisma.standing.create({
           data: {
             seasonId,
             teamId,
+            competitionId,
             position: change.fields.position?.new ?? 0,
             played: change.fields.played?.new ?? 0,
             wins: change.fields.wins?.new ?? 0,
