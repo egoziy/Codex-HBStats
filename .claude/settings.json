@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm run:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx taskkill:*)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(node -e ':*)",
+      "WebFetch(domain:www.sport5.co.il)",
+      "WebSearch",
+      "Bash(node scripts/transliterate-players.js)",
+      "Bash(node scripts/transliterate-players.js --apply)",
+      "Bash(node scripts/transliterate-players.js --all --apply)",
+      "Bash(npx tsc:*)",
+      "Bash(set PRISMA_FORCE_COLOR=0)",
+      "Bash(npx next:*)",
+      "Bash(wc -l /c/Users/popch/Downloads/Claude/HBS-Stats/Codex-HBStats/src/components/Admin*Client.tsx)",
+      "Bash(wc -l /c/Users/popch/Downloads/Claude/HBS-Stats/Codex-HBStats/src/app/admin**/page.tsx)",
+      "Bash(xargs wc:*)",
+      "WebFetch(domain:www.football.org.il)",
+      "WebFetch(domain:www.one.co.il)",
+      "WebFetch(domain:football.org.il)",
+      "WebFetch(domain:api.one.co.il)",
+      "WebFetch(domain:playbyplay.sport5.co.il)",
+      "WebFetch(domain:web.archive.org)",
+      "WebFetch(domain:builtwith.com)",
+      "Bash(node scripts/scrape-walla.js)",
+      "Bash(node scripts/test-walla-games.js)",
+      "Bash(node scripts/scrape-walla-advanced.js)",
+      "Bash(node scripts/merge-walla-standings.js --season \"2017/2018\")",
+      "Bash(node scripts/merge-walla-standings.js --season \"2018/2019\")",
+      "Bash(node scripts/merge-walla-standings.js --season \"2019/2020\")",
+      "Bash(node scripts/test-ifa-players.js)",
+      "Bash(node scripts/test-walla-team-games.js)",
+      "Bash(node scripts/test-walla-puppeteer.js)",
+      "Bash(node scripts/scrape-walla-games.js --season \"2002/2003\")",
+      "Bash(node scripts/scrape-walla-games.js)",
+      "Read(//c/Users/popch/AppData/Local/Temp/claude/c--Users-popch-Downloads-Claude-HBS-Stats/Codex-HBStats/96e50424-0795-4fe2-881d-eb633c33defd/tasks/**)"
+    ]
+  }
+}
