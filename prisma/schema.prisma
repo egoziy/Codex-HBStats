@@ -1177,7 +1177,7 @@ model ScrapedLeaderboard {
   rank            Int
   playerName      String
   teamName        String
-  value           Int             @default(0)
+  value           Float           @default(0)
   scrapedAt       DateTime        @default(now())
 
   @@unique([source, season, category, rank])
