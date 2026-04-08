@@ -1,13 +1,15 @@
 /**
- * Walla Sports Scraper — standings + top scorers from 2000/01 onwards
- * Run: node scripts/scrape-walla.js [--from 17] [--to 2874]
+ * Walla Sports Scraper — standings + player leaderboards from 2000/01 onwards
+ * Run: node scripts/scrape-walla.js
  *
- * Known league IDs (ליגת העל):
- *   17=2000/01, 86=2001/02, 188=2002/03, 243=2003/04, 300=2004/05,
- *   361=2005/06, 1004=2006/07, 1184=2007/08, 1347=2008/09, 1482=2009/10,
- *   1665=2010/11, 1802=2011/12, 1918=2012/13, 2019=2013/14, 2133=2014/15,
- *   2231=2015/16, 2343=2016/17, 2437=2017/18, 2506=2018/19, 2568=2019/20,
- *   2623=2020/21, 2690=2021/22, 2732=2022/23, 2833=2024/25, 2874=2025/26
+ * Data per season:
+ *   Table 0: Standings (position, team, played, W/D/L, goals, points)
+ *   Table 1: Top scorers (player, team, goals)
+ *   Table 2: Top assists (player, team, assists)
+ *   Table 3: Yellow cards (player, team, count)
+ *   Table 4: Red cards (player, team, count)
+ *   Table 5: Substituted out (player, team, count)
+ *   Table 6: Appearances as substitute (player, team, count)
  */
 
 const { PrismaClient } = require('@prisma/client');
@@ -44,6 +46,15 @@ const LIGA_HAAL_SEASONS = [
   { id: 2874, season: '2025/2026' },
 ];
 
+const CATEGORIES = [
+  { index: 1, key: 'goals', label: 'מלך השערים' },
+  { index: 2, key: 'assists', label: 'מלך הבישולים' },
+  { index: 3, key: 'yellowCards', label: 'כרטיסים צהובים' },
+  { index: 4, key: 'redCards', label: 'כרטיסים אדומים' },
+  { index: 5, key: 'substitutedOut', label: 'מוחלף' },
+  { index: 6, key: 'substitutedIn', label: 'הופעות כמחליף' },
+];
+
 function fetchPage(url) {
   return new Promise((resolve, reject) => {
     https.get(url, {
@@ -59,53 +70,103 @@ function fetchPage(url) {
   });
 }
 
-function parseStandings(html) {
-  const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/);
-  if (!tbodyMatch) return [];
-  const rows = [...tbodyMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)];
-  const results = [];
-  for (const row of rows) {
-    const text = row[1].replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, '|').replace(/\|+/g, '|').replace(/^\||\|$/g, '').trim();
+function cleanText(html) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/g, '')
+    .replace(/<[^>]+>/g, '|')
+    .replace(/\|+/g, '|')
+    .replace(/^\||\|$/g, '')
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .trim();
+}
+
+function parseStandings(tbody) {
+  const rows = [...tbody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)];
+  return rows.map((row) => {
+    const text = cleanText(row[1]);
     const m = text.match(/^(\d+)\|([^|]+)\|\s*\|?\*?\|?(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)-(\d+)\|(\d+)/);
-    if (m) {
-      results.push({
-        pos: +m[1], team: m[2].replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim(),
-        played: +m[3], wins: +m[4], draws: +m[5], losses: +m[6],
-        goalsAgainst: +m[7], goalsFor: +m[8], points: +m[9],
-      });
+    if (!m) return null;
+    return {
+      pos: +m[1], team: m[2].trim(),
+      played: +m[3], wins: +m[4], draws: +m[5], losses: +m[6],
+      goalsAgainst: +m[7], goalsFor: +m[8], points: +m[9],
+    };
+  }).filter(Boolean);
+}
+
+function parsePlayers(tbody) {
+  const rows = [...tbody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)];
+  return rows.map((row) => {
+    const text = cleanText(row[1]);
+    const parts = text.split('|').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 3) {
+      const count = parseInt(parts[parts.length - 1], 10);
+      const team = parts[parts.length - 2];
+      const name = parts.slice(0, parts.length - 2).join(' ');
+      if (!isNaN(count) && name.length > 1) return { name, team, count };
     }
-  }
-  return results;
+    return null;
+  }).filter(Boolean);
 }
 
 async function main() {
-  console.log('\n=== Walla Sports Scraper — Liga Ha\'al ===\n');
-  let totalSaved = 0;
+  console.log('\n=== Walla Sports Full Scraper ===\n');
+  let standingsSaved = 0;
+  let leaderboardsSaved = 0;
 
   for (const entry of LIGA_HAAL_SEASONS) {
     const url = `https://sports.walla.co.il/league/${entry.id}?r=1`;
     try {
       const html = await fetchPage(url);
-      const standings = parseStandings(html);
+      const tbodies = [...html.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)];
 
-      for (const s of standings) {
-        await prisma.scrapedStanding.upsert({
-          where: { source_season_leagueNameHe_position: { source: SOURCE, season: entry.season, leagueNameHe: 'ליגת העל', position: s.pos } },
-          update: { teamNameHe: s.team, played: s.played, wins: s.wins, draws: s.draws, losses: s.losses, goalsFor: s.goalsFor, goalsAgainst: s.goalsAgainst, points: s.points, scrapedAt: new Date() },
-          create: { source: SOURCE, season: entry.season, leagueNameHe: 'ליגת העל', position: s.pos, teamNameHe: s.team, played: s.played, wins: s.wins, draws: s.draws, losses: s.losses, goalsFor: s.goalsFor, goalsAgainst: s.goalsAgainst, points: s.points },
-        });
-        totalSaved++;
+      // Table 0: Standings
+      if (tbodies[0]) {
+        const standings = parseStandings(tbodies[0][1]);
+        for (const s of standings) {
+          await prisma.scrapedStanding.upsert({
+            where: { source_season_leagueNameHe_position: { source: SOURCE, season: entry.season, leagueNameHe: 'ליגת העל', position: s.pos } },
+            update: { teamNameHe: s.team, played: s.played, wins: s.wins, draws: s.draws, losses: s.losses, goalsFor: s.goalsFor, goalsAgainst: s.goalsAgainst, points: s.points, scrapedAt: new Date() },
+            create: { source: SOURCE, season: entry.season, leagueNameHe: 'ליגת העל', position: s.pos, teamNameHe: s.team, played: s.played, wins: s.wins, draws: s.draws, losses: s.losses, goalsFor: s.goalsFor, goalsAgainst: s.goalsAgainst, points: s.points },
+          });
+          standingsSaved++;
+        }
       }
 
-      console.log('  ' + entry.season + ': ' + standings.length + ' teams');
+      // Tables 1-6: Player leaderboards
+      for (const cat of CATEGORIES) {
+        if (tbodies[cat.index]) {
+          const players = parsePlayers(tbodies[cat.index][1]);
+          for (let rank = 0; rank < players.length; rank++) {
+            const p = players[rank];
+            await prisma.scrapedLeaderboard.upsert({
+              where: { source_season_category_rank: { source: SOURCE, season: entry.season, category: cat.key, rank: rank + 1 } },
+              update: { playerName: p.name, teamName: p.team, value: p.count, leagueNameHe: 'ליגת העל', scrapedAt: new Date() },
+              create: { source: SOURCE, season: entry.season, category: cat.key, rank: rank + 1, playerName: p.name, teamName: p.team, value: p.count, leagueNameHe: 'ליגת העל' },
+            });
+            leaderboardsSaved++;
+          }
+        }
+      }
+
+      const tbCount = tbodies.length;
+      const playerCount = CATEGORIES.reduce((sum, cat) => {
+        return sum + (tbodies[cat.index] ? parsePlayers(tbodies[cat.index][1]).length : 0);
+      }, 0);
+      console.log('  ' + entry.season + ': standings + ' + playerCount + ' player records');
     } catch (e) {
       console.log('  ' + entry.season + ': ERROR - ' + e.message);
     }
     await new Promise((r) => setTimeout(r, 600));
   }
 
-  const total = await prisma.scrapedStanding.count({ where: { source: SOURCE } });
-  console.log('\n=== Done: ' + totalSaved + ' rows saved, DB total: ' + total + ' ===');
+  const totalStandings = await prisma.scrapedStanding.count({ where: { source: SOURCE } });
+  const totalLeaderboards = await prisma.scrapedLeaderboard.count({ where: { source: SOURCE } });
+  console.log('\n=== Done ===');
+  console.log('Standings saved: ' + standingsSaved + ' (DB total: ' + totalStandings + ')');
+  console.log('Leaderboards saved: ' + leaderboardsSaved + ' (DB total: ' + totalLeaderboards + ')');
   await prisma.$disconnect();
 }
 

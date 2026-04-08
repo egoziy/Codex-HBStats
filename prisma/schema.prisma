@@ -1168,6 +1168,23 @@ model ScrapeJob {
   @@map("scrape_jobs")
 }
 
+model ScrapedLeaderboard {
+  id              String          @id @default(cuid())
+  source          String          // 'walla', 'sport5', etc.
+  season          String          // '2000/2001', '2024/2025'
+  leagueNameHe    String?         // 'ליגת העל'
+  category        String          // 'goals', 'assists', 'yellowCards', 'redCards', 'substitutedOut', 'substitutedIn'
+  rank            Int
+  playerName      String
+  teamName        String
+  value           Int             @default(0)
+  scrapedAt       DateTime        @default(now())
+
+  @@unique([source, season, category, rank])
+  @@index([source, season])
+  @@map("scraped_leaderboards")
+}
+
 // ──────────────────────────────────────────────
 // Merge Operations — tracks every merge with rollback capability
 // ──────────────────────────────────────────────
