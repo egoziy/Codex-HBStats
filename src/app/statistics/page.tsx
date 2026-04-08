@@ -76,7 +76,6 @@ export default async function StatisticsPage({
   const displayMode = await getDisplayMode(searchParams?.view);
   const seasons = await prisma.season.findMany({
     orderBy: { year: 'desc' },
-    take: 10,
   });
 
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;

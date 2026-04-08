@@ -52,7 +52,6 @@ export default async function PlayersPage({
   const displayMode = await getDisplayMode(searchParams?.view);
   const seasons = await prisma.season.findMany({
     orderBy: { year: 'desc' },
-    take: 10,
   });
   const seasonIds = seasons.map((season) => season.id);
   const allTeams = seasonIds.length

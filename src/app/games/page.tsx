@@ -35,7 +35,6 @@ export default async function GamesPage({
   const currentUser = await getCurrentUser();
   const seasons = await prisma.season.findMany({
     orderBy: { year: 'desc' },
-    take: 10,
   });
   const seasonIds = seasons.map((season) => season.id);
   const [allFilterTeams, allFilterGames] = seasonIds.length
