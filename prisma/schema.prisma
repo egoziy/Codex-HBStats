@@ -23,6 +23,7 @@ model User {
   sessions          Session[]
   fetchJobs         FetchJob[]     @relation("FetchJobInitiator")
   activityLogs      ActivityLog[]
+  mergeOperations   MergeOperation[]
 
   @@map("users")
 }
@@ -1165,4 +1166,32 @@ model ScrapeJob {
 
   @@index([source, status])
   @@map("scrape_jobs")
+}
+
+// ──────────────────────────────────────────────
+// Merge Operations — tracks every merge with rollback capability
+// ──────────────────────────────────────────────
+
+model MergeOperation {
+  id              String          @id @default(cuid())
+  source          String          // 'sport5' | 'footballOrgIl'
+  mergeType       String          // 'players', 'standings', 'all'
+  status          String          @default("preview") // 'preview', 'approved', 'executed', 'rolled_back', 'failed'
+  description     String?
+  previewJson     Json?           // what will change (before execution)
+  changesJson     Json?           // what was actually changed (after execution)
+  snapshotJson    Json?           // original values before merge (for rollback)
+  recordsMatched  Int             @default(0)
+  recordsUpdated  Int             @default(0)
+  recordsCreated  Int             @default(0)
+  recordsSkipped  Int             @default(0)
+  approvedAt      DateTime?
+  executedAt      DateTime?
+  rolledBackAt    DateTime?
+  createdAt       DateTime        @default(now())
+  userId          String?
+  user            User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("merge_operations")
 }
