@@ -1,29 +1,21 @@
 /**
  * Sport5.co.il Scraper
  *
- * Scrapes structured football data from sport5.co.il team and player pages.
- * These pages are server-rendered HTML (ASP.NET) and don't require a headless browser.
+ * Scrapes football data from sport5.co.il and saves to ScrapedTeam/Player/Match tables.
+ * Data is stored raw — separate from main models — until manually merged.
  *
- * Key URL patterns:
- *   Team page:   /team.aspx?FolderID={id}    → roster, stats, results
- *   Player page: /Player/{TeamID}/{PlayerID}/{slug} → multi-season stats
- *   League page: /liga.aspx?FolderID={id}     → top scorers, cards
- *
- * Known FolderIDs:
- *   44  = Liga Ha'al (Israeli Premier League)
- *   80  = Liga Leumit (National League)
- *   284 = Israel National Team
- *
- * Data principles:
- *   - Never overwrite existing API-Football data
- *   - Only fill empty fields or add missing records
- *   - Match by sport5 IDs or by team+player name fuzzy match
+ * URL patterns:
+ *   Team:   /team.aspx?FolderID={id}
+ *   Player: /Player/{TeamFolderId}/{PlayerId}/{slug}
+ *   Liga:   /liga.aspx?FolderID={id}
  */
 
-const SPORT5_BASE = 'https://www.sport5.co.il';
-const REQUEST_DELAY_MS = 500;
+import prisma from '@/lib/prisma';
 
-// Known team FolderID → team name mapping
+const SPORT5_BASE = 'https://www.sport5.co.il';
+const REQUEST_DELAY_MS = 600;
+const SOURCE = 'sport5';
+
 export const SPORT5_TEAMS: Record<number, { nameHe: string; nameEn: string }> = {
   1639: { nameHe: 'הפועל באר שבע', nameEn: 'Hapoel Beer Sheva' },
   192:  { nameHe: 'מכבי תל אביב', nameEn: 'Maccabi Tel Aviv' },
@@ -41,257 +33,220 @@ export const SPORT5_TEAMS: Record<number, { nameHe: string; nameEn: string }> = 
   2973: { nameHe: 'עירוני טבריה', nameEn: 'Ironi Tiberias' },
 };
 
-export const SPORT5_LEAGUES: Record<number, { nameHe: string; nameEn: string }> = {
-  44: { nameHe: 'ליגת העל', nameEn: "Ligat Ha'al" },
-  80: { nameHe: 'ליגה לאומית', nameEn: 'Liga Leumit' },
-};
-
 async function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function fetchPage(url: string): Promise<string> {
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml',
       'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
     },
   });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} for ${url}`);
-  }
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
   return response.text();
 }
 
 // ──────────────────────────────────────────────
-// Parsing utilities
+// Team page scraper → saves ScrapedTeam + ScrapedPlayer
 // ──────────────────────────────────────────────
 
-function extractText(html: string, pattern: RegExp): string | null {
-  const match = html.match(pattern);
-  return match?.[1]?.trim().replace(/<[^>]+>/g, '').trim() || null;
-}
-
-function extractAllMatches(html: string, pattern: RegExp): RegExpMatchArray[] {
-  return [...html.matchAll(pattern)];
-}
-
-// ──────────────────────────────────────────────
-// Team page scraper
-// ──────────────────────────────────────────────
-
-export type Sport5Player = {
-  sport5Id: number;
-  name: string;
-  position: string | null;
-  jerseyNumber: number | null;
-  teamFolderId: number;
-};
-
-export type Sport5TeamResult = {
-  opponent: string;
-  homeScore: number | null;
-  awayScore: number | null;
-  date: string | null;
-  isHome: boolean;
-};
-
-export type Sport5TeamData = {
-  folderId: number;
-  nameHe: string;
-  players: Sport5Player[];
-  results: Sport5TeamResult[];
-  standings: {
-    played: number;
-    wins: number;
-    draws: number;
-    losses: number;
-    goalsFor: number;
-    goalsAgainst: number;
-    points: number;
-  } | null;
-};
-
-export async function scrapeTeamPage(folderId: number): Promise<Sport5TeamData> {
+export async function scrapeAndSaveTeam(folderId: number): Promise<{ players: number; name: string }> {
   const url = `${SPORT5_BASE}/team.aspx?FolderID=${folderId}`;
   const html = await fetchPage(url);
 
-  const teamInfo = SPORT5_TEAMS[folderId] || { nameHe: extractText(html, /<h1[^>]*>([^<]+)</) || 'Unknown', nameEn: '' };
+  const teamInfo = SPORT5_TEAMS[folderId] || { nameHe: 'Unknown', nameEn: '' };
 
-  // Extract players from roster
-  // Pattern: /Player/{TeamFolderId}/{PlayerId}/{slug}
-  const playerPattern = /\/Player\/(\d+)\/(\d+)\/[^"]*"[^>]*>([^<]+)</g;
-  const playerMatches = extractAllMatches(html, playerPattern);
-  const seenPlayerIds = new Set<number>();
-  const players: Sport5Player[] = [];
+  // Detect current season from page
+  const seasonMatch = html.match(/(\d{4}\/\d{4}|\d{4}\/\d{2})/);
+  const season = seasonMatch?.[1] || null;
 
-  for (const match of playerMatches) {
-    const teamId = parseInt(match[1], 10);
-    const playerId = parseInt(match[2], 10);
-    const name = match[3].trim();
-    if (seenPlayerIds.has(playerId)) continue;
-    seenPlayerIds.add(playerId);
-    players.push({
-      sport5Id: playerId,
-      name,
-      position: null, // extracted separately if available
-      jerseyNumber: null,
-      teamFolderId: teamId,
+  // Upsert team
+  const scrapedTeam = await prisma.scrapedTeam.upsert({
+    where: { source_sourceId_season: { source: SOURCE, sourceId: String(folderId), season: season || 'current' } },
+    update: { nameHe: teamInfo.nameHe, nameEn: teamInfo.nameEn, scrapedAt: new Date() },
+    create: { source: SOURCE, sourceId: String(folderId), nameHe: teamInfo.nameHe, nameEn: teamInfo.nameEn, season: season || 'current' },
+  });
+
+  // Extract players: /Player/{TeamFolderId}/{PlayerId}/{slug}
+  const playerPattern = /\/Player\/(\d+)\/(\d+)\/([^"]+)"/g;
+  const namePattern = /\/Player\/\d+\/\d+\/[^"]+"\s*[^>]*>([^<]+)</g;
+  const seen = new Set<string>();
+  const players: Array<{ sourceId: string; name: string; slug: string }> = [];
+
+  let match;
+  while ((match = playerPattern.exec(html)) !== null) {
+    const playerId = match[2];
+    if (seen.has(playerId)) continue;
+    seen.add(playerId);
+
+    // Find name next to this link
+    const nameRe = new RegExp(`/Player/\\d+/${playerId}/[^"]+\"[^>]*>([^<]+)`, 'g');
+    const nameMatch = nameRe.exec(html);
+    const name = nameMatch?.[1]?.trim() || decodeURIComponent(match[3]).replace(/-/g, ' ');
+
+    players.push({ sourceId: playerId, name, slug: match[3] });
+  }
+
+  // Save players
+  for (const p of players) {
+    await prisma.scrapedPlayer.upsert({
+      where: { source_sourceId_teamId: { source: SOURCE, sourceId: p.sourceId, teamId: scrapedTeam.id } },
+      update: { nameHe: p.name, scrapedAt: new Date() },
+      create: { source: SOURCE, sourceId: p.sourceId, nameHe: p.name, teamId: scrapedTeam.id },
     });
   }
 
-  // Extract jersey numbers and positions if present
-  // Look for patterns like: <span class="shirtNum">7</span> or similar
-  const jerseyPattern = /shirtNum[^>]*>(\d+)<[\s\S]*?\/Player\/\d+\/(\d+)\//g;
-  for (const match of extractAllMatches(html, jerseyPattern)) {
-    const num = parseInt(match[1], 10);
-    const playerId = parseInt(match[2], 10);
-    const player = players.find((p) => p.sport5Id === playerId);
-    if (player) player.jerseyNumber = num;
+  // Extract standings
+  const rowPattern = /<tr[^>]*>\s*<td>(\d+)<\/td>\s*<td[^>]*>.*?FolderID=(\d+)[^>]*>([^<]+)<\/a><\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td[^>]*>(\d+):(\d+)<\/td>\s*<td>([^<]+)<\/td>\s*<td>(\d+)<\/td>/g;
+  while ((match = rowPattern.exec(html)) !== null) {
+    const pos = parseInt(match[1], 10);
+    const teamName = match[3].trim();
+    await prisma.scrapedStanding.upsert({
+      where: { source_season_leagueNameHe_position: { source: SOURCE, season: season || 'current', leagueNameHe: 'ליגת העל', position: pos } },
+      update: { teamNameHe: teamName, played: parseInt(match[4], 10), wins: parseInt(match[5], 10), draws: parseInt(match[6], 10), losses: parseInt(match[7], 10), goalsFor: parseInt(match[8], 10), goalsAgainst: parseInt(match[9], 10), points: parseInt(match[11], 10), scrapedAt: new Date() },
+      create: { source: SOURCE, season: season || 'current', leagueNameHe: 'ליגת העל', position: pos, teamNameHe: teamName, played: parseInt(match[4], 10), wins: parseInt(match[5], 10), draws: parseInt(match[6], 10), losses: parseInt(match[7], 10), goalsFor: parseInt(match[8], 10), goalsAgainst: parseInt(match[9], 10), points: parseInt(match[11], 10) },
+    });
   }
 
-  // Extract standings from team page
-  const standingsPattern = /(\d+)\s*<\/td>\s*<td[^>]*>\s*(\d+)\s*<\/td>\s*<td[^>]*>\s*(\d+)\s*<\/td>\s*<td[^>]*>\s*(\d+)\s*<\/td>\s*<td[^>]*>\s*(\d+)\s*<\/td>\s*<td[^>]*>\s*(\d+)[:\-](\d+)\s*<\/td>\s*<td[^>]*>\s*(\d+)/;
-  const standingsMatch = html.match(standingsPattern);
-  const standings = standingsMatch
-    ? {
-        played: parseInt(standingsMatch[1], 10),
-        wins: parseInt(standingsMatch[2], 10),
-        draws: parseInt(standingsMatch[3], 10),
-        losses: parseInt(standingsMatch[4], 10),
-        goalsFor: parseInt(standingsMatch[6], 10),
-        goalsAgainst: parseInt(standingsMatch[7], 10),
-        points: parseInt(standingsMatch[8], 10),
+  return { players: players.length, name: teamInfo.nameHe };
+}
+
+// ──────────────────────────────────────────────
+// Player page scraper → saves ScrapedPlayerSeason
+// ──────────────────────────────────────────────
+
+export async function scrapeAndSavePlayer(
+  scrapedPlayerId: string,
+  teamFolderId: number,
+  sport5PlayerId: string,
+  slug: string,
+): Promise<{ seasons: number; name: string }> {
+  const url = `${SPORT5_BASE}/Player/${teamFolderId}/${sport5PlayerId}/${slug}`;
+  const html = await fetchPage(url);
+
+  // Name
+  const nameMatch = html.match(/סטטיסטיקות\s*:\s*([^<"]+)/);
+  const name = nameMatch?.[1]?.trim() || 'Unknown';
+
+  // Season stats: <tr><td>2024/25</td><td>32</td><td>21</td><td>1</td><td>16</td><td>11</td><td>2</td><td>0</td></tr>
+  const seasonRowPattern = /<tr>\s*<td>(\d{4}\/\d{2,4})<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>\s*<td>(\d+)<\/td>/g;
+  let seasonCount = 0;
+  let match;
+
+  while ((match = seasonRowPattern.exec(html)) !== null) {
+    const season = match[1].trim();
+    await prisma.scrapedPlayerSeason.upsert({
+      where: { source_season_playerId: { source: SOURCE, season, playerId: scrapedPlayerId } },
+      update: {
+        appearances: parseInt(match[2], 10) || 0,
+        starts: parseInt(match[3], 10) || 0,
+        goals: parseInt(match[4], 10) || 0,
+        subsIn: parseInt(match[5], 10) || 0,
+        subsOut: parseInt(match[6], 10) || 0,
+        yellowCards: parseInt(match[7], 10) || 0,
+        redCards: parseInt(match[8], 10) || 0,
+        scrapedAt: new Date(),
+      },
+      create: {
+        source: SOURCE,
+        season,
+        playerId: scrapedPlayerId,
+        appearances: parseInt(match[2], 10) || 0,
+        starts: parseInt(match[3], 10) || 0,
+        goals: parseInt(match[4], 10) || 0,
+        subsIn: parseInt(match[5], 10) || 0,
+        subsOut: parseInt(match[6], 10) || 0,
+        yellowCards: parseInt(match[7], 10) || 0,
+        redCards: parseInt(match[8], 10) || 0,
+      },
+    });
+    seasonCount++;
+  }
+
+  // Update player name
+  await prisma.scrapedPlayer.update({ where: { id: scrapedPlayerId }, data: { nameHe: name } });
+
+  return { seasons: seasonCount, name };
+}
+
+// ──────────────────────────────────────────────
+// Full scrape: all teams → all players → all season stats
+// ──────────────────────────────────────────────
+
+export async function scrapeAllSport5(folderIds?: number[]): Promise<{
+  jobId: string;
+  teamsScraped: number;
+  playersScraped: number;
+  seasonsScraped: number;
+  errors: string[];
+}> {
+  const ids = folderIds || Object.keys(SPORT5_TEAMS).map(Number);
+  const errors: string[] = [];
+  let teamsScraped = 0;
+  let playersScraped = 0;
+  let seasonsScraped = 0;
+
+  // Create job
+  const job = await prisma.scrapeJob.create({
+    data: { source: SOURCE, targetType: 'all', status: 'running', startedAt: new Date() },
+  });
+
+  try {
+    // Phase 1: Scrape all team pages
+    for (const folderId of ids) {
+      try {
+        const result = await scrapeAndSaveTeam(folderId);
+        teamsScraped++;
+        playersScraped += result.players;
+      } catch (error: any) {
+        errors.push(`Team ${folderId}: ${error.message}`);
       }
-    : null;
-
-  return {
-    folderId,
-    nameHe: teamInfo.nameHe,
-    players,
-    results: [],
-    standings,
-  };
-}
-
-// ──────────────────────────────────────────────
-// Player page scraper
-// ──────────────────────────────────────────────
-
-export type Sport5PlayerSeason = {
-  season: string;
-  team: string;
-  appearances: number;
-  goals: number;
-  assists: number;
-  yellowCards: number;
-  redCards: number;
-  subsIn: number;
-  subsOut: number;
-};
-
-export type Sport5PlayerData = {
-  sport5Id: number;
-  name: string;
-  position: string | null;
-  teamFolderId: number;
-  seasons: Sport5PlayerSeason[];
-};
-
-export async function scrapePlayerPage(teamFolderId: number, playerId: number, slug: string): Promise<Sport5PlayerData> {
-  const url = `${SPORT5_BASE}/Player/${teamFolderId}/${playerId}/${slug}`;
-  const html = await fetchPage(url);
-
-  const name = extractText(html, /<h1[^>]*class="[^"]*playerName[^"]*"[^>]*>([^<]+)/) || 'Unknown';
-  const position = extractText(html, /תפקיד[:\s]*<[^>]*>([^<]+)/) || null;
-
-  // Extract season stats from table rows
-  // Pattern varies but typically: season | team | appearances | goals | assists | yellow | red | sub-in | sub-out
-  const seasonRowPattern = /<tr[^>]*>\s*<td[^>]*>([^<]*\d{4}[^<]*)<\/td>\s*<td[^>]*>([^<]+)<\/td>\s*<td[^>]*>(\d+)<\/td>\s*<td[^>]*>(\d+)<\/td>\s*<td[^>]*>(\d+)<\/td>\s*<td[^>]*>(\d+)<\/td>\s*<td[^>]*>(\d+)<\/td>/g;
-  const seasons: Sport5PlayerSeason[] = [];
-
-  for (const match of extractAllMatches(html, seasonRowPattern)) {
-    seasons.push({
-      season: match[1].trim(),
-      team: match[2].trim(),
-      appearances: parseInt(match[3], 10) || 0,
-      goals: parseInt(match[4], 10) || 0,
-      assists: parseInt(match[5], 10) || 0,
-      yellowCards: parseInt(match[6], 10) || 0,
-      redCards: parseInt(match[7], 10) || 0,
-      subsIn: 0,
-      subsOut: 0,
-    });
-  }
-
-  return {
-    sport5Id: playerId,
-    name,
-    position,
-    teamFolderId,
-    seasons,
-  };
-}
-
-// ──────────────────────────────────────────────
-// League top scorers scraper
-// ──────────────────────────────────────────────
-
-export type Sport5TopScorer = {
-  playerName: string;
-  teamName: string;
-  goals: number;
-  sport5PlayerId: number | null;
-};
-
-export async function scrapeLeagueTopScorers(folderId: number): Promise<Sport5TopScorer[]> {
-  const url = `${SPORT5_BASE}/liga.aspx?FolderID=${folderId}`;
-  const html = await fetchPage(url);
-
-  // Extract top scorers table
-  const scorerPattern = /\/Player\/\d+\/(\d+)\/[^"]*"[^>]*>([^<]+)<[\s\S]*?<td[^>]*>([^<]+)<\/td>\s*<td[^>]*>(\d+)<\/td>/g;
-  const scorers: Sport5TopScorer[] = [];
-
-  for (const match of extractAllMatches(html, scorerPattern)) {
-    scorers.push({
-      sport5PlayerId: parseInt(match[1], 10),
-      playerName: match[2].trim(),
-      teamName: match[3].trim(),
-      goals: parseInt(match[4], 10) || 0,
-    });
-  }
-
-  return scorers;
-}
-
-// ──────────────────────────────────────────────
-// Batch scraper with rate limiting
-// ──────────────────────────────────────────────
-
-export type ScrapeResult = {
-  teams: Sport5TeamData[];
-  errors: Array<{ folderId: number; error: string }>;
-  scrapedAt: string;
-};
-
-export async function scrapeAllTeams(folderIds: number[]): Promise<ScrapeResult> {
-  const teams: Sport5TeamData[] = [];
-  const errors: Array<{ folderId: number; error: string }> = [];
-
-  for (const folderId of folderIds) {
-    try {
-      const team = await scrapeTeamPage(folderId);
-      teams.push(team);
-    } catch (error: any) {
-      errors.push({ folderId, error: error.message || 'Unknown error' });
+      await delay(REQUEST_DELAY_MS);
     }
-    await delay(REQUEST_DELAY_MS);
+
+    // Phase 2: Scrape all player pages for historical stats
+    const allPlayers = await prisma.scrapedPlayer.findMany({
+      where: { source: SOURCE },
+      select: { id: true, sourceId: true, team: { select: { sourceId: true } } },
+    });
+
+    for (const player of allPlayers) {
+      try {
+        // Build slug from player name (we'll use sourceId as slug might not be stored)
+        const playerRecord = await prisma.scrapedPlayer.findUnique({
+          where: { id: player.id },
+          select: { nameHe: true },
+        });
+        const slug = encodeURIComponent(playerRecord?.nameHe?.replace(/\s+/g, '-') || player.sourceId);
+        const result = await scrapeAndSavePlayer(player.id, parseInt(player.team.sourceId, 10), player.sourceId, slug);
+        seasonsScraped += result.seasons;
+      } catch (error: any) {
+        errors.push(`Player ${player.sourceId}: ${error.message}`);
+      }
+      await delay(REQUEST_DELAY_MS);
+    }
+
+    await prisma.scrapeJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'completed',
+        teamsScraped,
+        playersScraped,
+        matchesScraped: 0,
+        errorsCount: errors.length,
+        log: { errors: errors.slice(0, 50) },
+        finishedAt: new Date(),
+      },
+    });
+  } catch (error: any) {
+    await prisma.scrapeJob.update({
+      where: { id: job.id },
+      data: { status: 'failed', errorsCount: errors.length + 1, log: { errors: [...errors.slice(0, 50), error.message] }, finishedAt: new Date() },
+    });
   }
 
-  return {
-    teams,
-    errors,
-    scrapedAt: new Date().toISOString(),
-  };
+  return { jobId: job.id, teamsScraped, playersScraped, seasonsScraped, errors };
 }

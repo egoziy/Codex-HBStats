@@ -1022,3 +1022,147 @@ enum MediaAssetKind {
   VENUE_PHOTO
   BANNER
 }
+
+// ──────────────────────────────────────────────
+// External Scrape Storage (raw data from sport5, football.org.il, etc.)
+// Stored separately from main models until manually merged
+// ──────────────────────────────────────────────
+
+model ScrapedTeam {
+  id              String          @id @default(cuid())
+  source          String          // 'sport5' | 'footballOrgIl'
+  sourceId        String          // FolderID for sport5, club_id for IFA
+  nameHe          String
+  nameEn          String?
+  logoUrl         String?
+  season          String?         // e.g. '2025/26', '2024/25'
+  leagueNameHe    String?
+  scrapedAt       DateTime        @default(now())
+  rawJson         Json?
+  players         ScrapedPlayer[]
+  standings       ScrapedStanding[]
+  matchesHome     ScrapedMatch[]  @relation("ScrapedHomeTeam")
+  matchesAway     ScrapedMatch[]  @relation("ScrapedAwayTeam")
+
+  @@unique([source, sourceId, season])
+  @@index([source, season])
+  @@map("scraped_teams")
+}
+
+model ScrapedPlayer {
+  id              String          @id @default(cuid())
+  source          String
+  sourceId        String          // PlayerID for sport5, player_id for IFA
+  nameHe          String
+  nameEn          String?
+  position        String?
+  jerseyNumber    Int?
+  photoUrl        String?
+  scrapedAt       DateTime        @default(now())
+  rawJson         Json?
+  teamId          String
+  team            ScrapedTeam     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  seasonStats     ScrapedPlayerSeason[]
+
+  @@unique([source, sourceId, teamId])
+  @@index([source, nameHe])
+  @@map("scraped_players")
+}
+
+model ScrapedPlayerSeason {
+  id              String          @id @default(cuid())
+  source          String
+  season          String          // '2024/25', '2023/24', etc.
+  teamNameHe      String?
+  appearances     Int             @default(0)
+  starts          Int             @default(0)
+  goals           Int             @default(0)
+  assists         Int             @default(0)
+  yellowCards     Int             @default(0)
+  redCards        Int             @default(0)
+  subsIn          Int             @default(0)
+  subsOut         Int             @default(0)
+  minutesPlayed   Int             @default(0)
+  scrapedAt       DateTime        @default(now())
+  playerId        String
+  player          ScrapedPlayer   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([source, season, playerId])
+  @@index([season])
+  @@map("scraped_player_seasons")
+}
+
+model ScrapedMatch {
+  id              String          @id @default(cuid())
+  source          String
+  sourceId        String?         // GameID from source
+  season          String
+  leagueNameHe    String?
+  round           String?
+  dateStr         String?         // original date string from source
+  dateTime        DateTime?
+  homeTeamName    String
+  awayTeamName    String
+  homeScore       Int?
+  awayScore       Int?
+  homePenalty     Int?
+  awayPenalty     Int?
+  status          String?         // 'completed', 'scheduled', etc.
+  venue           String?
+  referee         String?
+  scrapedAt       DateTime        @default(now())
+  rawJson         Json?
+  homeTeamId      String?
+  homeTeam        ScrapedTeam?    @relation("ScrapedHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeamId      String?
+  awayTeam        ScrapedTeam?    @relation("ScrapedAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+
+  @@unique([source, sourceId])
+  @@index([source, season])
+  @@index([dateTime])
+  @@map("scraped_matches")
+}
+
+model ScrapedStanding {
+  id              String          @id @default(cuid())
+  source          String
+  season          String
+  leagueNameHe    String?
+  position        Int
+  teamNameHe      String
+  played          Int             @default(0)
+  wins            Int             @default(0)
+  draws           Int             @default(0)
+  losses          Int             @default(0)
+  goalsFor        Int             @default(0)
+  goalsAgainst    Int             @default(0)
+  goalDifference  Int             @default(0)
+  points          Int             @default(0)
+  scrapedAt       DateTime        @default(now())
+  teamId          String?
+  team            ScrapedTeam?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@unique([source, season, leagueNameHe, position])
+  @@index([source, season])
+  @@map("scraped_standings")
+}
+
+model ScrapeJob {
+  id              String          @id @default(cuid())
+  source          String
+  targetType      String          // 'team', 'player', 'league', 'all'
+  targetId        String?
+  season          String?
+  status          String          @default("pending") // 'pending', 'running', 'completed', 'failed'
+  teamsScraped    Int             @default(0)
+  playersScraped  Int             @default(0)
+  matchesScraped  Int             @default(0)
+  errorsCount     Int             @default(0)
+  log             Json?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime        @default(now())
+
+  @@index([source, status])
+  @@map("scrape_jobs")
+}
