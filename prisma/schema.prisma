@@ -315,6 +315,8 @@ model Game {
   extra               Int?
   homeScore           Int?
   awayScore           Int?
+  homePenalty         Int?
+  awayPenalty         Int?
   status              GameStatus        @default(SCHEDULED)
   additionalInfo      Json?
   createdAt           DateTime          @default(now())

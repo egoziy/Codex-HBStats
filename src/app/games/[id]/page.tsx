@@ -114,6 +114,8 @@ export default async function GamePage({
       status: game.status,
       homeScore: game.homeScore,
       awayScore: game.awayScore,
+      homePenalty: (game as any).homePenalty ?? null,
+      awayPenalty: (game as any).awayPenalty ?? null,
       roundNameHe: game.roundNameHe,
       roundNameEn: game.roundNameEn,
       refereeHe: game.referee?.nameHe || game.refereeHe,

@@ -212,6 +212,8 @@ export async function PUT(request: NextRequest) {
     refereeHe,
     homeScore,
     awayScore,
+    homePenalty,
+    awayPenalty,
     status,
     gameStats,
   } = body;
@@ -265,6 +267,8 @@ export async function PUT(request: NextRequest) {
           }),
           ...(homeScore !== undefined && { homeScore: parseOptionalInteger(homeScore) }),
           ...(awayScore !== undefined && { awayScore: parseOptionalInteger(awayScore) }),
+          ...(homePenalty !== undefined && { homePenalty: parseOptionalInteger(homePenalty) }),
+          ...(awayPenalty !== undefined && { awayPenalty: parseOptionalInteger(awayPenalty) }),
           ...(status !== undefined && { status }),
         },
         include: {

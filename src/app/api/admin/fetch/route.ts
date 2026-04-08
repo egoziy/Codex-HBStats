@@ -1732,6 +1732,8 @@ export async function POST(request: NextRequest) {
           competitionId: competition.id,
           homeScore: fixture?.goals?.home ?? null,
           awayScore: fixture?.goals?.away ?? null,
+          homePenalty: fixture?.score?.penalty?.home ?? null,
+          awayPenalty: fixture?.score?.penalty?.away ?? null,
           status: mapGameStatus(fixture?.fixture?.status?.short),
           venueId: (await resolveVenueRecord(fixture?.fixture?.venue))?.id || null,
           additionalInfo: fixture as any,

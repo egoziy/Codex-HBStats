@@ -38,10 +38,20 @@ export function getCompetitionDisplayName(competition?: {
 export function getGameScoreDisplay(game: {
   homeScore: number | null;
   awayScore: number | null;
+  homePenalty?: number | null;
+  awayPenalty?: number | null;
+  statusShort?: string | null;
   status: 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
 }) {
   if (game.status === 'COMPLETED' || game.status === 'ONGOING') {
-    return `${game.homeScore ?? 0} - ${game.awayScore ?? 0}`;
+    const score = `${game.homeScore ?? 0} - ${game.awayScore ?? 0}`;
+    if (game.statusShort === 'PEN' && game.homePenalty != null && game.awayPenalty != null) {
+      return `${score} (פנ׳ ${game.homePenalty}-${game.awayPenalty})`;
+    }
+    if (game.statusShort === 'AET') {
+      return `${score} (הארכה)`;
+    }
+    return score;
   }
 
   if (game.status === 'CANCELLED') {

@@ -113,6 +113,12 @@ export default async function AdminPage({
             status: true,
             dateTime: true,
             updatedAt: true,
+            _count: {
+              select: {
+                events: true,
+                lineupEntries: true,
+              },
+            },
           },
         },
         standings: {

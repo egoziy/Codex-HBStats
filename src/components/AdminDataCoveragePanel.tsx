@@ -75,25 +75,21 @@ function buildResourceSelection(row: AdminCoverageRow) {
     return ['teams', 'venues', 'players', 'fixtures', 'standings'];
   }
 
-  if (row.status === 'STALE') {
-    const resources = ['fixtures', 'standings', 'venues'];
+  const resources = ['fixtures', 'standings', 'venues'];
 
-    if (row.gamesCount > 0) {
-      resources.push('events', 'statistics', 'lineups');
-    }
-
-    if (row.predictionsCount > 0 || row.gamesCount > 0) {
-      resources.push('predictions', 'h2h', 'odds');
-    }
-
-    if (row.liveCount > 0 || row.gamesCount > 0) {
-      resources.push('livescore');
-    }
-
-    return Array.from(new Set(resources));
+  if (row.gamesCount > 0) {
+    resources.push('events', 'statistics', 'lineups');
   }
 
-  return ['fixtures', 'standings', 'venues'];
+  if (row.predictionsCount > 0 || row.gamesCount > 0) {
+    resources.push('predictions', 'h2h', 'odds');
+  }
+
+  if (row.liveCount > 0 || row.gamesCount > 0) {
+    resources.push('livescore');
+  }
+
+  return Array.from(new Set(resources));
 }
 
 function buildTeamResourceSelection(row: AdminCoverageRow, teamRow: AdminCoverageRow['teamRows'][number]) {
@@ -307,6 +303,8 @@ export default function AdminDataCoveragePanel({
                       <CountPill label="אצטדיונים" value={row.venuesCount} />
                       <CountPill label="שחקנים" value={row.playersCount} />
                       <CountPill label="משחקים" value={row.gamesCount} />
+                      <CountPill label="אירועים" value={row.eventsCount} />
+                      <CountPill label="הרכבים" value={row.lineupsCount} />
                       <CountPill label="טבלה" value={row.standingsCount} />
                       <CountPill label="תחזיות" value={row.predictionsCount} />
                       <CountPill label="ראש בראש" value={row.h2hCount} />

@@ -43,6 +43,8 @@ type GameFormState = {
   status: string;
   homeScore: string;
   awayScore: string;
+  homePenalty: string;
+  awayPenalty: string;
   roundNameHe: string;
   roundNameEn: string;
   refereeHe: string;
@@ -98,6 +100,8 @@ function buildGameForm(game: {
   status: string;
   homeScore: number | null;
   awayScore: number | null;
+  homePenalty: number | null;
+  awayPenalty: number | null;
   roundNameHe: string | null;
   roundNameEn: string | null;
   refereeHe: string | null;
@@ -108,6 +112,8 @@ function buildGameForm(game: {
     status: game.status || 'SCHEDULED',
     homeScore: game.homeScore === null ? '' : String(game.homeScore),
     awayScore: game.awayScore === null ? '' : String(game.awayScore),
+    homePenalty: game.homePenalty === null ? '' : String(game.homePenalty),
+    awayPenalty: game.awayPenalty === null ? '' : String(game.awayPenalty),
     roundNameHe: game.roundNameHe || '',
     roundNameEn: game.roundNameEn || '',
     refereeHe: game.refereeHe || '',
@@ -212,6 +218,8 @@ export default function GameAdminQuickEditorClient({
           status: gameForm.status,
           homeScore: gameForm.homeScore,
           awayScore: gameForm.awayScore,
+          homePenalty: gameForm.homePenalty,
+          awayPenalty: gameForm.awayPenalty,
           roundNameHe: gameForm.roundNameHe,
           roundNameEn: gameForm.roundNameEn,
           refereeHe: gameForm.refereeHe,
@@ -313,6 +321,8 @@ export default function GameAdminQuickEditorClient({
             <SelectField label="סטטוס" value={gameForm.status} onChange={(value) => setGameForm((current) => ({ ...current, status: value }))} options={gameStatusOptions.map((option) => ({ value: option.value, label: option.label }))} />
             <Field label="שערי בית" type="number" value={gameForm.homeScore} onChange={(value) => setGameForm((current) => ({ ...current, homeScore: value }))} />
             <Field label="שערי חוץ" type="number" value={gameForm.awayScore} onChange={(value) => setGameForm((current) => ({ ...current, awayScore: value }))} />
+            <Field label="פנדלים בית" type="number" value={gameForm.homePenalty} onChange={(value) => setGameForm((current) => ({ ...current, homePenalty: value }))} />
+            <Field label="פנדלים חוץ" type="number" value={gameForm.awayPenalty} onChange={(value) => setGameForm((current) => ({ ...current, awayPenalty: value }))} />
             <Field label="מחזור בעברית" value={gameForm.roundNameHe} onChange={(value) => setGameForm((current) => ({ ...current, roundNameHe: value }))} />
             <Field label="מחזור באנגלית" value={gameForm.roundNameEn} onChange={(value) => setGameForm((current) => ({ ...current, roundNameEn: value }))} />
             <Field label="שופט בעברית" value={gameForm.refereeHe} onChange={(value) => setGameForm((current) => ({ ...current, refereeHe: value }))} />
