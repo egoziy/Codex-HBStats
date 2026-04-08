@@ -19,6 +19,9 @@ export default function AdminMergeClient() {
   const [message, setMessage] = useState('');
   const [previewData, setPreviewData] = useState<{ mergeId: string; changes: PreviewChange[]; summary: { updates: number; creates: number; skips: number } } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [selectedSource, setSelectedSource] = useState('footballOrgIl');
+  const [selectedType, setSelectedType] = useState('standings');
+  const [selectedSeason, setSelectedSeason] = useState('');
 
   async function apiCall(action: string, params?: Record<string, any>) {
     const response = await fetch('/api/admin/merge', {
@@ -34,10 +37,14 @@ export default function AdminMergeClient() {
     setIsRunning(true);
     setMessage('מייצר תצוגה מקדימה...');
     try {
-      const data = await apiCall('preview', { source: 'sport5' });
+      const data = await apiCall('preview', {
+        source: selectedSource,
+        mergeType: selectedType,
+        season: selectedSeason || undefined,
+      });
       if (data.error) { setMessage(`שגיאה: ${data.error}`); return; }
       setPreviewData({ mergeId: data.mergeId, changes: data.changes || [], summary: data.preview });
-      setMessage(`נמצאו ${data.preview.updates} עדכונים אפשריים, ${data.preview.skips} דולגו`);
+      setMessage(`נמצאו ${data.preview.updates} עדכונים, ${data.preview.creates} חדשים, ${data.preview.skips} דולגו`);
     } catch (e: any) { setMessage(`שגיאה: ${e.message}`); }
     finally { setIsRunning(false); }
   }
@@ -91,10 +98,20 @@ export default function AdminMergeClient() {
           תצוגה מקדימה → אישור → ביצוע. כל מיזוג ניתן לביטול (rollback).
         </p>
 
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+          <select value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
+            <option value="footballOrgIl">football.org.il (IFA)</option>
+            <option value="sport5">sport5.co.il</option>
+          </select>
+          <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
+            <option value="standings">טבלאות ליגה</option>
+            <option value="players">סטטיסטיקות שחקנים</option>
+            <option value="all">הכל</option>
+          </select>
+          <input type="text" value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)} placeholder="עונה (ריק = הכל)" className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm" />
           {!previewData ? (
             <button onClick={runPreview} disabled={isRunning} className="rounded-full bg-stone-900 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
-              {isRunning ? 'עובד...' : 'תצוגה מקדימה — Sport5 שחקנים'}
+              {isRunning ? 'עובד...' : 'תצוגה מקדימה'}
             </button>
           ) : (
             <>
@@ -117,20 +134,26 @@ export default function AdminMergeClient() {
       {previewData && previewData.changes.length > 0 ? (
         <section className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-stone-900">
-            שינויים מתוכננים ({previewData.changes.length})
+            שינויים מתוכננים ({previewData.changes.length}) — {previewData.summary.updates} עדכונים, {previewData.summary.creates} חדשים
           </h2>
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-full text-right text-sm">
               <thead>
                 <tr className="border-b border-stone-100 text-stone-500">
-                  <th className="px-3 py-2">שחקן (סריקה)</th>
+                  <th className="px-3 py-2">פעולה</th>
+                  <th className="px-3 py-2">רשומה (סריקה)</th>
                   <th className="px-3 py-2">התאמה ב-DB</th>
-                  <th className="px-3 py-2">שדות לעדכון</th>
+                  <th className="px-3 py-2">שדות</th>
                 </tr>
               </thead>
               <tbody>
                 {previewData.changes.map((change, i) => (
                   <tr key={i} className="border-b border-stone-50">
+                    <td className="px-3 py-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${change.type === 'create' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {change.type === 'create' ? 'חדש' : 'עדכון'}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 font-bold text-stone-800">{change.scrapedName}</td>
                     <td className="px-3 py-2 text-stone-600">{change.matchedName || '—'}</td>
                     <td className="px-3 py-2">

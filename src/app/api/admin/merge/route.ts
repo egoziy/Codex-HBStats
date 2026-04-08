@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRequestUser } from '@/lib/auth';
-import { previewPlayerMerge, executeMerge, rollbackMerge } from '@/lib/merge-engine';
+import { previewMerge, executeMerge, rollbackMerge } from '@/lib/merge-engine';
 import prisma from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
@@ -20,22 +20,29 @@ export async function POST(request: NextRequest) {
     // Preview what would change
     if (action === 'preview') {
       const source = body?.source || 'sport5';
-      const preview = await previewPlayerMerge(source);
+      const mergeType = body?.mergeType || 'players';
+      const season = body?.season || undefined;
+      const preview = await previewMerge(source, mergeType, { season });
 
       const merge = await prisma.mergeOperation.create({
         data: {
           source,
-          mergeType: 'players',
+          mergeType,
           status: 'preview',
-          description: `Preview merge from ${source}: ${preview.summary.updates} updates, ${preview.summary.skips} skips`,
+          description: `${source} / ${mergeType}${season ? ' / ' + season : ''}: ${preview.summary.updates} עדכונים, ${preview.summary.creates} חדשים, ${preview.summary.skips} דולגו`,
           previewJson: preview as any,
-          recordsMatched: preview.summary.updates + preview.summary.skips,
+          recordsMatched: preview.summary.updates + preview.summary.creates + preview.summary.skips,
           recordsSkipped: preview.summary.skips,
           userId: auth.id,
         },
       });
 
-      return NextResponse.json({ success: true, mergeId: merge.id, preview: preview.summary, changes: preview.changes.filter((c) => c.type === 'update').slice(0, 50) });
+      return NextResponse.json({
+        success: true,
+        mergeId: merge.id,
+        preview: preview.summary,
+        changes: preview.changes.filter((c) => c.type === 'update' || c.type === 'create').slice(0, 100),
+      });
     }
 
     // Approve a preview

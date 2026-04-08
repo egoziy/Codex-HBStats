@@ -86,6 +86,39 @@ function normalizeSeasonName(scraped: string): string {
 }
 
 // ──────────────────────────────────────────────
+// IFA abbreviated team name mapping
+// ──────────────────────────────────────────────
+
+const IFA_TEAM_ABBREVS: Record<string, string[]> = {
+  'הפועל ב"ש': ['הפועל באר שבע'],
+  'הפועל ת"א': ['הפועל תל אביב'],
+  'מכבי ת"א': ['מכבי תל אביב'],
+  'בית"ר י-ם': ['בית"ר ירושלים', 'ביתר ירושלים'],
+  'הפועל י-ם': ['הפועל ירושלים'],
+  'הפועל פ"ת': ['הפועל פתח תקווה'],
+  'הפועל ק"ש': ['עירוני קריית שמונה', 'הפועל קריית שמונה'],
+  'הפועל ר"ג': ['הפועל רמת גן'],
+  'מכבי פ"ת': ['מכבי פתח תקווה'],
+  'הפ\' חדרה ש. שוורץ': ['הפועל חדרה'],
+  'הפועל ע"א': ['הפועל עפולה'],
+  'הפ\' חדרה': ['הפועל חדרה'],
+  'עירוני ק"ש': ['עירוני קריית שמונה'],
+  'מ.ס. אשדוד': ['מ.ס. אשדוד', 'אשדוד'],
+  'בני יהודה ת"א': ['בני יהודה'],
+};
+
+function matchTeamName(ifaName: string, dbName: string): boolean {
+  // Direct match
+  if (namesMatch(ifaName, dbName)) return true;
+  // Check abbreviation mapping
+  const expansions = IFA_TEAM_ABBREVS[ifaName];
+  if (expansions) {
+    return expansions.some((exp) => namesMatch(exp, dbName));
+  }
+  return false;
+}
+
+// ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
 
@@ -183,12 +216,122 @@ export async function previewPlayerMerge(source: string): Promise<MergePreview> 
     }
   }
 
+  return { changes, summary: buildSummary(changes) };
+}
+
+function buildSummary(changes: PreviewChange[]) {
   return {
-    changes,
+    updates: changes.filter((c) => c.type === 'update').length,
+    creates: changes.filter((c) => c.type === 'create').length,
+    skips: changes.filter((c) => c.type === 'skip').length,
+  };
+}
+
+// ──────────────────────────────────────────────
+// Preview: IFA standings merge
+// ──────────────────────────────────────────────
+
+export async function previewStandingsMerge(
+  source: string,
+  options?: { season?: string },
+): Promise<MergePreview> {
+  const changes: PreviewChange[] = [];
+
+  const whereClause: any = { source };
+  if (options?.season) whereClause.season = options.season;
+
+  const scrapedStandings = await prisma.scrapedStanding.findMany({
+    where: whereClause,
+    orderBy: [{ season: 'desc' }, { position: 'asc' }],
+  });
+
+  const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
+  const seasonMap = new Map(dbSeasons.map((s) => [s.name, s.id]));
+
+  for (const scraped of scrapedStandings) {
+    const dbSeasonName = normalizeSeasonName(scraped.season);
+    const seasonId = seasonMap.get(dbSeasonName);
+    if (!seasonId) {
+      changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: `עונה ${dbSeasonName} לא נמצאה ב-DB`, fields: {} });
+      continue;
+    }
+
+    // Find matching team
+    const dbTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true, nameEn: true } });
+    const matchedTeam = dbTeams.find((t) => matchTeamName(scraped.teamNameHe, t.nameHe));
+    if (!matchedTeam) {
+      changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: `קבוצה לא נמצאה: ${scraped.teamNameHe}`, fields: {} });
+      continue;
+    }
+
+    // Find existing standing for this team+season
+    const existing = await prisma.standing.findFirst({
+      where: { seasonId, teamId: matchedTeam.id },
+    });
+
+    if (existing) {
+      // Check if IFA data has more info
+      const fields: Record<string, { old: any; new: any }> = {};
+      if (existing.played === 0 && scraped.played > 0) fields.played = { old: 0, new: scraped.played };
+      if (existing.wins === 0 && scraped.wins > 0) fields.wins = { old: 0, new: scraped.wins };
+      if (existing.draws === 0 && scraped.draws > 0) fields.draws = { old: 0, new: scraped.draws };
+      if (existing.losses === 0 && scraped.losses > 0) fields.losses = { old: 0, new: scraped.losses };
+      if (existing.goalsFor === 0 && scraped.goalsFor > 0) fields.goalsFor = { old: 0, new: scraped.goalsFor };
+      if (existing.goalsAgainst === 0 && scraped.goalsAgainst > 0) fields.goalsAgainst = { old: 0, new: scraped.goalsAgainst };
+      if (existing.points === 0 && scraped.points > 0) fields.points = { old: 0, new: scraped.points };
+
+      if (Object.keys(fields).length > 0) {
+        changes.push({ type: 'update', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, matchedName: matchedTeam.nameHe, matchedId: existing.id, fields });
+      } else {
+        changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: 'כל השדות מלאים', fields: {} });
+      }
+    } else {
+      // No standing exists — can create new one
+      changes.push({
+        type: 'create',
+        entity: 'standing',
+        scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
+        matchedName: matchedTeam.nameHe,
+        fields: {
+          position: { old: null, new: scraped.position },
+          played: { old: null, new: scraped.played },
+          wins: { old: null, new: scraped.wins },
+          draws: { old: null, new: scraped.draws },
+          losses: { old: null, new: scraped.losses },
+          goalsFor: { old: null, new: scraped.goalsFor },
+          goalsAgainst: { old: null, new: scraped.goalsAgainst },
+          points: { old: null, new: scraped.points },
+        },
+      });
+    }
+  }
+
+  return { changes, summary: buildSummary(changes) };
+}
+
+// ──────────────────────────────────────────────
+// Combined preview with source + type selection
+// ──────────────────────────────────────────────
+
+export async function previewMerge(
+  source: string,
+  mergeType: 'players' | 'standings' | 'all',
+  options?: { season?: string },
+): Promise<MergePreview> {
+  if (mergeType === 'players') return previewPlayerMerge(source);
+  if (mergeType === 'standings') return previewStandingsMerge(source, options);
+
+  // 'all' — combine both
+  const [players, standings] = await Promise.all([
+    previewPlayerMerge(source),
+    previewStandingsMerge(source, options),
+  ]);
+  return {
+    changes: [...players.changes, ...standings.changes],
     summary: {
-      updates: changes.filter((c) => c.type === 'update').length,
-      creates: changes.filter((c) => c.type === 'create').length,
-      skips: changes.filter((c) => c.type === 'skip').length,
+      updates: players.summary.updates + standings.summary.updates,
+      creates: players.summary.creates + standings.summary.creates,
+      skips: players.summary.skips + standings.summary.skips,
     },
   };
 }
@@ -206,32 +349,72 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
   const preview = merge.previewJson as { changes: PreviewChange[] } | null;
   if (!preview?.changes) throw new Error('No preview data');
 
-  const updates = preview.changes.filter((c) => c.type === 'update');
-  const snapshots: Array<{ id: string; entity: string; original: Record<string, any> }> = [];
+  const actionableChanges = preview.changes.filter((c) => c.type === 'update' || c.type === 'create');
+  const snapshots: Array<{ id: string; entity: string; original: Record<string, any>; action: 'update' | 'create' }> = [];
   const applied: Array<{ id: string; entity: string; fields: Record<string, any> }> = [];
   const errors: string[] = [];
 
-  for (const change of updates) {
-    if (change.entity === 'playerStats' && change.matchedId) {
-      try {
-        // Snapshot original
+  for (const change of actionableChanges) {
+    try {
+      if (change.entity === 'playerStats' && change.type === 'update' && change.matchedId) {
         const original = await prisma.playerStatistics.findUnique({ where: { id: change.matchedId } });
-        if (!original) { errors.push(`ID ${change.matchedId} not found`); continue; }
-
+        if (!original) { errors.push(`PlayerStats ${change.matchedId} not found`); continue; }
         const originalFields: Record<string, any> = {};
         const updateData: Record<string, any> = {};
-        for (const [field, { old: _old, new: newVal }] of Object.entries(change.fields)) {
+        for (const [field, { new: newVal }] of Object.entries(change.fields)) {
           originalFields[field] = (original as any)[field];
           updateData[field] = newVal;
         }
-
-        snapshots.push({ id: change.matchedId, entity: 'playerStats', original: originalFields });
-
+        snapshots.push({ id: change.matchedId, entity: 'playerStats', original: originalFields, action: 'update' });
         await prisma.playerStatistics.update({ where: { id: change.matchedId }, data: updateData });
         applied.push({ id: change.matchedId, entity: 'playerStats', fields: updateData });
-      } catch (e: any) {
-        errors.push(`${change.scrapedName}: ${e.message}`);
       }
+
+      if (change.entity === 'standing' && change.type === 'update' && change.matchedId) {
+        const original = await prisma.standing.findUnique({ where: { id: change.matchedId } });
+        if (!original) { errors.push(`Standing ${change.matchedId} not found`); continue; }
+        const originalFields: Record<string, any> = {};
+        const updateData: Record<string, any> = {};
+        for (const [field, { new: newVal }] of Object.entries(change.fields)) {
+          originalFields[field] = (original as any)[field];
+          updateData[field] = newVal;
+        }
+        snapshots.push({ id: change.matchedId, entity: 'standing', original: originalFields, action: 'update' });
+        await prisma.standing.update({ where: { id: change.matchedId }, data: updateData });
+        applied.push({ id: change.matchedId, entity: 'standing', fields: updateData });
+      }
+
+      if (change.entity === 'standing' && change.type === 'create' && change.matchedName) {
+        // Find team and season to create standing
+        const scrapedSeason = change.scrapedName.match(/\(([^)]+)\)/)?.[1] || '';
+        const dbSeasonName = normalizeSeasonName(scrapedSeason);
+        const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
+        const seasonId = dbSeasons.find((s) => s.name === dbSeasonName)?.id;
+        if (!seasonId) { errors.push(`Season ${dbSeasonName} not found`); continue; }
+
+        const teams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true } });
+        const team = teams.find((t) => matchTeamName(change.matchedName!, t.nameHe));
+        if (!team) { errors.push(`Team ${change.matchedName} not found`); continue; }
+
+        const created = await prisma.standing.create({
+          data: {
+            seasonId,
+            teamId: team.id,
+            position: change.fields.position?.new ?? 0,
+            played: change.fields.played?.new ?? 0,
+            wins: change.fields.wins?.new ?? 0,
+            draws: change.fields.draws?.new ?? 0,
+            losses: change.fields.losses?.new ?? 0,
+            goalsFor: change.fields.goalsFor?.new ?? 0,
+            goalsAgainst: change.fields.goalsAgainst?.new ?? 0,
+            points: change.fields.points?.new ?? 0,
+          },
+        });
+        snapshots.push({ id: created.id, entity: 'standing', original: {}, action: 'create' });
+        applied.push({ id: created.id, entity: 'standing', fields: change.fields });
+      }
+    } catch (e: any) {
+      errors.push(`${change.scrapedName}: ${e.message}`);
     }
   }
 
@@ -259,7 +442,7 @@ export async function rollbackMerge(mergeId: string): Promise<{ reverted: number
     throw new Error('Can only rollback executed merges');
   }
 
-  const snapshot = merge.snapshotJson as { snapshots: Array<{ id: string; entity: string; original: Record<string, any> }> } | null;
+  const snapshot = merge.snapshotJson as { snapshots: Array<{ id: string; entity: string; original: Record<string, any>; action?: string }> } | null;
   if (!snapshot?.snapshots) throw new Error('No snapshot data for rollback');
 
   let reverted = 0;
@@ -267,9 +450,22 @@ export async function rollbackMerge(mergeId: string): Promise<{ reverted: number
 
   for (const snap of snapshot.snapshots) {
     try {
-      if (snap.entity === 'playerStats') {
-        await prisma.playerStatistics.update({ where: { id: snap.id }, data: snap.original });
-        reverted++;
+      if (snap.action === 'create') {
+        // Delete the created record
+        if (snap.entity === 'standing') {
+          await prisma.standing.delete({ where: { id: snap.id } }).catch(() => null);
+          reverted++;
+        }
+      } else {
+        // Revert to original values
+        if (snap.entity === 'playerStats') {
+          await prisma.playerStatistics.update({ where: { id: snap.id }, data: snap.original });
+          reverted++;
+        }
+        if (snap.entity === 'standing') {
+          await prisma.standing.update({ where: { id: snap.id }, data: snap.original });
+          reverted++;
+        }
       }
     } catch (e: any) {
       errors.push(`Rollback ${snap.id}: ${e.message}`);
