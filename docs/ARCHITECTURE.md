@@ -465,20 +465,132 @@ getDisplayMode(searchParams?.view):
   return <ClassicView ... />;
 ```
 
+## סריקת אתרים חיצוניים
+
+### ארכיטקטורת סריקה
+
+```
+┌──────────────────────────────────────────────────────┐
+│                 אתרים חיצוניים                        │
+│  ┌──────────┐  ┌──────────────┐  ┌────────────────┐  │
+│  │ Walla    │  │ football.org │  │ Sport5         │  │
+│  │ Sports   │  │ .il (IFA)    │  │ .co.il         │  │
+│  │ HTTP     │  │ Puppeteer    │  │ HTTP           │  │
+│  └────┬─────┘  └──────┬───────┘  └────────┬───────┘  │
+└───────┼───────────────┼────────────────────┼─────────┘
+        │               │                    │
+        ▼               ▼                    ▼
+┌─────────────────────────────────────────────────────┐
+│              Scraped Tables (raw storage)             │
+│  ScrapedStanding · ScrapedMatch · ScrapedLeaderboard │
+│  ScrapedTeam · ScrapedPlayer · ScrapedPlayerSeason   │
+└────────────────────────┬────────────────────────────┘
+                         │
+                    Preview → Approve
+                         │
+                    ┌────┴────┐
+                    │ Execute │ ←→ Rollback (snapshot)
+                    └────┬────┘
+                         │
+┌────────────────────────┴────────────────────────────┐
+│                  Main DB Tables                       │
+│  Season · Team · Player · Game · Standing            │
+│  PlayerStatistics · CompetitionLeaderboardEntry      │
+└─────────────────────────────────────────────────────┘
+```
+
+### מקורות וכיסוי
+
+| מקור | עונות | טבלאות | משחקים | שחקנים | Leaderboards | שיטה |
+|---|---|---|---|---|---|---|
+| **Walla** | 2000-2026 | ✅ | ✅ | Top lists | ✅ 6 categories | HTTP + Puppeteer |
+| **IFA** | 2006-2026 | ✅ | ❌ | ❌ | ❌ | Puppeteer |
+| **Sport5** | 2022-2025 | ✅ | ❌ | ✅ per-player | ❌ | HTTP |
+| **API-Football** | 2016-2026 | ✅ | ✅ | ✅ | ✅ | REST API |
+
+### ייבוא מלא (`/admin/setup`)
+
+```
+Admin UI → POST /api/admin/setup { action: 'start', mode: 'full' }
+  │
+  ├─ Phase 1: Scraping (~60 min)
+  │   ├─ Walla standings + leaderboards (HTTP, ~3 min)
+  │   ├─ Walla player stats — full lists (HTTP, ~5 min)
+  │   ├─ Walla games (Puppeteer, ~30 min)
+  │   ├─ Walla advanced stats (Puppeteer, ~30 min)
+  │   ├─ IFA standings — 2 leagues (Puppeteer, ~5 min)
+  │   └─ Sport5 teams + players (HTTP, ~20 min)
+  │
+  ├─ Phase 2: Merging (~10 min)
+  │   ├─ merge-walla-standings → Season + Team + Standing
+  │   ├─ merge-walla-games → Game
+  │   ├─ merge-walla-leaderboards → CompetitionLeaderboardEntry
+  │   └─ build-rosters → Player + PlayerStatistics
+  │
+  └─ Phase 3: Normalization (~5 min)
+      ├─ transliterate-players → Hebrew names
+      └─ backfill-canonical → deduplicate players
+```
+
+## אבטחה
+
+### אימות (Authentication)
+
+```
+Register → bcryptjs.hash(password, 12) → User.create (transaction)
+         → REGISTRATION_DISABLED env check
+         → Rate limit: 5/min per IP
+Login    → bcryptjs.compare(password, hash)
+         → Rate limit: 5/min per IP
+         → createSession({ tokenHash: sha256(randomToken) })
+         → Set cookie: hbs_session (httpOnly, sameSite, secure)
+Password → deleteMany(sessions) → update(password) → createSession(fresh)
+```
+
+### CSRF + Rate Limiting (middleware.ts)
+
+```
+Every API request:
+  │
+  ├─ GET → Rate limit: 30 req/10s per IP (public endpoints)
+  │
+  └─ POST/PUT/DELETE → Validate Origin header
+      ├─ Origin matches host → Allow
+      ├─ No Origin → Allow (same-origin)
+      └─ Foreign Origin → 403 CSRF
+```
+
+### הגנות
+- **CSRF:** middleware validates Origin on all mutating requests
+- **Rate Limiting:** login 5/min, public API 30/10s
+- **SQL Injection:** Prisma parameterized queries
+- **XSS:** React auto-escaping
+- **Upload:** 5MB limit + path traversal validation
+- **Headers:** X-Frame-Options DENY, X-Content-Type-Options nosniff
+- **Sessions:** invalidated on password change
+- **Registration:** toggle + transaction for first-user admin
+
 ## תלויות חיצוניות
 
 | שירות | שימוש | fallback |
 |--------|--------|----------|
-| API-Football | נתוני ליגה, שחקנים, משחקים, סטטיסטיקות | נתונים מקומיים ב-DB |
-| Telegram | פיד חדשות | מוסתר אם אין מקורות |
+| API-Football | נתוני ליגה 2016+, שחקנים, משחקים | נתונים מקומיים |
+| Walla Sports | נתונים היסטוריים 2000+, leaderboards | ❌ |
+| football.org.il | טבלאות ליגה (IFA רשמי) | Walla כחלופה |
+| Sport5 | סגלים ושחקנים עדכניים | API-Football |
+| Telegram | פיד חדשות | מוסתר |
 | PostgreSQL | כל הנתונים | אין — קריטי |
+| Google Chrome | Puppeteer scrapers | HTTP scrapers בלבד |
 
 ## Deployment
 
 ```
-Build:     npm run build (Next.js static + server bundles)
-DB:        npx prisma db push (no migrations — schema push)
-Generate:  npx prisma generate (after schema changes)
-Uploads:   public/uploads/ — needs persistent storage
-Port:      8011 (dev), configurable in production
+Build:     npm run build
+DB:        npx prisma db push
+Generate:  npx prisma generate
+Setup:     node scripts/setup-all-data.js (or /admin/setup)
+Uploads:   public/uploads/ — persistent storage
+Port:      8011 (dev)
 ```
+
+ראה `docs/DEPLOYMENT-GUIDE.md` למדריך מלא.

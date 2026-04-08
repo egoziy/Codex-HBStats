@@ -1,6 +1,6 @@
 # HBStats — Codex-HBStats
 
-פלטפורמת סטטיסטיקות כדורגל ישראלי מבוססת Next.js 14, עם ממשק בעברית (RTL), ניהול אדמין מלא, וסנכרון נתונים מ-API-Football.
+פלטפורמת סטטיסטיקות כדורגל ישראלי מבוססת Next.js 14, עם ממשק בעברית (RTL), ניהול אדמין מלא, וסנכרון נתונים מ-API-Football ומאתרי ספורט ישראליים.
 
 ## טכנולוגיות
 
@@ -8,12 +8,13 @@
 - **Language:** TypeScript 5
 - **Database:** PostgreSQL + Prisma ORM 5
 - **Styling:** Tailwind CSS 3
-- **Auth:** Sessions מותאמות עם bcryptjs + JWT
+- **Auth:** Sessions מותאמות עם bcryptjs (CSRF, rate limiting, security headers)
 - **Charts:** Recharts 3.8
 - **PDF:** jsPDF + html2canvas
 - **Icons:** Lucide React
-- **i18n:** i18next (עברית/אנגלית)
+- **Scraping:** Puppeteer (Chrome headless) + HTTP scraping
 - **External API:** API-Football (v3.football.api-sports.io)
+- **External Scraping:** Walla Sports, football.org.il (IFA), Sport5
 - **News:** Telegram channel integration
 
 ## הרצה
@@ -30,11 +31,24 @@ npm run dev -- --port 8011 # שרת פיתוח
 - `JWT_SECRET` — סוד להצפנת sessions
 - `API_FOOTBALL_KEY` — מפתח API-Football
 - `API_FOOTBALL_BASE_URL` — (ברירת מחדל: https://v3.football.api-sports.io)
+- `REGISTRATION_DISABLED` — `true` לנעילת הרשמה
+
+## נתונים — 26 שנות כדורגל ישראלי
+
+| נתון | כמות | מקור | עונות |
+|---|---|---|---|
+| עונות | 26 | Walla + API-Football | 2000-2026 |
+| קבוצות | ~1,350 | Walla + API-Football | 2000-2026 |
+| טבלאות | ~716 | Walla + IFA | 2000-2026 |
+| משחקים | ~5,414 | Walla + API-Football | 2000-2026 |
+| שחקנים | ~15,368 | Walla leaderboards + API-Football | 2000-2026 |
+| סטטיסטיקות שחקנים | ~35,965 | Walla + API-Football | 2000-2026 |
+| Leaderboards | ~29,398 | Walla (6 categories) | 2000-2026 |
 
 ## מבנה התיקיות
 
 ```
-prisma/schema.prisma          # סכמת DB — 39+ מודלים, 20+ enums
+prisma/schema.prisma          # סכמת DB — 45+ מודלים
 src/
   app/
     page.tsx                   # דף בית — טבלה, לייב, חדשות טלגרם
@@ -44,197 +58,148 @@ src/
     players/[id]/charts/       # גרפים עונתיים לשחקן
     teams/[id]/                # דף קבוצה — סגל, משחקים, שופטים
     teams/[id]/charts/         # גרפים לקבוצה
-    standings/                 # טבלת ליגה (מחושבת / API)
-    statistics/                # מלכי שערים ובישולים
-    predictions/               # ניתוח תחזיות ויחסים מול תוצאות בפועל
+    standings/                 # טבלת ליגה (26 עונות)
+    statistics/                # מלכי שערים/בישולים/כרטיסים (6 קטגוריות)
+    predictions/               # ניתוח תחזיות ויחסים מול תוצאות
     venues/                    # אצטדיונים — סינון עונה/ליגה/עיר
     compare/                   # השוואות עונתיות
     live/                      # משחקים חיים
     admin/                     # אזור אדמין
+      setup/                   # ייבוא מלא מה-UI (scrape + merge + normalize)
+      scrape/                  # ניהול סריקות חיצוניות
+      merge/                   # מיזוג נתונים עם preview + rollback
       games/                   # עורך משחקים מלא
       quick-edit/              # עריכה מהירה
       venues/                  # ניהול אצטדיונים
       teams/[teamKey]/         # עורך קבוצה
     api/
       admin/fetch/             # סנכרון נתונים מ-API-Football
-      admin/fetch-jobs/        # מעקב עבודות משיכה
+      admin/setup/             # ייבוא מלא ברקע
+      admin/scrape/            # סריקת אתרים חיצוניים
+      admin/merge/             # מיזוג עם preview + rollback
       events/                  # CRUD אירועי משחק
       games/                   # CRUD משחקים
       players/sidelined/       # ניהול פציעות ידני
-      mobile/                  # API למובייל (home, live, games, teams, players, news)
-  components/                  # 24 קומפוננטות React
-  lib/                         # 26 מודולי עזר
+      mobile/                  # API למובייל
+  components/                  # 30+ קומפוננטות React
+  lib/                         # 30+ מודולי עזר
+  middleware.ts                # CSRF + rate limiting
 scripts/
+  setup-all-data.js            # Master setup — מריץ הכל בסדר הנכון
+  scrape-walla.js              # Walla: טבלאות + leaderboards
+  scrape-walla-games.js        # Walla: תוצאות משחקים (Puppeteer)
+  scrape-walla-player-stats.js # Walla: סטטיסטיקות שחקנים מלאות
+  scrape-walla-advanced-puppeteer.js # Walla: סטטיסטיקות מתקדמות
+  scrape-ifa.js                # IFA: טבלאות (Puppeteer)
+  scrape-all-sport5.js         # Sport5: קבוצות + שחקנים
+  merge-walla-standings.js     # מיזוג טבלאות → DB
+  merge-walla-games.js         # מיזוג משחקים → DB
+  merge-walla-leaderboards.js  # מיזוג leaderboards → DB
+  build-rosters-from-leaderboards.js # בניית סגלים מ-leaderboards
   transliterate-players.js     # תעתיק שמות שחקנים לעברית
   backfill_canonical_players.js # איחוד שחקנים כפולים
+docs/
+  ARCHITECTURE.md              # ארכיטקטורת המערכת
+  SECURITY-AUDIT.md            # דוח אבטחה + תיקונים
+  DEPLOYMENT-GUIDE.md          # מדריך הקמת סביבה
 ```
 
-## מודלים עיקריים (Prisma)
+## מקורות נתונים חיצוניים
 
-### ליבה
-- **Season** — עונה (year, name, startDate, endDate)
-- **Competition** — מסגרת/ליגה (nameEn/He, country, type: LEAGUE/CUP/EUROPE)
-- **Team** — קבוצה (nameEn/He, logo, coach, venue, season)
-- **Player** — שחקן (nameEn/He, firstName/lastName, position, nationality, photo, age, height)
-  - `canonicalPlayerId` — מקשר אותו שחקן בין עונות שונות
-- **Game** — משחק (dateTime, status, scores, homePenalty/awayPenalty, homeTeam, awayTeam, competition, season)
-- **Venue** — אצטדיון (nameEn/He, city, capacity, surface, image)
-- **Referee** — שופט (nameEn/He)
+### API-Football (2016+)
+- teams, players, fixtures, events, lineups, statistics, standings
+- predictions, odds, head-to-head, live scores
+- Rate limiting: 250ms, 4 retries, 7,500 calls/day
 
-### נתוני משחק
-- **GameEvent** — אירוע (GOAL/ASSIST/YELLOW_CARD/RED_CARD/SUBSTITUTION/OWN_GOAL/PENALTY)
-  - `playerId` = שחקן ראשי (כובש לשער)
-  - `relatedPlayerId` = שחקן קשור (מבשל לשער)
-  - `participantName` / `relatedParticipantName` = שם טקסטואלי כשהשחקן לא במערכת
-- **GameLineupEntry** — הרכב (role: STARTER/SUBSTITUTE/COACH, formation, positionGrid)
-- **GameStatistics** — סטטיסטיקות משחק (possession, shots, corners, fouls)
+### Walla Sports (2000-2026)
+- טבלאות ליגה (ליגת העל + ליגה לאומית)
+- מלכי שערים, בישולים, כרטיסים צהובים/אדומים, החלפות (רשימות מלאות)
+- תוצאות משחקים עם תוצאות מחצית
+- סטטיסטיקות מתקדמות (19 קטגוריות per season)
 
-### סטטיסטיקות
-- **PlayerStatistics** — goals, assists, cards, games, minutes (per season+competition)
-- **TeamStatistics** — matches, goals, conceded, cleanSheets, points
-- **Standing** — position, W/D/L, GF/GA, points, pointsAdjustment
-- **CompetitionLeaderboardEntry** — מלכי שערים/בישולים
+### football.org.il — IFA (2006-2026)
+- טבלאות ליגת העל + ליגה לאומית
+- דורש Puppeteer (ASP.NET דינמי)
 
-### שחקן מורחב
-- **PlayerTransfer** — העברות (source/destination team, date, type)
-- **PlayerTrophy** — גביעים והישגים (league, season, place)
-- **PlayerSidelinedEntry** — פציעות/השעיות (type, startDate, endDate)
-  - `endDate === null` → פצוע כרגע
-  - `endDate > now` → עדיין לא זמין
-  - `endDate < now` → חזר לסגל
+### Sport5 (2022-2025)
+- סגלי שחקנים עם סטטיסטיקות פרטניות
+- 3 עונות אחורה per player
 
-### תחזיות ויחסים
-- **GamePrediction** — ניחוש תוצאה (winner, advice, percentages)
-- **GameOddsValue** — יחסי הימורים (bookmaker, market, selection, odd)
-- **GameHeadToHeadEntry** — ראש בראש היסטורי
+## סטטיסטיקות — 6 קטגוריות Leaderboard
 
-### מערכת
-- **User** — role: ADMIN/USER/GUEST
-- **Session** — טוקן מוצפן, תפוגה 14 יום
-- **FetchJob** — עבודת משיכה (status, steps, progress%)
-- **MediaAsset** — תמונות (logos, photos)
-- **ActivityLog** — לוג פעולות
+| קטגוריה | כמות | enum |
+|---|---|---|
+| מלכי שערים | 4,122 | TOP_SCORERS |
+| מלכי בישולים | 3,812 | TOP_ASSISTS |
+| כרטיסים צהובים | 6,630 | TOP_YELLOW_CARDS |
+| כרטיסים אדומים | 1,437 | TOP_RED_CARDS |
+| נכנס כמחליף | 6,699 | TOP_SUBSTITUTED_IN |
+| הוחלף | 6,698 | TOP_SUBSTITUTED_OUT |
 
-## זרימת נתונים
+## מודלים — Scraped Data (אחסון גולמי)
 
-### סנכרון מ-API-Football
-הטריגר: אדמין שולח בקשת fetch דרך `/api/admin/fetch`
+נתונים סרוקים נשמרים בנפרד לפני מיזוג:
+- **ScrapedTeam** — קבוצה + עונה + מקור
+- **ScrapedPlayer** — שחקן + קבוצה
+- **ScrapedPlayerSeason** — סטטיסטיקות per season per player
+- **ScrapedMatch** — תוצאת משחק עם מחצית
+- **ScrapedStanding** — שורת טבלה
+- **ScrapedLeaderboard** — leaderboard entry (שערים, בישולים, כרטיסים, מתקדמים)
+- **ScrapeJob** — מעקב עבודות סריקה
+- **MergeOperation** — מעקב מיזוגים עם snapshot ל-rollback
 
-סדר השלבים:
-1. countries → seasons → leagues → competitions
-2. teams → venues → players (+ שמירת תמונות ל-`public/uploads/`)
-3. fixtures → events → lineups → statistics
-4. standings → leaderboards → predictions → odds → h2h
-5. **פוסט-עיבוד:** תעתיק שמות שחקנים לעברית, חישוב deep stats
+## מיזוג נתונים
 
-Rate limiting: 250ms מינימום בין בקשות, 4 ניסיונות עם exponential backoff.
+### עקרונות
+- **לא מוחק** נתונים קיימים
+- **לא דורס** שדות שכבר מלאים מ-API-Football
+- **ממלא** רק שדות ריקים
+- **Levenshtein fuzzy matching** להתאמת שמות שחקנים
+- **Snapshot + Rollback** — כל מיזוג ניתן לביטול
 
-### חכמת כיסוי נתונים
-פאנל הכיסוי באדמין בודק אילו נתונים חסרים ומציע משיכה:
-- **אירועים/הרכבים** — נספרים per-game, מסומן STALE אם >10% חסרים
-- **Odds/Predictions** — מסומן STALE אם אין בכלל למשחקים שהסתיימו
-- **אחרי משיכה מוצלחת** — אם ניסינו למשוך וה-API החזיר ריק, לא מסמן שוב (ה-API לא מכיל)
-- **פנדלים** — `homePenalty`/`awayPenalty` נשמרים מ-API ומוצגים ליד התוצאה; ניתן לעריכה ידנית
-
-### חישוב סטטיסטיקות
-`src/lib/deep-stats.ts` — מחשב שערים/בישולים/כרטיסים מתוך אירועי משחק:
-- `event.playerId === playerId` + `GOAL` → שער
-- `event.relatedPlayerId === playerId` + `GOAL` → בישול
-- שימוש ב-leaderboard entries כ-fallback
-
-### תעתיק שמות שחקנים
-`src/lib/player-transliteration.ts` — מילון שמות פרטיים ומשפחה + תעתיק פונטי:
-- דיגרפים: sh→ש, ch→ח, th→ת, tz→צ
-- אותיות סופיות: נ→ן, מ→ם, כ→ך, פ→ף, צ→ץ
-- משולב בתהליך ה-fetch (אחרי ייבוא שחקנים)
-
-## תצוגה
-
-### מצב Premier
-רוב הדפים תומכים בשני מצבי תצוגה (`?view=premier`):
-- **Classic** — עיצוב פשוט עם stone/warm tones
-- **Premier** — עיצוב עשיר עם gradients ו-shadows
-
-### הרכב על מגרש (Lineup Pitch)
-`FootballPitch` ב-`games/[id]/page.tsx`:
-1. אם יש `positionGrid` → סידור לפי grid (row:col)
-2. אם יש `player.position` (≥70% מהשחקנים) → קיבוץ לפי G/D/M/F
-3. fallback → חלוקה 1-4-3-3 לפי formation string
-4. תמונות שחקנים בתוך עיגולים + מספר חולצה badge
-
-### דף שחקן — טאבים
-- **סקירה** — פרטים אישיים, הופעות, שערים, העברות אחרונות, פציעות
-- **סטטיסטיקה** — התקפה, הגנה, החזקה, משמעת
-- **משחקים** — רשימת הופעות עם סינון (פותח/ספסל/נכנס/הוחלף)
-- **קריירה** — טבלת עונות × קבוצות × מסגרות
-- **הישגים** — גביעים (deduplicated)
-
-### דף קבוצה
-- סקירה עם מאזן, שערים, מיקום בטבלה
-- סגל עם סימון פצועים (אדום)
-- ניהול פציעות ידני (אדמין)
-- משחקים, שופטים, סטטיסטיקה
+### זרימה
+```
+סריקה → ScrapedX tables → Preview → Approve → Execute → Main DB
+                                                ↕
+                                            Rollback
+```
 
 ## אדמין
 
-דף אדמין (`/admin`) מחולק לשני טאבים:
-- **נתונים ומשיכה** — fetch מ-API, כיסוי נתונים, דאטה גולמי, קבוצות, עבודות
-- **הגדרות** — מדינות לייב, הגבלת משחקי דף בית, תצוגת שחקנים, מקורות טלגרם
-
-דפי עריכה נפרדים:
-- `/admin/games` — עורך משחקים מלא
-- `/admin/quick-edit` — עריכה מהירה
+### דפים
+- `/admin` — לוח בקרה ראשי (נתונים + הגדרות)
+- `/admin/setup` — **ייבוא מלא** מה-UI (3 מצבים: full/quick/merge-only)
+- `/admin/scrape` — סריקות חיצוניות (Sport5, Walla, IFA)
+- `/admin/merge` — מיזוג עם preview + rollback
+- `/admin/games` — עורך משחקים
 - `/admin/venues` — ניהול אצטדיונים
-- `/admin/teams/[teamKey]` — עורך קבוצה
+- `/admin/teams/[key]` — עורך קבוצה
 
-### עורך אירועים במשחק
-`GameAdminQuickEditorClient` (בתוך דף משחק, tab=events):
-- הוספת/עריכת/מחיקת אירועים
-- שדות: דקה, סוג, קבוצה, שחקן (מקושר), שחקן קשור
-- עדכון אוטומטי של סטטיסטיקות
+### ייבוא מלא (`/admin/setup`)
+3 מצבים:
+- **Full** (~90 דק') — scrape all + merge + normalize
+- **Quick** (~15 דק') — Walla standings + players + merge
+- **Merge Only** (~10 דק') — merge existing scraped data
 
-## API מובייל
+Progress tracking בזמן אמת עם progress bar ושלבים.
 
-נקודות קצה ייעודיות ב-`/api/mobile/`:
-- `home` — דף בית מובייל
-- `live` — משחקים חיים
-- `games/[id]` — פרטי משחק
-- `teams/[id]` — פרטי קבוצה
-- `players/[id]` — פרטי שחקן
-- `news` — פיד חדשות
+## אבטחה
 
-## סריקת אתרים חיצוניים (Sport5 Scraper)
-
-מודול סריקה מ-sport5.co.il להשלמת נתונים שלא קיימים ב-API-Football.
-
-### מקורות
-- **Team page** (`/team.aspx?FolderID={id}`) — סגל שחקנים, תוצאות, טבלה
-- **Player page** (`/Player/{TeamID}/{PlayerID}/{slug}`) — סטטיסטיקות רב-עונתיות
-- **League page** (`/liga.aspx?FolderID={id}`) — מלכי שערים, כרטיסים
-
-### FolderIDs עיקריים
-- 44 = ליגת העל, 80 = ליגה לאומית
-- קבוצות: 1639=באר שבע, 192=מכבי ת"א, 191=בית"ר, 163=מכבי חיפה, 164=הפועל ת"א...
-
-### עקרונות מיזוג (`sport5-merge.ts`)
-- **לא מוחק** נתונים קיימים
-- **לא דורס** שדות שכבר מלאים מ-API-Football
-- **ממלא** רק שדות ריקים (jerseyNumber, goals=0, etc.)
-- **מתאים** שחקנים לפי שם עברי (fuzzy match)
-- **מתעד** כל שינוי ב-logs
-
-### API
-`POST /api/admin/scrape` — actions:
-- `scrape-team` — סריקת דף קבוצה
-- `scrape-and-merge-team` — סריקה + מיזוג לעונה
-- `scrape-player` — סריקת דף שחקן
-- `scrape-and-merge-all` — סריקת כל הקבוצות + מיזוג
+### תיקונים שבוצעו (ראה docs/SECURITY-AUDIT.md)
+- **CSRF** — middleware validates Origin header on all mutating API requests
+- **Rate Limiting** — 5 attempts/min on login/register, 30 req/10s on public APIs
+- **Registration** — toggle via REGISTRATION_DISABLED env, transaction for first-user
+- **Session** — invalidate all sessions on password change
+- **Upload** — 5MB limit, path traversal validation
+- **Headers** — X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- **Error Messages** — sanitized, no internal details exposed
 
 ## קונבנציות קוד
 
 - **RTL:** כל הדפים הציבוריים בעברית, `dir="rtl"` על ה-layout
 - **שמות שדות:** תמיד `nameEn`/`nameHe` — עברית מועדפת בתצוגה
-- **Server Components:** ברירת מחדל. Client components רק כשצריך interactivity (`'use client'`)
+- **Server Components:** ברירת מחדל. Client components רק כשצריך interactivity
 - **תמונות:** `public/uploads/teams/{year}/` ו-`public/uploads/players/{year}/`
 - **Fallback:** `MediaImage.tsx` — `onError` handler עם initials placeholder
 - **DB push:** לא migrations — `npx prisma db push` לסנכרון סכמה
+- **Scraping:** נתונים נשמרים ב-Scraped* tables, מוזגים אחרי review
