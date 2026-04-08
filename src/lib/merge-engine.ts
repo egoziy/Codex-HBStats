@@ -98,13 +98,24 @@ const IFA_TEAM_ABBREVS: Record<string, string[]> = {
   'הפועל פ"ת': ['הפועל פתח תקווה'],
   'הפועל ק"ש': ['עירוני קריית שמונה', 'הפועל קריית שמונה'],
   'הפועל ר"ג': ['הפועל רמת גן'],
+  'הפועל כפ"ס': ['הפועל כפר סבא'],
   'מכבי פ"ת': ['מכבי פתח תקווה'],
   'הפ\' חדרה ש. שוורץ': ['הפועל חדרה'],
-  'הפועל ע"א': ['הפועל עפולה'],
   'הפ\' חדרה': ['הפועל חדרה'],
+  'הפועל ע"א': ['הפועל עפולה'],
   'עירוני ק"ש': ['עירוני קריית שמונה'],
   'מ.ס. אשדוד': ['מ.ס. אשדוד', 'אשדוד'],
   'בני יהודה ת"א': ['בני יהודה'],
+  'הפועל ק"ג': ['הפועל קריית גת'],
+  'מכבי ק"ג': ['מכבי קריית גת'],
+  'הפועל ר"ל': ['הפועל ראשון לציון'],
+  'עירוני ר"ל': ['עירוני ראשון לציון'],
+  'מכבי ב"ר': ['מכבי בני ריינה'],
+  'בני סכנין': ['בני סכנין'],
+  'מכבי נתניה': ['מכבי נתניה'],
+  'מכבי חיפה': ['מכבי חיפה'],
+  'הפועל חיפה': ['הפועל חיפה'],
+  'עירוני טבריה': ['עירוני טבריה'],
 };
 
 function matchTeamName(ifaName: string, dbName: string): boolean {
@@ -115,6 +126,12 @@ function matchTeamName(ifaName: string, dbName: string): boolean {
   if (expansions) {
     return expansions.some((exp) => namesMatch(exp, dbName));
   }
+  // Fuzzy: strip quotes and compare
+  const cleanIfa = normalizeName(ifaName);
+  const cleanDb = normalizeName(dbName);
+  if (cleanIfa === cleanDb) return true;
+  // If one contains the other
+  if (cleanDb.includes(cleanIfa) || cleanIfa.includes(cleanDb)) return true;
   return false;
 }
 
@@ -260,7 +277,13 @@ export async function previewStandingsMerge(
     const dbTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true, nameEn: true } });
     const matchedTeam = dbTeams.find((t) => matchTeamName(scraped.teamNameHe, t.nameHe));
     if (!matchedTeam) {
-      changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: `קבוצה לא נמצאה: ${scraped.teamNameHe}`, fields: {} });
+      // No team in DB — still allow creating standing if we can find/create the team
+      changes.push({
+        type: 'skip', entity: 'standing',
+        scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
+        reason: `קבוצה "${scraped.teamNameHe}" לא נמצאה בעונה ${dbSeasonName} (${dbTeams.length} קבוצות בעונה)`,
+        fields: {},
+      });
       continue;
     }
 
