@@ -37,7 +37,10 @@
       "Bash(node scripts/test-walla-puppeteer.js)",
       "Bash(node scripts/scrape-walla-games.js --season \"2002/2003\")",
       "Bash(node scripts/scrape-walla-games.js)",
-      "Read(//c/Users/popch/AppData/Local/Temp/claude/c--Users-popch-Downloads-Claude-HBS-Stats/Codex-HBStats/96e50424-0795-4fe2-881d-eb633c33defd/tasks/**)"
+      "Read(//c/Users/popch/AppData/Local/Temp/claude/c--Users-popch-Downloads-Claude-HBS-Stats/Codex-HBStats/96e50424-0795-4fe2-881d-eb633c33defd/tasks/**)",
+      "Bash(node scripts/merge-walla-games.js)",
+      "Bash(node scripts/test-walla-stats.js)",
+      "Bash(node scripts/scrape-walla-player-stats.js)"
     ]
   }
 }
