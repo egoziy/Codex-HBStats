@@ -316,7 +316,7 @@ export default async function StatisticsPage({
     .filter((row) => cleanSheetMap.has(row.player.id))
     .sort((a, b) => (cleanSheetMap.get(b.player.id) || 0) - (cleanSheetMap.get(a.player.id) || 0))
     .slice(0, 10);
-  const leaderboardCards = buildLeaderboardCards({
+  let leaderboardCards = buildLeaderboardCards({
     goalsLeaders,
     assistsLeaders,
     passesLeaders,
@@ -324,6 +324,51 @@ export default async function StatisticsPage({
     cleanSheetMap,
     leaderGames,
   });
+
+  // Fallback: if no player data (old seasons), use CompetitionLeaderboardEntry
+  const hasPlayerData = goalsLeaders.length > 0 || assistsLeaders.length > 0;
+  if (!hasPlayerData && selectedSeason) {
+    const dbLeaderboards = await prisma.competitionLeaderboardEntry.findMany({
+      where: {
+        seasonId: selectedSeason.id,
+        ...(selectedCompetition ? { competitionId: selectedCompetition.id } : {}),
+      },
+      orderBy: [{ category: 'asc' }, { rank: 'asc' }],
+      take: 200,
+    });
+
+    const categoryMap: Record<string, { title: string; valueLabel: string }> = {
+      TOP_SCORERS: { title: 'מלך השערים', valueLabel: 'שערים' },
+      TOP_ASSISTS: { title: 'מלך הבישולים', valueLabel: 'בישולים' },
+      TOP_YELLOW_CARDS: { title: 'כרטיסים צהובים', valueLabel: 'צהובים' },
+      TOP_RED_CARDS: { title: 'כרטיסים אדומים', valueLabel: 'אדומים' },
+      TOP_SUBSTITUTED_IN: { title: 'נכנס כמחליף', valueLabel: 'כניסות' },
+      TOP_SUBSTITUTED_OUT: { title: 'הוחלף', valueLabel: 'החלפות' },
+    };
+
+    const grouped = new Map<string, typeof dbLeaderboards>();
+    for (const entry of dbLeaderboards) {
+      const list = grouped.get(entry.category) || [];
+      list.push(entry);
+      grouped.set(entry.category, list);
+    }
+
+    leaderboardCards = Array.from(grouped.entries()).map(([category, entries]) => {
+      const meta = categoryMap[category] || { title: category, valueLabel: 'ערך' };
+      return {
+        title: meta.title,
+        valueLabel: meta.valueLabel,
+        rows: entries.slice(0, 20).map((e) => ({
+          playerId: e.playerId || e.id,
+          playerName: e.playerNameHe || e.playerNameEn || '?',
+          teamName: e.teamNameHe || e.teamNameEn || '-',
+          value: e.value,
+          details: [],
+          emptyMessage: '',
+        })),
+      };
+    });
+  }
 
   if (displayMode === 'premier') {
     return (
