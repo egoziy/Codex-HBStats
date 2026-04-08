@@ -248,6 +248,49 @@ function buildSummary(changes: PreviewChange[]) {
 // Preview: IFA standings merge
 // ──────────────────────────────────────────────
 
+// IFA abbreviated name → full Hebrew name mapping for team creation
+const IFA_FULL_NAMES: Record<string, { nameHe: string; nameEn: string }> = {
+  'הפועל ב"ש': { nameHe: 'הפועל באר שבע', nameEn: 'Hapoel Beer Sheva' },
+  'הפועל ת"א': { nameHe: 'הפועל תל אביב', nameEn: 'Hapoel Tel Aviv' },
+  'מכבי ת"א': { nameHe: 'מכבי תל אביב', nameEn: 'Maccabi Tel Aviv' },
+  'בית"ר י-ם': { nameHe: 'בית"ר ירושלים', nameEn: 'Beitar Jerusalem' },
+  'הפועל י-ם': { nameHe: 'הפועל ירושלים', nameEn: 'Hapoel Jerusalem' },
+  'הפועל פ"ת': { nameHe: 'הפועל פתח תקווה', nameEn: 'Hapoel Petach Tikva' },
+  'הפועל ק"ש': { nameHe: 'עירוני קריית שמונה', nameEn: 'Ironi Kiryat Shmona' },
+  'הפועל ר"ג': { nameHe: 'הפועל רמת גן', nameEn: 'Hapoel Ramat Gan' },
+  'הפועל כפ"ס': { nameHe: 'הפועל כפר סבא', nameEn: 'Hapoel Kfar Saba' },
+  'מכבי פ"ת': { nameHe: 'מכבי פתח תקווה', nameEn: 'Maccabi Petach Tikva' },
+  'מ.ס. אשדוד': { nameHe: 'מ.ס. אשדוד', nameEn: 'MS Ashdod' },
+  'בני יהודה ת"א': { nameHe: 'בני יהודה', nameEn: 'Bnei Yehuda' },
+  'בני סכנין': { nameHe: 'בני סכנין', nameEn: 'Bnei Sakhnin' },
+  'מכבי חיפה': { nameHe: 'מכבי חיפה', nameEn: 'Maccabi Haifa' },
+  'מכבי נתניה': { nameHe: 'מכבי נתניה', nameEn: 'Maccabi Netanya' },
+  'הפועל חיפה': { nameHe: 'הפועל חיפה', nameEn: 'Hapoel Haifa' },
+  'הפועל רעננה': { nameHe: 'הפועל רעננה', nameEn: 'Hapoel Raanana' },
+  'הפועל עכו': { nameHe: 'הפועל עכו', nameEn: 'Hapoel Acre' },
+  'הפועל ראשל"צ': { nameHe: 'הפועל ראשון לציון', nameEn: 'Hapoel Rishon LeZion' },
+  'סקציה נס ציונה': { nameHe: 'סקציה נס ציונה', nameEn: 'Sektzia Nes Tziona' },
+  'הפ\' חדרה ש. שוורץ': { nameHe: 'הפועל חדרה', nameEn: 'Hapoel Hadera' },
+  'הפ\' חדרה': { nameHe: 'הפועל חדרה', nameEn: 'Hapoel Hadera' },
+  'הפ\' נוף הגליל': { nameHe: 'הפועל נוף הגליל', nameEn: 'Hapoel Nof HaGalil' },
+  'הפועל ע. עפולה': { nameHe: 'הפועל עפולה', nameEn: 'Hapoel Afula' },
+  'הפ\' בני לוד רכבת': { nameHe: 'הפועל בני לוד', nameEn: 'Hapoel Bnei Lod' },
+  'בית"ר ת"א חולון': { nameHe: 'בית"ר תל אביב', nameEn: 'Beitar Tel Aviv' },
+  'הפועל ע. אשקלון / לא פעיל': { nameHe: 'הפועל אשקלון', nameEn: 'Hapoel Ashkelon' },
+  'עירוני דורות טבריה': { nameHe: 'עירוני טבריה', nameEn: 'Ironi Tiberias' },
+  'הפועל כפר שלם': { nameHe: 'הפועל כפר שלם', nameEn: 'Hapoel Kfar Shalem' },
+  'הפועל ירושלים': { nameHe: 'הפועל ירושלים', nameEn: 'Hapoel Jerusalem' },
+  'הפועל א.א. פאחם': { nameHe: 'הפועל אום אל פאחם', nameEn: 'Hapoel Umm al-Fahm' },
+  'עירוני נשר': { nameHe: 'עירוני נשר', nameEn: 'Ironi Nesher' },
+  'א.ס. אשדוד': { nameHe: 'א.ס. אשדוד', nameEn: 'AS Ashdod' },
+  'הפועל הרצליה עירוני': { nameHe: 'הפועל הרצליה', nameEn: 'Hapoel Herzliya' },
+  'איחוד בני שפרעם': { nameHe: 'איחוד בני שפרעם', nameEn: 'Ihud Bnei Shefaram' },
+};
+
+function resolveTeamNames(ifaName: string): { nameHe: string; nameEn: string } {
+  return IFA_FULL_NAMES[ifaName] || { nameHe: ifaName, nameEn: ifaName };
+}
+
 export async function previewStandingsMerge(
   source: string,
   options?: { season?: string },
@@ -276,55 +319,42 @@ export async function previewStandingsMerge(
     // Find matching team
     const dbTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true, nameEn: true } });
     const matchedTeam = dbTeams.find((t) => matchTeamName(scraped.teamNameHe, t.nameHe));
-    if (!matchedTeam) {
-      // No team in DB — still allow creating standing if we can find/create the team
-      changes.push({
-        type: 'skip', entity: 'standing',
-        scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
-        reason: `קבוצה "${scraped.teamNameHe}" לא נמצאה בעונה ${dbSeasonName} (${dbTeams.length} קבוצות בעונה)`,
-        fields: {},
-      });
-      continue;
-    }
 
-    // Find existing standing for this team+season
-    const existing = await prisma.standing.findFirst({
-      where: { seasonId, teamId: matchedTeam.id },
-    });
-
-    if (existing) {
-      // Check if IFA data has more info
-      const fields: Record<string, { old: any; new: any }> = {};
-      if (existing.played === 0 && scraped.played > 0) fields.played = { old: 0, new: scraped.played };
-      if (existing.wins === 0 && scraped.wins > 0) fields.wins = { old: 0, new: scraped.wins };
-      if (existing.draws === 0 && scraped.draws > 0) fields.draws = { old: 0, new: scraped.draws };
-      if (existing.losses === 0 && scraped.losses > 0) fields.losses = { old: 0, new: scraped.losses };
-      if (existing.goalsFor === 0 && scraped.goalsFor > 0) fields.goalsFor = { old: 0, new: scraped.goalsFor };
-      if (existing.goalsAgainst === 0 && scraped.goalsAgainst > 0) fields.goalsAgainst = { old: 0, new: scraped.goalsAgainst };
-      if (existing.points === 0 && scraped.points > 0) fields.points = { old: 0, new: scraped.points };
-
-      if (Object.keys(fields).length > 0) {
-        changes.push({ type: 'update', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, matchedName: matchedTeam.nameHe, matchedId: existing.id, fields });
+    if (matchedTeam) {
+      // Team exists — check standings
+      const existing = await prisma.standing.findFirst({ where: { seasonId, teamId: matchedTeam.id } });
+      if (existing) {
+        const fields: Record<string, { old: any; new: any }> = {};
+        if (existing.played === 0 && scraped.played > 0) fields.played = { old: 0, new: scraped.played };
+        if (existing.wins === 0 && scraped.wins > 0) fields.wins = { old: 0, new: scraped.wins };
+        if (existing.draws === 0 && scraped.draws > 0) fields.draws = { old: 0, new: scraped.draws };
+        if (existing.losses === 0 && scraped.losses > 0) fields.losses = { old: 0, new: scraped.losses };
+        if (existing.goalsFor === 0 && scraped.goalsFor > 0) fields.goalsFor = { old: 0, new: scraped.goalsFor };
+        if (existing.goalsAgainst === 0 && scraped.goalsAgainst > 0) fields.goalsAgainst = { old: 0, new: scraped.goalsAgainst };
+        if (existing.points === 0 && scraped.points > 0) fields.points = { old: 0, new: scraped.points };
+        if (Object.keys(fields).length > 0) {
+          changes.push({ type: 'update', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, matchedName: matchedTeam.nameHe, matchedId: existing.id, fields });
+        } else {
+          changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: 'כל השדות מלאים', fields: {} });
+        }
       } else {
-        changes.push({ type: 'skip', entity: 'standing', scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: 'כל השדות מלאים', fields: {} });
+        // Team exists but no standing — create
+        changes.push({
+          type: 'create', entity: 'standing',
+          scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
+          matchedName: matchedTeam.nameHe,
+          fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
+        });
       }
     } else {
-      // No standing exists — can create new one
+      // No team in DB — propose creating team + standing
+      const resolved = resolveTeamNames(scraped.teamNameHe);
       changes.push({
-        type: 'create',
-        entity: 'standing',
+        type: 'create', entity: 'standing',
         scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
-        matchedName: matchedTeam.nameHe,
-        fields: {
-          position: { old: null, new: scraped.position },
-          played: { old: null, new: scraped.played },
-          wins: { old: null, new: scraped.wins },
-          draws: { old: null, new: scraped.draws },
-          losses: { old: null, new: scraped.losses },
-          goalsFor: { old: null, new: scraped.goalsFor },
-          goalsAgainst: { old: null, new: scraped.goalsAgainst },
-          points: { old: null, new: scraped.points },
-        },
+        matchedName: `[חדש] ${resolved.nameHe}`,
+        reason: 'ייצור קבוצה חדשה + שורת טבלה',
+        fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
       });
     }
   }
@@ -407,22 +437,38 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
         applied.push({ id: change.matchedId, entity: 'standing', fields: updateData });
       }
 
-      if (change.entity === 'standing' && change.type === 'create' && change.matchedName) {
-        // Find team and season to create standing
+      if (change.entity === 'standing' && change.type === 'create') {
         const scrapedSeason = change.scrapedName.match(/\(([^)]+)\)/)?.[1] || '';
         const dbSeasonName = normalizeSeasonName(scrapedSeason);
         const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
         const seasonId = dbSeasons.find((s) => s.name === dbSeasonName)?.id;
         if (!seasonId) { errors.push(`Season ${dbSeasonName} not found`); continue; }
 
-        const teams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true } });
-        const team = teams.find((t) => matchTeamName(change.matchedName!, t.nameHe));
-        if (!team) { errors.push(`Team ${change.matchedName} not found`); continue; }
+        // Find or create team
+        const isNewTeam = change.matchedName?.startsWith('[חדש]');
+        let teamId: string;
+
+        if (isNewTeam) {
+          // Extract the original IFA name from scrapedName
+          const ifaName = change.scrapedName.replace(/\s*\([^)]+\)$/, '');
+          const resolved = resolveTeamNames(ifaName);
+          const newTeam = await prisma.team.create({
+            data: { nameHe: resolved.nameHe, nameEn: resolved.nameEn, seasonId },
+          });
+          teamId = newTeam.id;
+          snapshots.push({ id: newTeam.id, entity: 'team', original: {}, action: 'create' });
+        } else {
+          const teams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true } });
+          const matchedTeamName = change.matchedName || '';
+          const team = teams.find((t) => matchTeamName(matchedTeamName, t.nameHe) || t.nameHe === matchedTeamName);
+          if (!team) { errors.push(`Team ${matchedTeamName} not found in ${dbSeasonName}`); continue; }
+          teamId = team.id;
+        }
 
         const created = await prisma.standing.create({
           data: {
             seasonId,
-            teamId: team.id,
+            teamId,
             position: change.fields.position?.new ?? 0,
             played: change.fields.played?.new ?? 0,
             wins: change.fields.wins?.new ?? 0,
@@ -477,6 +523,11 @@ export async function rollbackMerge(mergeId: string): Promise<{ reverted: number
         // Delete the created record
         if (snap.entity === 'standing') {
           await prisma.standing.delete({ where: { id: snap.id } }).catch(() => null);
+          reverted++;
+        }
+        if (snap.entity === 'team') {
+          // Delete team (cascade will remove standings too)
+          await prisma.team.delete({ where: { id: snap.id } }).catch(() => null);
           reverted++;
         }
       } else {
