@@ -85,44 +85,21 @@ export default async function AdminMergePage() {
         </section>
 
         {/* Merge controls */}
-        <AdminMergeClient availableSeasons={{ footballOrgIl: ifaSeasons, sport5: sport5Seasons }} />
-
-        {/* Merge history */}
-        {mergeOps.length > 0 ? (
-          <section className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-black text-stone-900">היסטוריית מיזוגים</h2>
-            <div className="mt-3 space-y-3">
-              {mergeOps.map((op) => (
-                <article key={op.id} className="rounded-xl border border-stone-100 bg-stone-50 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${statusColors[op.status] || 'bg-stone-100 text-stone-600'}`}>
-                          {statusLabels[op.status] || op.status}
-                        </span>
-                        <span className="text-sm font-bold text-stone-800">{op.source}</span>
-                        <span className="text-xs text-stone-400">{op.mergeType}</span>
-                      </div>
-                      <div className="mt-1 text-sm text-stone-600">{op.description}</div>
-                      <div className="mt-1 text-xs text-stone-400">
-                        {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(op.createdAt)}
-                        {op.user?.name ? ` · ${op.user.name}` : ''}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="rounded-full bg-white px-2 py-1 font-semibold text-stone-700">
-                        {op.recordsUpdated} עודכנו
-                      </span>
-                      <span className="rounded-full bg-white px-2 py-1 font-semibold text-stone-500">
-                        {op.recordsSkipped} דולגו
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
+        <AdminMergeClient
+          availableSeasons={{ footballOrgIl: ifaSeasons, sport5: sport5Seasons }}
+          mergeHistory={mergeOps.map((op) => ({
+            id: op.id,
+            source: op.source,
+            mergeType: op.mergeType,
+            status: op.status,
+            description: op.description,
+            recordsUpdated: op.recordsUpdated,
+            recordsCreated: op.recordsCreated,
+            recordsSkipped: op.recordsSkipped,
+            createdAt: op.createdAt.toISOString(),
+            userName: op.user?.name || null,
+          }))}
+        />
       </div>
     </div>
   );

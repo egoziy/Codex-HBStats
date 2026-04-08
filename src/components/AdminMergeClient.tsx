@@ -13,10 +13,41 @@ type PreviewChange = {
   reason?: string;
 };
 
+type MergeHistoryItem = {
+  id: string;
+  source: string;
+  mergeType: string;
+  status: string;
+  description: string | null;
+  recordsUpdated: number;
+  recordsCreated: number;
+  recordsSkipped: number;
+  createdAt: string;
+  userName: string | null;
+};
+
+const statusColors: Record<string, string> = {
+  preview: 'bg-blue-100 text-blue-700',
+  approved: 'bg-amber-100 text-amber-700',
+  executed: 'bg-emerald-100 text-emerald-700',
+  rolled_back: 'bg-stone-100 text-stone-600',
+  failed: 'bg-red-100 text-red-700',
+};
+
+const statusLabels: Record<string, string> = {
+  preview: 'תצוגה מקדימה',
+  approved: 'מאושר',
+  executed: 'בוצע',
+  rolled_back: 'בוטל (rollback)',
+  failed: 'נכשל',
+};
+
 export default function AdminMergeClient({
   availableSeasons,
+  mergeHistory,
 }: {
   availableSeasons: Record<string, string[]>;
+  mergeHistory: MergeHistoryItem[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -178,6 +209,63 @@ export default function AdminMergeClient({
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Merge history with rollback/delete buttons */}
+      {mergeHistory.length > 0 ? (
+        <section className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-black text-stone-900">היסטוריית מיזוגים</h2>
+          <div className="mt-3 space-y-3">
+            {mergeHistory.map((op) => (
+              <article key={op.id} className="rounded-xl border border-stone-100 bg-stone-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${statusColors[op.status] || 'bg-stone-100 text-stone-600'}`}>
+                        {statusLabels[op.status] || op.status}
+                      </span>
+                      <span className="text-sm font-bold text-stone-800">{op.source}</span>
+                      <span className="text-xs text-stone-400">{op.mergeType}</span>
+                    </div>
+                    <div className="mt-1 text-sm text-stone-600">{op.description}</div>
+                    <div className="mt-1 text-xs text-stone-400">
+                      {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(op.createdAt))}
+                      {op.userName ? ` · ${op.userName}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-stone-700">
+                      {op.recordsUpdated + op.recordsCreated} שונו
+                    </span>
+                    {op.status === 'executed' ? (
+                      <button
+                        type="button"
+                        onClick={() => rollback(op.id)}
+                        disabled={isRunning}
+                        className="rounded-full border border-red-300 bg-white px-3 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        Rollback
+                      </button>
+                    ) : null}
+                    {op.status === 'preview' || op.status === 'rolled_back' ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await apiCall('delete', { mergeId: op.id });
+                          startTransition(() => router.refresh());
+                        }}
+                        disabled={isRunning}
+                        className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-xs font-bold text-stone-600 transition hover:bg-stone-50 disabled:opacity-50"
+                      >
+                        מחק
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
         </section>
       ) : null}
