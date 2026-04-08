@@ -114,7 +114,7 @@ export default function AdminMergeClient({
           </select>
           <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
             <option value="">כל העונות</option>
-            {(availableSeasons[selectedSource] || []).map((s) => (
+            {(availableSeasons?.[selectedSource] || []).map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
