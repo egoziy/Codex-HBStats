@@ -204,7 +204,10 @@ export default async function PlayersPage({
         seasonGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)
       );
       const hasSeasonStats =
-        player.playerStats.some((row) => row.gamesPlayed > 0 || row.minutesPlayed > 0) ||
+        player.playerStats.some((row) =>
+          row.gamesPlayed > 0 || row.minutesPlayed > 0 || row.goals > 0 || row.assists > 0 ||
+          row.yellowCards > 0 || row.redCards > 0 || row.substituteAppearances > 0 || row.timesSubbedOff > 0
+        ) ||
         stat.gamesPlayed > 0 ||
         stat.minutesPlayed > 0 ||
         stat.goals > 0 ||
