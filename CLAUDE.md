@@ -203,6 +203,33 @@ Rate limiting: 250ms מינימום בין בקשות, 4 ניסיונות עם e
 - `players/[id]` — פרטי שחקן
 - `news` — פיד חדשות
 
+## סריקת אתרים חיצוניים (Sport5 Scraper)
+
+מודול סריקה מ-sport5.co.il להשלמת נתונים שלא קיימים ב-API-Football.
+
+### מקורות
+- **Team page** (`/team.aspx?FolderID={id}`) — סגל שחקנים, תוצאות, טבלה
+- **Player page** (`/Player/{TeamID}/{PlayerID}/{slug}`) — סטטיסטיקות רב-עונתיות
+- **League page** (`/liga.aspx?FolderID={id}`) — מלכי שערים, כרטיסים
+
+### FolderIDs עיקריים
+- 44 = ליגת העל, 80 = ליגה לאומית
+- קבוצות: 1639=באר שבע, 192=מכבי ת"א, 191=בית"ר, 163=מכבי חיפה, 164=הפועל ת"א...
+
+### עקרונות מיזוג (`sport5-merge.ts`)
+- **לא מוחק** נתונים קיימים
+- **לא דורס** שדות שכבר מלאים מ-API-Football
+- **ממלא** רק שדות ריקים (jerseyNumber, goals=0, etc.)
+- **מתאים** שחקנים לפי שם עברי (fuzzy match)
+- **מתעד** כל שינוי ב-logs
+
+### API
+`POST /api/admin/scrape` — actions:
+- `scrape-team` — סריקת דף קבוצה
+- `scrape-and-merge-team` — סריקה + מיזוג לעונה
+- `scrape-player` — סריקת דף שחקן
+- `scrape-and-merge-all` — סריקת כל הקבוצות + מיזוג
+
 ## קונבנציות קוד
 
 - **RTL:** כל הדפים הציבוריים בעברית, `dir="rtl"` על ה-layout
