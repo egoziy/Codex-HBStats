@@ -268,34 +268,6 @@ export default async function PlayersPage({
             submitLabel="הצג שחקנים"
           />
 
-          <form className="hidden" action="/players">
-            <select
-              name="season"
-              defaultValue={selectedSeason?.id || ''}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
-            >
-              {seasons.map((season) => (
-                <option key={season.id} value={season.id}>
-                  {season.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="teamId"
-              defaultValue={selectedTeamId}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
-            >
-              <option value="all">כל הקבוצות</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.nameHe || team.nameEn}
-                </option>
-              ))}
-            </select>
-
-            <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">הצג שחקנים</button>
-          </form>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

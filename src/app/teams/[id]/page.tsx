@@ -273,6 +273,9 @@ export default async function TeamPage({
                     <span className="rounded-full bg-white/10 px-3 py-1.5">עיר: {team.venue?.cityHe || team.cityHe || team.venue?.cityEn || 'לא הוזנה'}</span>
                     <span className="rounded-full bg-white/10 px-3 py-1.5">מיקום: {standing?.displayPosition ?? '-'}</span>
                     <span className="rounded-full bg-white/10 px-3 py-1.5">נקודות: {standing?.adjustedPoints ?? seasonTeamStat?.points ?? 0}</span>
+                    {unavailablePlayers.length > 0 ? (
+                      <span className="rounded-full bg-red-500/30 px-3 py-1.5 text-red-100">{unavailablePlayers.length} פצועים</span>
+                    ) : null}
                   </div>
                 </div>
               </div>

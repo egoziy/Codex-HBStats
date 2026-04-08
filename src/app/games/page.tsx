@@ -280,8 +280,8 @@ export default async function GamesPage({
       <div className="mx-auto max-w-7xl space-y-6">
         <section className={`rounded-[28px] border p-6 shadow-sm ${displayMode === 'premier' ? 'border-white/70 bg-[linear-gradient(140deg,#12002f,#4a006f_48%,#05a3d6)] text-white' : 'border-stone-200 bg-white'}`}>
           <p className={`text-sm font-semibold tracking-[0.25em] ${displayMode === 'premier' ? 'text-cyan-100' : 'text-amber-700'}`}>משחקים</p>
-          <h1 className="mt-2 text-3xl font-black text-stone-900">מרכז המשחקים</h1>
-          <p className="mt-3 max-w-3xl text-stone-600">
+          <h1 className={`mt-2 text-3xl font-black ${displayMode === 'premier' ? 'text-white' : 'text-stone-900'}`}>מרכז המשחקים</h1>
+          <p className={`mt-3 max-w-3xl ${displayMode === 'premier' ? 'text-white/80' : 'text-stone-600'}`}>
             בחרו עונה, ליגה או גביע, מחזור וקבוצה כדי לראות את רשימת המשחקים ואת האירועים המרכזיים בכל משחק.
           </p>
 
@@ -300,61 +300,6 @@ export default async function GamesPage({
             submitLabel="סנן משחקים"
           />
 
-          <form className="hidden" action="/games">
-            <input type="hidden" name="view" value={displayMode} />
-            <select
-              name="season"
-              defaultValue={selectedSeason?.id || ''}
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
-            >
-              {seasons.map((season) => (
-                <option key={season.id} value={season.id}>
-                  {season.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="competitionId"
-              defaultValue={selectedCompetitionId}
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
-            >
-              <option value="all">כל המסגרות</option>
-              {competitions.map((competition) => (
-                <option key={competition.id} value={competition.id}>
-                  {getCompetitionDisplayName(competition)}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="round"
-              defaultValue={selectedRound}
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
-            >
-              <option value="all">כל המחזורים</option>
-              {rounds.map((round) => (
-                <option key={round} value={round}>
-                  {getRoundDisplayName(round, round)}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="teamId"
-              defaultValue={selectedTeamId}
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'}`}
-            >
-              <option value="all">כל הקבוצות</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.nameHe || team.nameEn}
-                </option>
-              ))}
-            </select>
-
-            <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">סנן משחקים</button>
-          </form>
         </section>
 
         <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
@@ -366,14 +311,29 @@ export default async function GamesPage({
           </div>
 
           <div className="space-y-4">
-            {games.map((game) => (
+            {games.map((game) => {
+              const statusBadge = game.status === 'COMPLETED'
+                ? { label: 'הסתיים', cls: 'bg-emerald-100 text-emerald-700' }
+                : game.status === 'ONGOING'
+                  ? { label: 'שידור חי', cls: 'bg-red-100 text-red-700 animate-pulse' }
+                  : game.status === 'CANCELLED'
+                    ? { label: 'בוטל', cls: 'bg-stone-200 text-stone-500' }
+                    : { label: 'מתוכנן', cls: 'bg-blue-100 text-blue-700' };
+
+              return (
               <article key={game.id} className="overflow-hidden rounded-[24px] border border-stone-200 bg-stone-50">
                 <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto_1fr] md:items-center">
-                  <div className="text-center md:text-left">
-                    <div className="text-lg font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
-                    <div className="text-sm text-stone-500">{game.homeTeam.nameEn}</div>
+                  <div className="flex items-center gap-3 md:justify-start justify-center">
+                    {game.homeTeam.logoUrl ? (
+                      <img src={game.homeTeam.logoUrl} alt="" className="h-10 w-10 rounded-full border border-stone-200 bg-white object-contain p-1" />
+                    ) : null}
+                    <div className="text-center md:text-left">
+                      <div className="text-lg font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
+                      <div className="text-sm text-stone-500">{game.homeTeam.nameEn}</div>
+                    </div>
                   </div>
                   <div className="text-center">
+                    <span className={`mb-2 inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold ${statusBadge.cls}`}>{statusBadge.label}</span>
                     <div className="inline-flex rounded-full bg-stone-900 px-5 py-3 text-xl font-black text-white">
                       {getGameScoreDisplay(game)}
                     </div>
@@ -385,9 +345,14 @@ export default async function GamesPage({
                       {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(game.dateTime)}
                     </div>
                   </div>
-                  <div className="text-center md:text-right">
-                    <div className="text-lg font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
-                    <div className="text-sm text-stone-500">{game.awayTeam.nameEn}</div>
+                  <div className="flex items-center gap-3 md:justify-end justify-center">
+                    <div className="text-center md:text-right">
+                      <div className="text-lg font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
+                      <div className="text-sm text-stone-500">{game.awayTeam.nameEn}</div>
+                    </div>
+                    {game.awayTeam.logoUrl ? (
+                      <img src={game.awayTeam.logoUrl} alt="" className="h-10 w-10 rounded-full border border-stone-200 bg-white object-contain p-1" />
+                    ) : null}
                   </div>
                 </div>
 
@@ -439,7 +404,8 @@ export default async function GamesPage({
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
 
             {games.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center text-sm text-stone-500">
