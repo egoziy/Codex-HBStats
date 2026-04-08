@@ -19,11 +19,17 @@ const IFA_BASE = 'https://www.football.org.il';
 const args = process.argv.slice(2);
 const getArg = (name) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : null; };
 const targetLeague = getArg('league') || '40';
-const targetSeason = getArg('season') || null;
+const targetSeason = getArg('season') || null; // null = all seasons from 2 to 27
+const fromSeason = getArg('from') || '2';
+const toSeason = getArg('to') || '27';
 
 async function main() {
+  const seasonIds = targetSeason
+    ? [parseInt(targetSeason, 10)]
+    : Array.from({ length: parseInt(toSeason, 10) - parseInt(fromSeason, 10) + 1 }, (_, i) => parseInt(toSeason, 10) - i);
+
   console.log('\n=== football.org.il Scraper ===');
-  console.log('League:', targetLeague, '| Season:', targetSeason || 'all available');
+  console.log('League:', targetLeague, '| Seasons:', seasonIds.join(', '));
 
   const browser = await puppeteer.launch({
     executablePath: CHROME_PATH,
@@ -31,122 +37,68 @@ async function main() {
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
+  let totalStandings = 0;
+
   try {
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
     page.setDefaultTimeout(15000);
 
-    // Navigate to league page
-    const leagueUrl = `${IFA_BASE}/leagues/league/?league_id=${targetLeague}&season_id=27`;
-    console.log('Loading:', leagueUrl);
-    await page.goto(leagueUrl, { waitUntil: 'networkidle2' });
+    for (const sid of seasonIds) {
+      const url = `${IFA_BASE}/leagues/league/?league_id=${targetLeague}&season_id=${sid}`;
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 }).catch(() => null);
 
-    // Wait for season dropdown to populate
-    await page.waitForSelector('.box-ajax-changer option', { timeout: 10000 }).catch(() => null);
+      // Scroll to trigger lazy loading
+      await page.evaluate(() => window.scrollTo(0, 800));
+      await new Promise((r) => setTimeout(r, 4000));
 
-    // Get available seasons
-    const seasons = await page.evaluate(() => {
-      const options = document.querySelectorAll('.box-ajax-changer option');
-      return Array.from(options).map((opt) => ({
-        value: opt.value,
-        text: opt.textContent.trim(),
-        minRound: opt.getAttribute('data-min-round'),
-        maxRound: opt.getAttribute('data-max-round'),
-        sectionId: opt.getAttribute('data-section-id'),
-        currentRound: opt.getAttribute('data-current-round'),
-      }));
-    });
+      const result = await page.evaluate(() => {
+        const title = document.querySelector('.page_main_title span')?.textContent?.trim() || '';
+        const bigTitle = document.querySelector('.page_main_title .big')?.textContent?.trim() || '';
 
-    console.log('\nAvailable seasons:', seasons.length);
-    for (const s of seasons) {
-      console.log('  value=' + s.value, ':', s.text, '| rounds:', s.minRound + '-' + s.maxRound);
-    }
+        // Parse div-based grid
+        const container = document.querySelector('.table-w-playoff .results-grid') || document.querySelector('.results-grid');
+        if (!container) return { title, bigTitle, teams: [] };
 
-    // Filter seasons
-    const targetSeasons = targetSeason
-      ? seasons.filter((s) => s.value === targetSeason)
-      : seasons;
-
-    // Scrape each season
-    for (const season of targetSeasons) {
-      console.log('\n--- Scraping: ' + season.text + ' (value=' + season.value + ') ---');
-
-      // Select the season in dropdown
-      if (season.value !== seasons[0]?.value) {
-        await page.select('.box-ajax-changer', season.value);
-        await page.waitForTimeout(3000);
-      }
-
-      // Wait for table to load
-      await page.waitForSelector('.tables-container table, .score-list table', { timeout: 8000 }).catch(() => null);
-
-      // Extract standings
-      const standings = await page.evaluate(() => {
-        const rows = document.querySelectorAll('.tables-container table tr, .score-list table tr');
-        const data = [];
-        for (const row of rows) {
-          const cells = row.querySelectorAll('td');
-          if (cells.length >= 9) {
-            const pos = parseInt(cells[0]?.textContent?.trim(), 10);
-            const teamName = cells[1]?.textContent?.trim();
-            const played = parseInt(cells[2]?.textContent?.trim(), 10);
-            const wins = parseInt(cells[3]?.textContent?.trim(), 10);
-            const draws = parseInt(cells[4]?.textContent?.trim(), 10);
-            const losses = parseInt(cells[5]?.textContent?.trim(), 10);
-            const goalsRatio = cells[6]?.textContent?.trim() || '';
-            const goalDiff = cells[7]?.textContent?.trim() || '0';
-            const points = parseInt(cells[8]?.textContent?.trim(), 10);
-
-            if (pos && teamName && !isNaN(played)) {
-              const [gf, ga] = goalsRatio.split(/[:\-]/).map((v) => parseInt(v.trim(), 10));
-              data.push({ pos, teamName, played, wins, draws, losses, goalsFor: gf || 0, goalsAgainst: ga || 0, goalDiff: parseInt(goalDiff, 10) || 0, points: points || 0 });
-            }
-          }
+        const text = container.textContent;
+        const teamPattern = /מיקום(\d+)קבוצה([^מ]+?)משחקים(\d+)ניצחונות(\d+)תיקו(\d+)הפסדים(\d+)שערים(\d+)-(\d+)נקודות(\d+)/g;
+        const teams = [];
+        let m;
+        while ((m = teamPattern.exec(text)) !== null) {
+          teams.push({
+            pos: +m[1], name: m[2].trim(), played: +m[3],
+            wins: +m[4], draws: +m[5], losses: +m[6],
+            goalsAgainst: +m[7], goalsFor: +m[8], points: +m[9],
+          });
         }
-        return data;
+        return { title, bigTitle, teams };
       });
 
-      console.log('Standings rows:', standings.length);
-      for (const s of standings.slice(0, 5)) {
-        console.log('  ' + s.pos + '. ' + s.teamName + ' | ' + s.played + ' | ' + s.wins + '-' + s.draws + '-' + s.losses + ' | ' + s.goalsFor + ':' + s.goalsAgainst + ' | ' + s.points + ' pts');
+      if (!result.title && result.teams.length === 0) {
+        console.log('  season_id=' + sid + ': empty');
+        continue;
       }
 
-      // Save standings to DB
-      for (const row of standings) {
+      const seasonLabel = result.title || 'sid-' + sid;
+      const leagueLabel = result.bigTitle || 'ליגת העל';
+      console.log('  ' + seasonLabel + ' (' + leagueLabel + '): ' + result.teams.length + ' teams');
+
+      for (const t of result.teams) {
         await prisma.scrapedStanding.upsert({
-          where: { source_season_leagueNameHe_position: { source: SOURCE, season: season.text, leagueNameHe: 'ליגת העל', position: row.pos } },
-          update: { teamNameHe: row.teamName, played: row.played, wins: row.wins, draws: row.draws, losses: row.losses, goalsFor: row.goalsFor, goalsAgainst: row.goalsAgainst, goalDifference: row.goalDiff, points: row.points, scrapedAt: new Date() },
-          create: { source: SOURCE, season: season.text, leagueNameHe: 'ליגת העל', position: row.pos, teamNameHe: row.teamName, played: row.played, wins: row.wins, draws: row.draws, losses: row.losses, goalsFor: row.goalsFor, goalsAgainst: row.goalsAgainst, goalDifference: row.goalDiff, points: row.points },
+          where: { source_season_leagueNameHe_position: { source: SOURCE, season: seasonLabel, leagueNameHe: leagueLabel, position: t.pos } },
+          update: { teamNameHe: t.name, played: t.played, wins: t.wins, draws: t.draws, losses: t.losses, goalsFor: t.goalsFor, goalsAgainst: t.goalsAgainst, points: t.points, scrapedAt: new Date() },
+          create: { source: SOURCE, season: seasonLabel, leagueNameHe: leagueLabel, position: t.pos, teamNameHe: t.name, played: t.played, wins: t.wins, draws: t.draws, losses: t.losses, goalsFor: t.goalsFor, goalsAgainst: t.goalsAgainst, points: t.points },
         });
+        totalStandings++;
       }
-
-      // Extract games list if available
-      const games = await page.evaluate(() => {
-        const gameRows = document.querySelectorAll('.games-table tr, .game-row');
-        const data = [];
-        for (const row of gameRows) {
-          const cells = row.querySelectorAll('td');
-          if (cells.length >= 4) {
-            const text = row.textContent || '';
-            // Try to extract: date, home team, score, away team
-            const scoreMatch = text.match(/(\d+)\s*[-:]\s*(\d+)/);
-            if (scoreMatch) {
-              data.push({ raw: text.trim().slice(0, 200), homeScore: +scoreMatch[1], awayScore: +scoreMatch[2] });
-            }
-          }
-        }
-        return data;
-      });
-
-      console.log('Games found:', games.length);
-      if (games[0]) console.log('  Sample:', games[0].raw.slice(0, 100));
     }
   } finally {
     await browser.close();
-    await prisma.$disconnect();
   }
 
-  console.log('\n=== Done ===');
+  const dbTotal = await prisma.scrapedStanding.count({ where: { source: SOURCE } });
+  console.log('\n=== Done: ' + totalStandings + ' rows saved, DB total: ' + dbTotal + ' ===');
+  await prisma.$disconnect();
 }
 
 main().catch(console.error);
