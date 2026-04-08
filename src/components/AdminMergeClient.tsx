@@ -54,7 +54,7 @@ export default function AdminMergeClient({
   const [message, setMessage] = useState('');
   const [previewData, setPreviewData] = useState<{ mergeId: string; changes: PreviewChange[]; summary: { updates: number; creates: number; skips: number } } | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [selectedSource, setSelectedSource] = useState('footballOrgIl');
+  const [selectedSource, setSelectedSource] = useState('walla');
   const [selectedType, setSelectedType] = useState('standings');
   const [selectedSeason, setSelectedSeason] = useState('');
 
@@ -135,6 +135,7 @@ export default function AdminMergeClient({
 
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
           <select value={selectedSource} onChange={(e) => { setSelectedSource(e.target.value); setSelectedSeason(''); }} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
+            <option value="walla">Walla Sports (מומלץ)</option>
             <option value="footballOrgIl">football.org.il (IFA)</option>
             <option value="sport5">sport5.co.il</option>
           </select>

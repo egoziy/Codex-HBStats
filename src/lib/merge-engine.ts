@@ -116,6 +116,18 @@ const IFA_TEAM_ABBREVS: Record<string, string[]> = {
   'מכבי חיפה': ['מכבי חיפה'],
   'הפועל חיפה': ['הפועל חיפה'],
   'עירוני טבריה': ['עירוני טבריה'],
+  // Walla spelling variants
+  'עירוני קרית שמונה': ['עירוני קריית שמונה', 'הפועל קריית שמונה'],
+  'עירוני קרית-שמונה': ['עירוני קריית שמונה'],
+  'מכבי פתח תקוה': ['מכבי פתח תקווה'],
+  'הפועל פתח תקוה': ['הפועל פתח תקווה'],
+  'בני יהודה תל-אביב': ['בני יהודה'],
+  'הפועל ראשון לציון': ['הפועל ראשון לציון'],
+  'מכבי קרית-גת': ['מכבי קריית גת'],
+  'מכבי הרצליה': ['מכבי הרצליה'],
+  'הפועל נוף הגליל': ['הפועל נצרת עילית', 'הפועל נוף הגליל'],
+  'הפועל כפר סבא': ['הפועל כפר סבא'],
+  'הפועל אום אל-פחם': ['הפועל אום אל פאחם'],
 };
 
 function matchTeamName(ifaName: string, dbName: string): boolean {
@@ -286,6 +298,16 @@ const IFA_FULL_NAMES: Record<string, { nameHe: string; nameEn: string }> = {
   'א.ס. אשדוד': { nameHe: 'א.ס. אשדוד', nameEn: 'AS Ashdod' },
   'הפועל הרצליה עירוני': { nameHe: 'הפועל הרצליה', nameEn: 'Hapoel Herzliya' },
   'איחוד בני שפרעם': { nameHe: 'איחוד בני שפרעם', nameEn: 'Ihud Bnei Shefaram' },
+  // Walla full names
+  'עירוני קרית שמונה': { nameHe: 'עירוני קריית שמונה', nameEn: 'Ironi Kiryat Shmona' },
+  'עירוני קרית-שמונה': { nameHe: 'עירוני קריית שמונה', nameEn: 'Ironi Kiryat Shmona' },
+  'מכבי פתח תקוה': { nameHe: 'מכבי פתח תקווה', nameEn: 'Maccabi Petach Tikva' },
+  'הפועל פתח תקוה': { nameHe: 'הפועל פתח תקווה', nameEn: 'Hapoel Petach Tikva' },
+  'בני יהודה תל-אביב': { nameHe: 'בני יהודה', nameEn: 'Bnei Yehuda' },
+  'מכבי קרית-גת': { nameHe: 'מכבי קריית גת', nameEn: 'Maccabi Kiryat Gat' },
+  'הפועל אום אל-פחם': { nameHe: 'הפועל אום אל פאחם', nameEn: 'Hapoel Umm al-Fahm' },
+  'הפועל נוף הגליל': { nameHe: 'הפועל נוף הגליל', nameEn: 'Hapoel Nof HaGalil' },
+  'סקציה נס-ציונה': { nameHe: 'סקציה נס ציונה', nameEn: 'Sektzia Nes Tziona' },
 };
 
 function resolveTeamNames(ifaName: string): { nameHe: string; nameEn: string } {

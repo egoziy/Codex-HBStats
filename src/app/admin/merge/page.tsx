@@ -18,7 +18,7 @@ export default async function AdminMergePage() {
     );
   }
 
-  const [mergeOps, scrapedStats, ifaSeasons, sport5Seasons] = await Promise.all([
+  const [mergeOps, scrapedStats, ifaSeasons, sport5Seasons, wallaSeasons] = await Promise.all([
     prisma.mergeOperation.findMany({
       orderBy: { createdAt: 'desc' },
       take: 20,
@@ -27,9 +27,12 @@ export default async function AdminMergePage() {
     Promise.all([
       prisma.scrapedPlayerSeason.count({ where: { source: 'sport5' } }),
       prisma.scrapedStanding.count({ where: { source: 'footballOrgIl' } }),
+      prisma.scrapedStanding.count({ where: { source: 'walla' } }),
+      prisma.scrapedLeaderboard.count({ where: { source: 'walla' } }),
     ]),
     prisma.scrapedStanding.groupBy({ by: ['season'], where: { source: 'footballOrgIl' }, orderBy: { season: 'desc' } }).then((rows) => rows.map((r) => r.season)),
     prisma.scrapedPlayerSeason.groupBy({ by: ['season'], where: { source: 'sport5' }, orderBy: { season: 'desc' } }).then((rows) => rows.map((r) => r.season)),
+    prisma.scrapedStanding.groupBy({ by: ['season'], where: { source: 'walla' }, orderBy: { season: 'desc' } }).then((rows) => rows.map((r) => r.season)),
   ]);
 
   const statusColors: Record<string, string> = {
@@ -66,27 +69,17 @@ export default async function AdminMergePage() {
         </section>
 
         {/* Status summary */}
-        <section className="grid gap-4 sm:grid-cols-3">
-          <div className="rounded-[20px] border border-stone-200 bg-white p-5 shadow-sm">
-            <div className="text-xs font-semibold tracking-[0.18em] text-stone-500">נתונים לסריקת שחקנים</div>
-            <div className="mt-2 text-3xl font-black text-stone-900">{scrapedStats[0]}</div>
-            <div className="mt-1 text-xs text-stone-400">רשומות עונתיות מ-Sport5</div>
-          </div>
-          <div className="rounded-[20px] border border-stone-200 bg-white p-5 shadow-sm">
-            <div className="text-xs font-semibold tracking-[0.18em] text-stone-500">טבלאות IFA</div>
-            <div className="mt-2 text-3xl font-black text-stone-900">{scrapedStats[1]}</div>
-            <div className="mt-1 text-xs text-stone-400">שורות טבלה מ-football.org.il</div>
-          </div>
-          <div className="rounded-[20px] border border-stone-200 bg-white p-5 shadow-sm">
-            <div className="text-xs font-semibold tracking-[0.18em] text-stone-500">פעולות מיזוג</div>
-            <div className="mt-2 text-3xl font-black text-stone-900">{mergeOps.length}</div>
-            <div className="mt-1 text-xs text-stone-400">{mergeOps.filter((m) => m.status === 'executed').length} בוצעו</div>
-          </div>
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <SummaryCard label="Sport5 שחקנים" value={String(scrapedStats[0])} sub="רשומות עונתיות" />
+          <SummaryCard label="IFA טבלאות" value={String(scrapedStats[1])} sub="football.org.il" />
+          <SummaryCard label="Walla טבלאות" value={String(scrapedStats[2])} sub="standings" />
+          <SummaryCard label="Walla שחקנים" value={String(scrapedStats[3])} sub="leaderboards" />
+          <SummaryCard label="מיזוגים" value={String(mergeOps.length)} sub={`${mergeOps.filter((m) => m.status === 'executed').length} בוצעו`} />
         </section>
 
         {/* Merge controls */}
         <AdminMergeClient
-          availableSeasons={{ footballOrgIl: ifaSeasons, sport5: sport5Seasons }}
+          availableSeasons={{ walla: wallaSeasons, footballOrgIl: ifaSeasons, sport5: sport5Seasons }}
           mergeHistory={mergeOps.map((op) => ({
             id: op.id,
             source: op.source,
@@ -101,6 +94,16 @@ export default async function AdminMergePage() {
           }))}
         />
       </div>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-[20px] border border-stone-200 bg-white p-5 shadow-sm">
+      <div className="text-xs font-semibold tracking-[0.18em] text-stone-500">{label}</div>
+      <div className="mt-2 text-3xl font-black text-stone-900">{value}</div>
+      {sub ? <div className="mt-1 text-xs text-stone-400">{sub}</div> : null}
     </div>
   );
 }
