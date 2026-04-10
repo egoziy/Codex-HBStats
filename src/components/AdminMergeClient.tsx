@@ -142,6 +142,7 @@ export default function AdminMergeClient({
           <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">
             <option value="standings">טבלאות ליגה</option>
             <option value="players">סטטיסטיקות שחקנים</option>
+            <option value="games">משחקים + הרכבים + אירועים</option>
             <option value="all">הכל</option>
           </select>
           <select value={selectedSeason} onChange={(e) => setSelectedSeason(e.target.value)} className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-bold">

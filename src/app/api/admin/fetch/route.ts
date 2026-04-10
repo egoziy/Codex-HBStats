@@ -105,6 +105,28 @@ const NAME_TRANSLATIONS: Record<string, string> = {
   Ashdod: 'מ.ס. אשדוד',
   'Hapoel Hadera': 'הפועל חדרה',
   'Maccabi Bnei Raina': 'מכבי בני ריינה',
+  'Ironi Tiberias': 'עירוני טבריה',
+  'Hapoel Petah Tikva': 'הפועל פתח תקווה',
+  'Bnei Yehuda': 'בני יהודה',
+  'Hapoel Kfar Saba': 'הפועל כפר סבא',
+  'Hapoel Raanana': 'הפועל רעננה',
+  'Hapoel Acre': 'הפועל עכו',
+  'Ironi Kiryat Shmona': 'עירוני קריית שמונה',
+  'Hapoel Ramat Gan': 'הפועל רמת גן',
+  'Sektzia Nes Tziona': 'סקציה נס ציונה',
+  'Hapoel Nof HaGalil': 'הפועל נוף הגליל',
+  'Hapoel Rishon LeZion': 'הפועל ראשון לציון',
+  'MS Ashdod': 'מ.ס. אשדוד',
+  'Beitar Tel Aviv': 'בית"ר תל אביב',
+  'Hapoel Afula': 'הפועל עפולה',
+  'Maccabi Herzliya': 'מכבי הרצליה',
+  'Hapoel Herzliya': 'הפועל הרצליה',
+  'Maccabi Kiryat Gat': 'מכבי קריית גת',
+  'Hapoel Umm al-Fahm': 'הפועל אום אל פאחם',
+  'Hapoel Ashkelon': 'הפועל אשקלון',
+  'Ironi Nesher': 'עירוני נשר',
+  'Hapoel Bnei Lod': 'הפועל בני לוד',
+  'Ihud Bnei Shefaram': 'איחוד בני שפרעם',
 };
 
 const RESOURCE_STALE_HOURS = {
@@ -119,9 +141,28 @@ const RESOURCE_STALE_HOURS = {
   odds: 2,
 } as const;
 
+// In-memory cache for DB-based team name lookups (populated lazily)
+const teamNameCache = new Map<string, string>();
+
 function translateName(name: string | null | undefined) {
   if (!name) return name || '';
-  return NAME_TRANSLATIONS[name] || name;
+  if (NAME_TRANSLATIONS[name]) return NAME_TRANSLATIONS[name];
+  if (teamNameCache.has(name)) return teamNameCache.get(name)!;
+  return name;
+}
+
+async function warmTeamNameCache() {
+  if (teamNameCache.size > 0) return;
+  const teams = await prisma.team.findMany({
+    where: { nameHe: { not: '' } },
+    select: { nameEn: true, nameHe: true },
+    distinct: ['nameEn'],
+  });
+  for (const t of teams) {
+    if (t.nameHe && t.nameEn && t.nameHe !== t.nameEn && !NAME_TRANSLATIONS[t.nameEn]) {
+      teamNameCache.set(t.nameEn, t.nameHe);
+    }
+  }
 }
 
 function toDate(value: Date | string | null | undefined) {
@@ -735,6 +776,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'אין הרשאה למשיכה.' }, { status: 403 });
   }
 
+  await warmTeamNameCache();
+
   const body = (await request.json()) as FetchBody;
   const seasonYear = Number(body.season || '2025');
   const leagueId = String(body.leagueId || '383');
@@ -962,7 +1005,10 @@ export async function POST(request: NextRequest) {
             where: { id: existingReferee.id },
             data: {
               nameEn: normalizedName,
-              nameHe: translateName(normalizedName),
+              // Don't overwrite nameHe if it was manually set (and differs from nameEn)
+              nameHe: existingReferee.nameHe && existingReferee.nameHe !== existingReferee.nameEn
+                ? existingReferee.nameHe
+                : translateName(normalizedName),
             },
           })
         : await prisma.referee.create({

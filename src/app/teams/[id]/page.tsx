@@ -421,6 +421,69 @@ export default async function TeamPage({
         </section>
         ) : null}
 
+        {displayMode !== 'premier' || selectedTab === 'matches' ? (
+        <section>
+          <Panel title="כל משחקי העונה">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-stone-200 text-xs text-stone-500">
+                    <th className="px-2 py-2 text-right font-semibold">תאריך</th>
+                    <th className="px-2 py-2 text-right font-semibold">מסגרת</th>
+                    <th className="px-2 py-2 text-right font-semibold">בית</th>
+                    <th className="px-2 py-2 text-center font-semibold">תוצאה</th>
+                    <th className="px-2 py-2 text-right font-semibold">חוץ</th>
+                    <th className="px-2 py-2 text-center font-semibold">סטטוס</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teamGames
+                    .sort((a, b) => b.dateTime.getTime() - a.dateTime.getTime())
+                    .map((game) => {
+                      const isHome = game.homeTeamId === team.id;
+                      const result = game.status === 'COMPLETED' ? getTeamResult(game, team.id) : null;
+                      const resultColor = result === 'נ' ? 'bg-emerald-100 text-emerald-700' : result === 'ה' ? 'bg-red-100 text-red-700' : result === 'ת' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-500';
+                      return (
+                        <tr key={game.id} className="border-b border-stone-100 transition hover:bg-stone-50">
+                          <td className="px-2 py-2.5 text-xs text-stone-500 whitespace-nowrap">{formatDate(game.dateTime)}</td>
+                          <td className="px-2 py-2.5 text-xs text-stone-500">{game.competition?.nameHe || game.competition?.nameEn || '—'}</td>
+                          <td className="px-2 py-2.5">
+                            <span className={`font-semibold ${isHome ? 'text-stone-900' : 'text-stone-500'}`}>
+                              {game.homeTeam.nameHe || game.homeTeam.nameEn}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2.5 text-center">
+                            {game.status === 'COMPLETED' ? (
+                              <Link href={`/games/${game.id}`} className="inline-block rounded-lg bg-stone-100 px-3 py-1 font-black text-stone-900 transition hover:bg-red-50 hover:text-red-700">
+                                {game.homeScore ?? 0} - {game.awayScore ?? 0}
+                              </Link>
+                            ) : (
+                              <span className="text-xs text-stone-400">טרם שוחק</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2.5">
+                            <span className={`font-semibold ${!isHome ? 'text-stone-900' : 'text-stone-500'}`}>
+                              {game.awayTeam.nameHe || game.awayTeam.nameEn}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2.5 text-center">
+                            {result ? (
+                              <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${resultColor}`}>{result}</span>
+                            ) : (
+                              <span className="text-xs text-stone-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+              {teamGames.length === 0 ? <EmptyState text="אין משחקים להצגה." /> : null}
+            </div>
+          </Panel>
+        </section>
+        ) : null}
+
         {displayMode !== 'premier' || selectedTab === 'overview' || selectedTab === 'stats' ? (
         <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <Panel title="סיכום עונה">

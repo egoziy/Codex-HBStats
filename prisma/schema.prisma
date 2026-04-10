@@ -1063,6 +1063,8 @@ model ScrapedPlayer {
   position        String?
   jerseyNumber    Int?
   photoUrl        String?
+  birthDate       String?         // e.g. '05/1992' from IFA
+  nationality     String?         // e.g. 'ישראל'
   scrapedAt       DateTime        @default(now())
   rawJson         Json?
   teamId          String
@@ -1084,6 +1086,7 @@ model ScrapedPlayerSeason {
   goals           Int             @default(0)
   assists         Int             @default(0)
   yellowCards     Int             @default(0)
+  yellowCardsToto Int            @default(0)
   redCards        Int             @default(0)
   subsIn          Int             @default(0)
   subsOut         Int             @default(0)
@@ -1114,18 +1117,69 @@ model ScrapedMatch {
   awayPenalty     Int?
   status          String?         // 'completed', 'scheduled', etc.
   venue           String?
-  referee         String?
+  referee         String?         // raw full string
+  refereeMain     String?         // שופט ראשי
+  refereeAssist1  String?         // עוזר שופט 1
+  refereeAssist2  String?         // עוזר שופט 2
+  refereeFourth   String?         // שופט רביעי
+  refereeVar1     String?         // שופט רחבה 1 / VAR
+  refereeVar2     String?         // שופט רחבה 2
+  homeHalfScore   Int?
+  awayHalfScore   Int?
+  framework       String?         // 'league', 'state_cup', 'toto_cup'
+  coachHome       String?
+  coachAway       String?
   scrapedAt       DateTime        @default(now())
   rawJson         Json?
   homeTeamId      String?
   homeTeam        ScrapedTeam?    @relation("ScrapedHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
   awayTeamId      String?
   awayTeam        ScrapedTeam?    @relation("ScrapedAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  events          ScrapedMatchEvent[]
+  lineups         ScrapedMatchLineup[]
 
   @@unique([source, sourceId])
   @@index([source, season])
   @@index([dateTime])
   @@map("scraped_matches")
+}
+
+model ScrapedMatchEvent {
+  id                 String        @id @default(cuid())
+  source             String
+  matchSourceId      String
+  minute             Int
+  type               String        // 'goal', 'yellow_card', 'red_card', 'sub', 'own_goal', 'penalty_goal'
+  playerName         String
+  playerNumber       Int?
+  secondPlayerName   String?       // for subs: player coming in
+  secondPlayerNumber Int?
+  teamSide           String?       // 'home' | 'away'
+  teamName           String?
+  scrapedAt          DateTime      @default(now())
+  matchId            String?
+  match              ScrapedMatch? @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([source, matchSourceId])
+  @@map("scraped_match_events")
+}
+
+model ScrapedMatchLineup {
+  id               String        @id @default(cuid())
+  source           String
+  matchSourceId    String
+  teamSide         String        // 'home' | 'away'
+  role             String        // 'starter', 'sub', 'bench'
+  playerName       String
+  playerSourceId   String?       // IFA player_id
+  playerNumber     Int?
+  positionMarker   String?       // 'GK', 'C'
+  scrapedAt        DateTime      @default(now())
+  matchId          String?
+  match            ScrapedMatch? @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([source, matchSourceId])
+  @@map("scraped_match_lineups")
 }
 
 model ScrapedStanding {

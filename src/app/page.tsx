@@ -207,9 +207,17 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
         take: 12,
       }),
       prisma.gameHeadToHeadEntry.findMany({
-        where: { seasonId: latestSeason.id },
+        where: {
+          seasonId: latestSeason.id,
+          game: {
+            OR: [
+              { status: 'SCHEDULED', dateTime: { gte: now } },
+              { status: 'ONGOING' },
+            ],
+          },
+        },
         include: { game: { include: { homeTeam: true, awayTeam: true, competition: { select: { nameHe: true, nameEn: true, apiFootballId: true } } } } },
-        orderBy: [{ gameId: 'asc' }, { relatedDate: 'desc' }],
+        orderBy: [{ game: { dateTime: 'asc' } }, { relatedDate: 'desc' }],
         take: 60,
       }),
       prisma.game.findMany({
