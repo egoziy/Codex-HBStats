@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  const [teams, players, games] = await Promise.all([
+  const [teams, players, games, venues] = await Promise.all([
     prisma.team.findMany({
       where: {
         OR: [
@@ -44,6 +44,17 @@ export async function GET(request: NextRequest) {
       },
       take: 5,
     }),
+    prisma.venue.findMany({
+      where: {
+        OR: [
+          { nameHe: { contains: query, mode: 'insensitive' } },
+          { nameEn: { contains: query, mode: 'insensitive' } },
+          { cityHe: { contains: query, mode: 'insensitive' } },
+          { cityEn: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      take: 5,
+    }),
   ]);
 
   const results = [
@@ -67,6 +78,13 @@ export async function GET(request: NextRequest) {
       label: `${game.homeTeam.nameHe || game.homeTeam.nameEn} מול ${game.awayTeam.nameHe || game.awayTeam.nameEn}`,
       subtitle: new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(game.dateTime),
       href: `/games/${game.id}`,
+    })),
+    ...venues.map((venue) => ({
+      id: venue.id,
+      type: 'venue',
+      label: venue.nameHe || venue.nameEn,
+      subtitle: venue.cityHe || venue.cityEn || undefined,
+      href: `/venues?q=${encodeURIComponent(venue.nameHe || venue.nameEn)}`,
     })),
   ];
 

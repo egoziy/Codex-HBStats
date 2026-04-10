@@ -142,6 +142,9 @@ export async function requireAdminUser() {
 export async function changeUserPassword(userId: string, nextPassword: string) {
   const password = await hashPassword(nextPassword);
 
+  // Invalidate all existing sessions for this user
+  await prisma.session.deleteMany({ where: { userId } });
+
   await prisma.user.update({
     where: { id: userId },
     data: {
@@ -149,6 +152,9 @@ export async function changeUserPassword(userId: string, nextPassword: string) {
       passwordChangedAt: new Date(),
     },
   });
+
+  // Create a fresh session for the current user
+  await createSession(userId);
 }
 
 export function toSafeUser(user: {

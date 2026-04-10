@@ -6,6 +6,15 @@ const ROUND_TRANSLATIONS: Record<string, string> = {
   Final: 'גמר',
   'Round of 16': 'שמינית גמר',
   'Round of 32': 'סיבוב 32 האחרונות',
+  'Regular Season': 'מחזור',
+};
+
+const COMPETITION_TRANSLATIONS: Record<string, string> = {
+  "Ligat Ha'al": 'ליגת העל',
+  "Lןigat Ha'al": 'ליגת העל',
+  'State Cup': 'גביע המדינה',
+  'Super Cup': 'אלוף האלופים',
+  'Toto Cup Ligat Al': 'גביע הטוטו',
 };
 
 export function getCompetitionDisplayName(competition?: {
@@ -22,16 +31,27 @@ export function getCompetitionDisplayName(competition?: {
     return competition.nameHe;
   }
 
-  return competition.nameEn || competition.nameHe || 'ללא מסגרת';
+  const fallbackName = competition.nameEn || competition.nameHe || '';
+  return COMPETITION_TRANSLATIONS[fallbackName] || fallbackName || 'ללא מסגרת';
 }
 
 export function getGameScoreDisplay(game: {
   homeScore: number | null;
   awayScore: number | null;
+  homePenalty?: number | null;
+  awayPenalty?: number | null;
+  statusShort?: string | null;
   status: 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
 }) {
   if (game.status === 'COMPLETED' || game.status === 'ONGOING') {
-    return `${game.homeScore ?? 0} - ${game.awayScore ?? 0}`;
+    const score = `${game.homeScore ?? 0} - ${game.awayScore ?? 0}`;
+    if (game.statusShort === 'PEN' && game.homePenalty != null && game.awayPenalty != null) {
+      return `${score} (פנ׳ ${game.homePenalty}-${game.awayPenalty})`;
+    }
+    if (game.statusShort === 'AET') {
+      return `${score} (הארכה)`;
+    }
+    return score;
   }
 
   if (game.status === 'CANCELLED') {

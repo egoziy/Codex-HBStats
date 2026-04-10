@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { formatCoachName, getLatestCoachAssignment } from '@/lib/coach-display';
 import { formatPlayerName } from '@/lib/player-display';
 
@@ -17,6 +17,19 @@ type Player = {
   position: string | null;
   additionalInfo: any;
   uploads: Upload[];
+  playerStats: {
+    gamesPlayed: number;
+    minutesPlayed: number;
+  }[];
+  _count: {
+    lineupEntries: number;
+    injuries: number;
+    sidelinedEntries: number;
+    transfers: number;
+    trophies: number;
+    events: number;
+    relatedEvents: number;
+  };
 };
 
 type Upload = {
@@ -39,6 +52,14 @@ type Team = {
   countryHe: string | null;
   cityHe: string | null;
   stadiumHe: string | null;
+  venueId: string | null;
+  venue: {
+    id: string;
+    nameHe: string;
+    nameEn: string;
+    cityHe: string | null;
+    cityEn: string | null;
+  } | null;
   additionalInfo: any;
   players: Player[];
   uploads: Upload[];
@@ -67,16 +88,26 @@ type SeasonOption = {
   year: number;
 };
 
+type VenueOption = {
+  id: string;
+  nameHe: string;
+  nameEn: string;
+  cityHe: string | null;
+  cityEn: string | null;
+};
+
 export default function AdminTeamEditorClient({
   teamKey,
   selectedTeam,
   currentStanding,
   seasonOptions,
+  venues,
 }: {
   teamKey: string;
   selectedTeam: Team;
   currentStanding: Standing | null;
   seasonOptions: SeasonOption[];
+  venues: VenueOption[];
 }) {
   const router = useRouter();
   const latestCoachAssignment = getLatestCoachAssignment(selectedTeam.coachAssignments || []);
@@ -86,6 +117,8 @@ export default function AdminTeamEditorClient({
     pointsAdjustmentNoteHe: currentStanding?.pointsAdjustmentNoteHe || '',
   });
   const [players, setPlayers] = useState(() => buildPlayersState(selectedTeam.players));
+  const [playerSearch, setPlayerSearch] = useState('');
+  const [showSuspectPlayers, setShowSuspectPlayers] = useState(false);
   const [teamSaving, setTeamSaving] = useState(false);
   const [teamMessage, setTeamMessage] = useState('');
   const [standingSaving, setStandingSaving] = useState(false);
@@ -99,6 +132,25 @@ export default function AdminTeamEditorClient({
     () => (seasonId: string) => `/admin/teams/${teamKey}?season=${seasonId}`,
     [teamKey]
   );
+  const deferredPlayerSearch = useDeferredValue(playerSearch);
+  const normalizedPlayerSearch = deferredPlayerSearch.trim().toLocaleLowerCase('he-IL');
+  const visiblePlayers = players.filter((player) => {
+    if (!showSuspectPlayers && player.isSuspiciousSeasonEntry) {
+      return false;
+    }
+
+    if (!normalizedPlayerSearch) {
+      return true;
+    }
+
+    const haystack = [player.nameHe, player.nameEn, player.firstNameHe, player.lastNameHe, player.position]
+      .filter(Boolean)
+      .join(' ')
+      .toLocaleLowerCase('he-IL');
+
+    return haystack.includes(normalizedPlayerSearch);
+  });
+  const suspectPlayersCount = players.filter((player) => player.isSuspiciousSeasonEntry).length;
 
   useEffect(() => {
     setTeamForm(buildTeamForm(selectedTeam, latestCoachAssignment));
@@ -127,7 +179,7 @@ export default function AdminTeamEditorClient({
         coachAssignmentId: teamForm.coachAssignmentId || null,
         countryHe: teamForm.countryHe,
         cityHe: teamForm.cityHe,
-        stadiumHe: teamForm.stadiumHe,
+        venueId: teamForm.venueId || null,
         logoUrl: teamForm.logoUrl,
         notesHe: teamForm.notesHe,
       }),
@@ -170,14 +222,14 @@ export default function AdminTeamEditorClient({
   }
 
   async function savePlayer(playerId: string) {
+    const currentPlayer = players.find((player) => player.id === playerId);
+    if (!currentPlayer) return;
+
     setPlayers((current) =>
       current.map((player) =>
         player.id === playerId ? { ...player, saving: true, saved: false, error: '' } : player
       )
     );
-
-    const currentPlayer = players.find((player) => player.id === playerId);
-    if (!currentPlayer) return;
 
     const response = await fetch('/api/players', {
       method: 'PUT',
@@ -208,6 +260,10 @@ export default function AdminTeamEditorClient({
           : player
       )
     );
+
+    if (response.ok) {
+      router.refresh();
+    }
   }
 
   async function uploadTeamImage(makePrimary: boolean) {
@@ -325,6 +381,11 @@ export default function AdminTeamEditorClient({
               {season.name}
             </Link>
           ))}
+          {visiblePlayers.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-6 text-center text-sm text-stone-500">
+              לא נמצאו שחקנים שמתאימים לסינון הנוכחי.
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -340,7 +401,20 @@ export default function AdminTeamEditorClient({
           <Field label="מאמן בעברית" value={teamForm.coachHe} onChange={(value) => setTeamForm((current) => ({ ...current, coachHe: value }))} />
           <Field label="מדינה בעברית" value={teamForm.countryHe} onChange={(value) => setTeamForm((current) => ({ ...current, countryHe: value }))} />
           <Field label="עיר בעברית" value={teamForm.cityHe} onChange={(value) => setTeamForm((current) => ({ ...current, cityHe: value }))} />
-          <Field label="אצטדיון בעברית" value={teamForm.stadiumHe} onChange={(value) => setTeamForm((current) => ({ ...current, stadiumHe: value }))} />
+          <VenueSelect
+            label="אצטדיון"
+            value={teamForm.venueId}
+            venues={venues}
+            onChange={(venueId) => {
+              const selectedVenue = venues.find((venue) => venue.id === venueId) || null;
+              setTeamForm((current) => ({
+                ...current,
+                venueId,
+                stadiumHe: selectedVenue?.nameHe || '',
+                cityHe: selectedVenue?.cityHe || current.cityHe,
+              }));
+            }}
+          />
           <Field label="כתובת לוגו" value={teamForm.logoUrl} onChange={(value) => setTeamForm((current) => ({ ...current, logoUrl: value }))} />
           <Field label="Coach (EN)" value={teamForm.coach} onChange={(value) => setTeamForm((current) => ({ ...current, coach: value }))} />
           <label className="block md:col-span-2">
@@ -484,8 +558,40 @@ export default function AdminTeamEditorClient({
           <p className="mt-2 text-sm text-stone-600">אפשר לתרגם שמות לעברית, לעדכן תמונה, מספר חולצה והערות לכל שחקן.</p>
         </div>
 
+        <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <label className="block flex-1">
+              <span className="mb-2 block text-sm font-bold text-stone-700">חיפוש שחקן</span>
+              <input
+                type="search"
+                value={playerSearch}
+                onChange={(event) => setPlayerSearch(event.target.value)}
+                placeholder="חיפוש לפי שם בעברית, באנגלית או עמדה"
+                className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none transition focus:border-red-500"
+              />
+            </label>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold text-stone-700">
+              <input
+                type="checkbox"
+                checked={showSuspectPlayers}
+                onChange={(event) => setShowSuspectPlayers(event.target.checked)}
+                className="h-4 w-4 rounded border-stone-300 text-stone-900 focus:ring-stone-400"
+              />
+              {suspectPlayersCount > 0
+                ? `הצג גם ${suspectPlayersCount} שחקנים חשודים כלא שייכים לעונה`
+                : 'הצג גם שחקנים חשודים'}
+            </label>
+          </div>
+
+          <div className="mt-3 text-sm text-stone-600">
+            מוצגים {visiblePlayers.length} מתוך {players.length} שחקנים.
+            {!showSuspectPlayers && suspectPlayersCount > 0 ? ' שחקנים ללא זיקה מובהקת לעונה מוסתרים כברירת מחדל.' : ''}
+          </div>
+        </div>
+
         <div className="space-y-4">
-          {players.map((player) => (
+          {visiblePlayers.map((player) => (
             <article key={player.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
@@ -493,6 +599,11 @@ export default function AdminTeamEditorClient({
                   {formatPlayerName(player) !== player.nameEn ? <div className="text-xs text-stone-400">{player.nameEn}</div> : null}
                   <div className="text-sm text-stone-500">{player.position || 'ללא עמדה'}</div>
                 </div>
+                {player.isSuspiciousSeasonEntry ? (
+                  <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">
+                    ללא זיקה מובהקת לעונת הבחירה
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => savePlayer(player.id)}
@@ -670,10 +781,49 @@ function Field({
   );
 }
 
+function VenueSelect({
+  label,
+  value,
+  venues,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  venues: VenueOption[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-bold text-stone-700">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 outline-none transition focus:border-red-500"
+      >
+        <option value="">ללא שיוך אצטדיון</option>
+        {venues.map((venue) => (
+          <option key={venue.id} value={venue.id}>
+            {venue.nameHe || venue.nameEn}
+            {venue.cityHe || venue.cityEn ? ` - ${venue.cityHe || venue.cityEn}` : ''}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function buildPlayersState(players: Player[]) {
   return players.map((player) => ({
     ...player,
     notesHe: player.additionalInfo?.notesHe || '',
+    hasSeasonStats: player.playerStats.some((stat) => stat.gamesPlayed > 0 || stat.minutesPlayed > 0),
+    isSuspiciousSeasonEntry:
+      !player.playerStats.some((stat) => stat.gamesPlayed > 0 || stat.minutesPlayed > 0) &&
+      (player._count?.lineupEntries || 0) === 0 &&
+      (player._count?.injuries || 0) === 0 &&
+      (player._count?.sidelinedEntries || 0) === 0 &&
+      (player._count?.transfers || 0) === 0 &&
+      (player._count?.trophies || 0) === 0,
     uploadTitle: '',
     uploadFile: null as File | null,
     uploadSaving: false,
@@ -691,8 +841,9 @@ function buildTeamForm(team: Team, latestCoachAssignment: CoachAssignment | null
     coachHe: latestCoachAssignment?.coachNameHe || team.coachHe || '',
     coachAssignmentId: latestCoachAssignment?.id || '',
     countryHe: team.countryHe || '',
-    cityHe: team.cityHe || '',
-    stadiumHe: team.stadiumHe || '',
+    cityHe: team.venue?.cityHe || team.cityHe || '',
+    venueId: team.venueId || '',
+    stadiumHe: team.venue?.nameHe || team.stadiumHe || '',
     logoUrl: team.logoUrl || '',
     notesHe: team.additionalInfo?.notesHe || '',
   };

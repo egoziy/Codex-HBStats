@@ -11,24 +11,10 @@ export const SUPPORTED_COMPETITIONS: SupportedCompetition[] = [
   {
     id: '383',
     nameEn: "Ligat Ha'al",
-    nameHe: 'ליגת העל (כולל פלייאוף)',
+    nameHe: 'ליגת העל',
     kind: 'LEAGUE',
     region: 'ISRAEL',
-    notes: 'הפלייאוף העליון והתחתון כלולים במסגרת המחזורים של ליגת העל.',
-  },
-  {
-    id: '382',
-    nameEn: 'Liga Leumit',
-    nameHe: 'הליגה הלאומית',
-    kind: 'LEAGUE',
-    region: 'ISRAEL',
-  },
-  {
-    id: '496',
-    nameEn: 'Liga Alef',
-    nameHe: 'ליגה א׳',
-    kind: 'LEAGUE',
-    region: 'ISRAEL',
+    notes: 'כולל עונה סדירה ופלייאוף במסגרת אותה ליגה.',
   },
   {
     id: '384',
@@ -57,7 +43,7 @@ export const SUPPORTED_COMPETITIONS: SupportedCompetition[] = [
     nameHe: 'ליגת האלופות',
     kind: 'CUP',
     region: 'EUROPE',
-    notes: 'כולל מוקדמות, פלייאוף ושלב בתים/ליגה לפי סבב המשחק ב-API.',
+    notes: 'כולל מוקדמות, פלייאוף ושלב הבתים או שלב הליגה לפי הסבב שמוחזר מה-API.',
   },
   {
     id: '3',
@@ -65,7 +51,7 @@ export const SUPPORTED_COMPETITIONS: SupportedCompetition[] = [
     nameHe: 'הליגה האירופית',
     kind: 'CUP',
     region: 'EUROPE',
-    notes: 'כולל מוקדמות, פלייאוף ושלב בתים/ליגה לפי סבב המשחק ב-API.',
+    notes: 'כולל מוקדמות, פלייאוף ושלב הבתים או שלב הליגה לפי הסבב שמוחזר מה-API.',
   },
   {
     id: '848',
@@ -73,7 +59,7 @@ export const SUPPORTED_COMPETITIONS: SupportedCompetition[] = [
     nameHe: 'קונפרנס ליג',
     kind: 'CUP',
     region: 'EUROPE',
-    notes: 'כולל מוקדמות, פלייאוף ושלב ליגה לפי סבב המשחק ב-API.',
+    notes: 'כולל מוקדמות, פלייאוף ושלב הליגה לפי הסבב שמוחזר מה-API.',
   },
 ];
 

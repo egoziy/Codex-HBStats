@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useDeferredValue, useState } from 'react';
 import AdminDataCoveragePanel from '@/components/AdminDataCoveragePanel';
 import ApiFetchForm from '@/components/ApiFetchForm';
 import type { AdminCoverageRow } from '@/lib/admin-data-coverage';
@@ -414,8 +414,16 @@ export default function AdminManagerClient({
   rawData: RawData | null;
   coverageRows: AdminCoverageRow[];
 }) {
+  function normalizeAdminSearchValue(value: string) {
+    return value.trim().toLocaleLowerCase('he-IL');
+  }
+
   const [openSection, setOpenSection] = useState<'fetch' | 'coverage' | 'raw' | 'teams' | 'jobs'>('coverage');
   const [rawView, setRawView] = useState<RawView>('teams');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [showSelectedSeasonTeamsOnly, setShowSelectedSeasonTeamsOnly] = useState(true);
+  const deferredTeamSearch = useDeferredValue(teamSearch);
+  const selectedSeasonName = seasons.find((season) => season.id === selectedSeasonId)?.name ?? null;
   const rawEvents = rawData?.games.flatMap((game) =>
     game.events.map((event) => ({
       ...event,
@@ -443,6 +451,21 @@ export default function AdminManagerClient({
     }))
   ) || [];
   const sectionOrder: Array<'fetch' | 'coverage' | 'raw' | 'teams' | 'jobs'> = ['fetch', 'coverage', 'raw', 'teams', 'jobs'];
+  const normalizedTeamSearch = normalizeAdminSearchValue(deferredTeamSearch);
+  const filteredTeams = teams.filter((team) => {
+    const matchesSelectedSeason = !showSelectedSeasonTeamsOnly || !selectedSeasonName || team.seasons.includes(selectedSeasonName);
+
+    if (!matchesSelectedSeason) {
+      return false;
+    }
+
+    if (!normalizedTeamSearch) {
+      return true;
+    }
+
+    const searchableValues = [team.displayNameHe || '', team.displayNameEn, ...team.seasons];
+    return searchableValues.some((value) => normalizeAdminSearchValue(value).includes(normalizedTeamSearch));
+  });
   const rawViewOptions: Array<{ key: RawView; label: string; count: number }> = [
     { key: 'competitions', label: 'מסגרות', count: rawData?.competitions.length || 0 },
     { key: 'teams', label: 'קבוצות', count: rawData?.teams.length || 0 },
@@ -470,14 +493,7 @@ export default function AdminManagerClient({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,#7f1d1d,#1f2937)] p-8 text-white shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
-        <h1 className="text-3xl font-black md:text-4xl">אזור אדמין</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-white/80 md:text-base">
-          מכאן אפשר למשוך נתונים, לנהל קבוצות ושחקנים, ולעבור לדפי עריכה לפי עונה.
-        </p>
-      </section>
-
+    <div className="space-y-4">
       <Accordion
         title="משיכת נתונים"
         open={openSection === 'fetch'}
@@ -528,47 +544,21 @@ export default function AdminManagerClient({
 
           {rawData ? (
             <>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="קבוצות" value={String(rawData.teams.length)} />
-                <MetricCard label="שחקנים בסגלים" value={String(rawPlayers.length)} />
-                <MetricCard label="משחקים" value={String(rawData.games.length)} />
-                <MetricCard label="אירועי משחק" value={String(rawEvents.length)} />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="הרכבים" value={String(rawLineups.length)} />
-                <MetricCard label="שורות טבלה" value={String(rawData.standings.length)} />
-                <MetricCard label="סטטיסטיקות שחקן" value={String(rawData.playerStats.length)} />
-                <MetricCard label="סטטיסטיקות קבוצה" value={String(rawData.teamStats.length)} />
-                <MetricCard label="מלכי שערים/בישולים" value={String(rawData.leaderboardEntries.length)} />
-                <MetricCard label="פציעות" value={String(rawData.injuries.length)} />
-                <MetricCard label="העברות" value={String(rawData.transfers.length)} />
-                <MetricCard label="תארים" value={String(rawData.trophies.length)} />
-                <MetricCard label="תחזיות" value={String(rawData.predictions.length)} />
-                <MetricCard label="ראש בראש" value={String(rawData.headToHeadEntries.length)} />
-                <MetricCard label="יחסים" value={String(rawData.oddsValues.length)} />
-                <MetricCard label="לייב" value={String(rawData.liveSnapshots.length)} />
-                <MetricCard label="עבודות משיכה" value={String(rawData.fetchJobs.length)} />
-              </div>
-
-              <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 font-bold text-stone-900">סוג נתונים</div>
-                <div className="flex flex-wrap gap-2">
-                  {rawViewOptions.map((option) => (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => setRawView(option.key)}
-                      className={`rounded-full px-4 py-2 text-sm font-bold ${
-                        rawView === option.key
-                          ? 'bg-stone-900 text-white'
-                          : 'border border-stone-300 bg-stone-50 text-stone-700'
-                      }`}
-                    >
-                      {option.label} ({option.count})
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-2">
+                {rawViewOptions.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setRawView(option.key)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                      rawView === option.key
+                        ? 'bg-stone-900 text-white'
+                        : 'bg-white text-stone-600 hover:bg-stone-100'
+                    }`}
+                  >
+                    {option.label} <span className="text-[10px] opacity-60">{option.count}</span>
+                  </button>
+                ))}
               </div>
 
               {rawView === 'competitions' ? <RawCompetitionsView rawData={rawData} /> : null}
@@ -606,8 +596,51 @@ export default function AdminManagerClient({
           את פרטי הקבוצה והשחקנים.
         </div>
 
+        <div className="mb-4 rounded-[24px] border border-stone-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex-1">
+              <label htmlFor="admin-team-search" className="mb-2 block text-sm font-bold text-stone-900">
+                חיפוש קבוצה לעריכה
+              </label>
+              <input
+                id="admin-team-search"
+                type="search"
+                value={teamSearch}
+                onChange={(event) => setTeamSearch(event.target.value)}
+                placeholder="כתוב שם קבוצה בעברית, באנגלית או שם עונה"
+                className="w-full rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-red-400 focus:bg-white"
+              />
+            </div>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-700">
+              <input
+                type="checkbox"
+                checked={showSelectedSeasonTeamsOnly}
+                onChange={(event) => setShowSelectedSeasonTeamsOnly(event.target.checked)}
+                className="h-4 w-4 rounded border-stone-300 text-stone-900 focus:ring-stone-400"
+              />
+              {selectedSeasonName ? `רק קבוצות מהעונה ${selectedSeasonName}` : 'רק קבוצות מהעונה הנבחרת'}
+            </label>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-stone-600">
+            <span className="rounded-full bg-stone-100 px-3 py-1 font-semibold text-stone-800">
+              {filteredTeams.length} מתוך {teams.length} קבוצות
+            </span>
+            {normalizedTeamSearch ? (
+              <button
+                type="button"
+                onClick={() => setTeamSearch('')}
+                className="rounded-full border border-stone-300 px-3 py-1 font-semibold text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
+              >
+                נקה חיפוש
+              </button>
+            ) : null}
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {teams.map((team) => (
+          {filteredTeams.map((team) => (
             <Link
               key={team.key}
               href={`/admin/teams/${team.key}`}
@@ -1418,16 +1451,16 @@ function Accordion({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[24px] border border-stone-200 bg-stone-50 p-4 shadow-sm">
+    <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between rounded-2xl bg-white px-5 py-4 text-right"
+        className="flex w-full items-center justify-between px-5 py-3 text-right"
       >
-        <span className="text-xl font-black text-stone-900">{title}</span>
-        <span className="text-2xl font-bold text-stone-500">{open ? '−' : '+'}</span>
+        <span className="text-lg font-black text-stone-900">{title}</span>
+        <span className="text-xl font-bold text-stone-400">{open ? '▲' : '▼'}</span>
       </button>
-      {open ? <div className="mt-4">{children}</div> : null}
+      {open ? <div className="border-t border-stone-100 p-4">{children}</div> : null}
     </section>
   );
 }

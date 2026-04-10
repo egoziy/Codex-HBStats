@@ -72,36 +72,32 @@ function SummaryCard({
 
 function buildResourceSelection(row: AdminCoverageRow) {
   if (row.status === 'EMPTY') {
-    return ['teams', 'players', 'fixtures', 'standings'];
+    return ['teams', 'venues', 'players', 'fixtures', 'standings'];
   }
 
-  if (row.status === 'STALE') {
-    const resources = ['fixtures', 'standings'];
+  const resources = ['fixtures', 'standings', 'venues'];
 
-    if (row.gamesCount > 0) {
-      resources.push('events', 'statistics', 'lineups');
-    }
-
-    if (row.predictionsCount > 0 || row.gamesCount > 0) {
-      resources.push('predictions', 'h2h', 'odds');
-    }
-
-    if (row.liveCount > 0 || row.gamesCount > 0) {
-      resources.push('livescore');
-    }
-
-    return Array.from(new Set(resources));
+  if (row.gamesCount > 0) {
+    resources.push('events', 'statistics', 'lineups');
   }
 
-  return ['fixtures', 'standings'];
+  if (row.predictionsCount > 0 || row.gamesCount > 0) {
+    resources.push('predictions', 'h2h', 'odds');
+  }
+
+  if (row.liveCount > 0 || row.gamesCount > 0) {
+    resources.push('livescore');
+  }
+
+  return Array.from(new Set(resources));
 }
 
 function buildTeamResourceSelection(row: AdminCoverageRow, teamRow: AdminCoverageRow['teamRows'][number]) {
   if (teamRow.status === 'EMPTY') {
-    return ['teams', 'players', 'fixtures', 'standings'];
+    return ['teams', 'venues', 'players', 'fixtures', 'standings'];
   }
 
-  const resources = ['fixtures'];
+  const resources = ['fixtures', 'venues'];
 
   if (teamRow.standingsCount > 0 || row.standingsCount > 0) {
     resources.push('standings');
@@ -304,8 +300,11 @@ export default function AdminDataCoveragePanel({
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       <CountPill label="קבוצות" value={row.teamsCount} />
+                      <CountPill label="אצטדיונים" value={row.venuesCount} />
                       <CountPill label="שחקנים" value={row.playersCount} />
                       <CountPill label="משחקים" value={row.gamesCount} />
+                      <CountPill label="אירועים" value={row.eventsCount} />
+                      <CountPill label="הרכבים" value={row.lineupsCount} />
                       <CountPill label="טבלה" value={row.standingsCount} />
                       <CountPill label="תחזיות" value={row.predictionsCount} />
                       <CountPill label="ראש בראש" value={row.h2hCount} />

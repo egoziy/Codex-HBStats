@@ -49,7 +49,7 @@ struct RootTabView: View {
     private func destination(for route: AppRoute) -> some View {
         switch route {
         case .team(let id):
-            TeamScreen(teamID: id, service: environment.mobileService, router: { _ in })
+            TeamScreen(teamID: id, service: environment.mobileService)
         case .game(let id):
             GameScreen(gameID: id, service: environment.mobileService)
         case .player(let id):

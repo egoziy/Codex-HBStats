@@ -12,6 +12,26 @@ import {
 } from '@/lib/auth';
 import { logActivity } from '@/lib/activity';
 
+// In-memory rate limiter for login/register
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(key);
+  if (!record || now > record.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  record.count++;
+  return record.count <= RATE_LIMIT_MAX;
+}
+
+function getClientIp(request: NextRequest): string {
+  return request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
+}
+
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request);
   return NextResponse.json({ user });
@@ -22,6 +42,16 @@ export async function POST(request: NextRequest) {
   const action = body?.action;
 
   if (action === 'register') {
+    const ip = getClientIp(request);
+    if (!checkRateLimit(`register:${ip}`)) {
+      return NextResponse.json({ error: 'יותר מדי ניסיונות הרשמה. נסה שוב בעוד דקה.' }, { status: 429 });
+    }
+
+    // Check if registration is enabled
+    if (process.env.REGISTRATION_DISABLED === 'true') {
+      return NextResponse.json({ error: 'הרשמה מושבתת.' }, { status: 403 });
+    }
+
     const email = String(body.email || '').trim().toLowerCase();
     const name = String(body.name || '').trim();
     const password = String(body.password || '');
@@ -38,15 +68,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'האימייל כבר רשום במערכת.' }, { status: 409 });
     }
 
-    const usersCount = await prisma.user.count();
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name,
-        password: await hashPassword(password),
-        role: usersCount === 0 ? UserRole.ADMIN : UserRole.USER,
-      },
+    // Use transaction to prevent race condition on first-user admin assignment
+    const user = await prisma.$transaction(async (tx) => {
+      const usersCount = await tx.user.count();
+      return tx.user.create({
+        data: {
+          email,
+          name,
+          password: await hashPassword(password),
+          role: usersCount === 0 ? UserRole.ADMIN : UserRole.USER,
+        },
+      });
     });
 
     await createSession(user.id);
@@ -61,6 +93,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'login') {
+    const ip = getClientIp(request);
+    if (!checkRateLimit(`login:${ip}`)) {
+      return NextResponse.json({ error: 'יותר מדי ניסיונות התחברות. נסה שוב בעוד דקה.' }, { status: 429 });
+    }
+
     const email = String(body.email || '').trim().toLowerCase();
     const password = String(body.password || '');
 

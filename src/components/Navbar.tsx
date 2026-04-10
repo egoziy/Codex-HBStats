@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 type SearchResult = {
   id: string;
-  type: 'team' | 'player' | 'game';
+  type: 'team' | 'player' | 'game' | 'venue';
   label: string;
   href: string;
   subtitle?: string;
@@ -18,14 +18,21 @@ type Viewer = {
   role: 'ADMIN' | 'USER' | 'GUEST';
 } | null;
 
-const navLinks = [
-  { href: '/', label: 'ראשי' },
-  { href: '/standings', label: 'טבלאות' },
-  { href: '/games', label: 'משחקים' },
-  { href: '/players', label: 'שחקנים' },
-  { href: '/statistics', label: 'סטטיסטיקות' },
-  { href: '/compare', label: 'השוואת עונות' },
-  { href: '/admin', label: 'אדמין' },
+type NavItem = {
+  href: string;
+  label: string;
+  iconSrc?: string;
+};
+
+const navLinks: NavItem[] = [
+  { href: '/', label: 'ראשי', iconSrc: '/Icons/home-nav-96.png' },
+  { href: '/standings', label: 'טבלאות', iconSrc: '/Icons/standings-nav-96.png' },
+  { href: '/games', label: 'משחקים', iconSrc: '/Icons/games-nav-96.png' },
+  { href: '/players', label: 'שחקנים', iconSrc: '/Icons/players-nav-96.png' },
+  { href: '/statistics', label: 'סטטיסטיקות', iconSrc: '/Icons/stats-nav-96.png' },
+  { href: '/predictions', label: 'תחזיות', iconSrc: '/Icons/predictions-nav-96.svg' },
+  { href: '/compare', label: 'השוואת עונות', iconSrc: '/Icons/compare-nav-96.png' },
+  { href: '/admin', label: 'אדמין', iconSrc: '/Icons/admin-nav-96.png' },
 ];
 
 export default function Navbar() {
@@ -71,11 +78,13 @@ export default function Navbar() {
   }, [query]);
 
   const visibleLinks = useMemo(() => {
+    const linksWithVenues: NavItem[] = [...navLinks, { href: '/venues', label: 'אצטדיונים', iconSrc: '/Icons/venues-nav-96.png' }];
+
     if (viewer?.role === 'ADMIN') {
-      return navLinks;
+      return linksWithVenues;
     }
 
-    return navLinks.filter((link) => link.href !== '/admin');
+    return linksWithVenues.filter((link) => link.href !== '/admin');
   }, [viewer]);
 
   async function handleLogout() {
@@ -117,7 +126,7 @@ export default function Navbar() {
             />
             <nav className="flex items-center gap-2">
               {visibleLinks.map((link) => (
-                <NavLink key={link.href} href={link.href} pathname={pathname}>
+                <NavLink key={link.href} href={link.href} pathname={pathname} iconSrc={link.iconSrc}>
                   {link.label}
                 </NavLink>
               ))}
@@ -137,7 +146,7 @@ export default function Navbar() {
             />
             <nav className="grid gap-2">
               {visibleLinks.map((link) => (
-                <NavLink key={link.href} href={link.href} pathname={pathname} block>
+                <NavLink key={link.href} href={link.href} pathname={pathname} iconSrc={link.iconSrc} block>
                   {link.label}
                 </NavLink>
               ))}
@@ -154,11 +163,13 @@ function NavLink({
   href,
   pathname,
   children,
+  iconSrc,
   block = false,
 }: {
   href: string;
   pathname: string;
   children: React.ReactNode;
+  iconSrc?: string;
   block?: boolean;
 }) {
   const active = href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
@@ -166,11 +177,29 @@ function NavLink({
   return (
     <Link
       href={href}
-      className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-        active ? 'bg-amber-300 text-stone-900' : 'border border-white/20 bg-white/10 hover:bg-white/20'
-      } ${block ? 'text-center' : ''}`}
+      title={typeof children === 'string' ? children : undefined}
+      aria-label={typeof children === 'string' ? children : undefined}
+      className={`text-sm font-bold transition ${
+        iconSrc && !block
+          ? active
+            ? 'flex h-14 w-14 items-center justify-center rounded-full bg-amber-300 text-stone-900 shadow-sm'
+            : 'flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-white/10 hover:bg-white/20'
+          : `rounded-full px-4 py-2 ${active ? 'bg-amber-300 text-stone-900' : 'border border-white/20 bg-white/10 hover:bg-white/20'} ${block ? 'text-center' : ''}`
+      }`}
     >
-      {children}
+      {iconSrc && !block ? (
+        <span className="flex items-center justify-center">
+          <img src={iconSrc} alt="" aria-hidden="true" className="h-12 w-12 rounded-full bg-white object-cover shadow-sm" />
+          <span className="sr-only">{children}</span>
+        </span>
+      ) : (
+        <span className={`flex items-center gap-2 ${block ? 'justify-center' : ''}`}>
+          {iconSrc && block ? (
+            <img src={iconSrc} alt="" aria-hidden="true" className="h-5 w-5 rounded object-cover" />
+          ) : null}
+          <span>{children}</span>
+        </span>
+      )}
     </Link>
   );
 }

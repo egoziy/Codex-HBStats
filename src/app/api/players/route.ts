@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getRequestUser } from '@/lib/auth';
 
+function normalizeOptionalJerseyNumber(value: unknown) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+
+  const normalized = typeof value === 'string' ? value.trim() : String(value);
+  if (!normalized) return null;
+
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const teamId = searchParams.get('teamId');
@@ -59,7 +70,7 @@ export async function POST(request: NextRequest) {
       data: {
         nameEn,
         nameHe,
-        jerseyNumber: jerseyNumber ? parseInt(jerseyNumber) : null,
+        jerseyNumber: normalizeOptionalJerseyNumber(jerseyNumber),
         teamId,
         position: position || null,
         photoUrl: photoUrl || null,
@@ -77,7 +88,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(player, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to create player', details: error.message },
+      { error: 'Failed to create player' },
       { status: 400 }
     );
   }
@@ -113,13 +124,13 @@ export async function PUT(request: NextRequest) {
     const player = await prisma.player.update({
       where: { id },
       data: {
-        ...(nameEn && { nameEn }),
-        ...(nameHe && { nameHe }),
+        ...(nameEn !== undefined && { nameEn }),
+        ...(nameHe !== undefined && { nameHe }),
         ...(firstNameHe !== undefined && { firstNameHe: firstNameHe || null }),
         ...(lastNameHe !== undefined && { lastNameHe: lastNameHe || null }),
-        ...(jerseyNumber !== undefined && { jerseyNumber: jerseyNumber ? parseInt(jerseyNumber) : null }),
-        ...(position !== undefined && { position }),
-        ...(photoUrl !== undefined && { photoUrl }),
+        ...(jerseyNumber !== undefined && { jerseyNumber: normalizeOptionalJerseyNumber(jerseyNumber) }),
+        ...(position !== undefined && { position: position || null }),
+        ...(photoUrl !== undefined && { photoUrl: photoUrl || null }),
         ...(notesHe !== undefined && {
           additionalInfo: {
             ...((existingPlayer?.additionalInfo as Record<string, unknown> | null) || {}),
@@ -146,7 +157,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(player);
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update player', details: error.message },
+      { error: 'Failed to update player' },
       { status: 400 }
     );
   }
@@ -176,7 +187,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to delete player', details: error.message },
+      { error: 'Failed to delete player' },
       { status: 400 }
     );
   }
