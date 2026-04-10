@@ -1,8 +1,15 @@
 import Link from 'next/link';
+import AdminCollapsible from '@/components/AdminCollapsible';
+import AdminLiveCountriesClient from '@/components/AdminLiveCountriesClient';
+import AdminHomepageLiveSettingsClient from '@/components/AdminHomepageLiveSettingsClient';
+import AdminPlayerDisplaySettingsClient from '@/components/AdminPlayerDisplaySettingsClient';
 import AdminTelegramSourcesClient from '@/components/AdminTelegramSourcesClient';
 import AdminManagerClient from '@/components/AdminManagerClient';
 import { buildAdminCoverageRows } from '@/lib/admin-data-coverage';
 import { getCurrentUser } from '@/lib/auth';
+import { getHomepageLiveLimitSetting } from '@/lib/homepage-live-settings';
+import { getAllowedLiveCountryLabels } from '@/lib/live-competition-settings';
+import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-settings';
 import prisma from '@/lib/prisma';
 import { DEFAULT_TELEGRAM_SOURCES, normalizeTelegramSource } from '@/lib/telegram';
 
@@ -36,7 +43,7 @@ export default async function AdminPage({
     );
   }
 
-  const [teams, seasons, fetchJobs, telegramSourcesSetting, coverageSeasons] = await Promise.all([
+  const [teams, seasons, fetchJobs, telegramSourcesSetting, displayZeroStatPlayers, homepageLiveLimit, liveCountryLabels, liveSnapshots, coverageSeasons] = await Promise.all([
     prisma.team.findMany({
       include: { season: true },
       orderBy: [{ updatedAt: 'desc' }],
@@ -50,6 +57,19 @@ export default async function AdminPage({
     }),
     prisma.siteSetting.findUnique({
       where: { key: 'telegram_sources' },
+    }),
+    getDisplayZeroStatPlayersSetting(),
+    getHomepageLiveLimitSetting(),
+    getAllowedLiveCountryLabels(),
+    prisma.liveGameSnapshot.findMany({
+      where: {
+        feedScope: 'GLOBAL_HOMEPAGE',
+      },
+      select: {
+        rawJson: true,
+      },
+      orderBy: [{ snapshotAt: 'desc' }],
+      take: 250,
     }),
     prisma.season.findMany({
       orderBy: { year: 'desc' },
@@ -75,6 +95,7 @@ export default async function AdminPage({
             apiFootballId: true,
             nameHe: true,
             nameEn: true,
+            venueId: true,
             _count: {
               select: {
                 players: true,
@@ -88,9 +109,16 @@ export default async function AdminPage({
             competitionId: true,
             homeTeamId: true,
             awayTeamId: true,
+            venueId: true,
             status: true,
             dateTime: true,
             updatedAt: true,
+            _count: {
+              select: {
+                events: true,
+                lineupEntries: true,
+              },
+            },
           },
         },
         standings: {
@@ -223,6 +251,16 @@ export default async function AdminPage({
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
   const coverageRows = buildAdminCoverageRows(coverageSeasons);
+  const liveCountries = Array.from(
+    new Set(
+      liveSnapshots
+        .map((snapshot) => {
+          const country = snapshot.rawJson && typeof snapshot.rawJson === 'object' ? (snapshot.rawJson as any)?.league?.country : null;
+          return typeof country === 'string' && country.trim() ? country.trim() : null;
+        })
+        .filter((country): country is string => Boolean(country))
+    )
+  ).sort((a, b) => a.localeCompare(b, 'he'));
 
   const rawData = selectedSeason
     ? await prisma.season.findUnique({
@@ -425,19 +463,69 @@ export default async function AdminPage({
     }))
     .sort((a, b) => a.displayNameEn.localeCompare(b.displayNameEn));
 
+  const adminTab = (searchParams as any)?.adminTab || 'data';
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f3eb_0%,#efe4d0_100%)] px-4 py-8">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
-        <AdminManagerClient
-          teams={groupedTeams}
-          fetchTeams={teams}
-          fetchJobs={fetchJobs}
-          seasons={seasons}
-          selectedSeasonId={selectedSeason?.id || null}
-          rawData={rawData}
-          coverageRows={coverageRows}
-        />
+      <div className="mx-auto max-w-6xl space-y-5">
+        {/* Compact header with quick links */}
+        <section className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,#7f1d1d,#1f2937)] px-6 py-5 text-white shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h1 className="text-2xl font-black">אזור אדמין</h1>
+            <div className="flex flex-wrap gap-2 text-xs font-bold">
+              <Link href={`/admin/quick-edit?season=${selectedSeason?.id || ''}`} className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">עריכה מהירה</Link>
+              <Link href={`/admin/games?season=${selectedSeason?.id || ''}`} className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">משחקים</Link>
+              <Link href="/admin/venues" className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">אצטדיונים</Link>
+              <Link href="/admin/referees" className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">שופטים</Link>
+              <Link href="/admin/scrape" className="rounded-full bg-blue-500/30 px-3 py-1.5 transition hover:bg-blue-500/50">סריקת אתרים</Link>
+              <Link href="/admin/merge" className="rounded-full bg-purple-500/30 px-3 py-1.5 transition hover:bg-purple-500/50">מיזוג נתונים</Link>
+              <Link href="/admin/setup" className="rounded-full bg-emerald-500/30 px-3 py-1.5 transition hover:bg-emerald-500/50">ייבוא מלא</Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Tab navigation */}
+        <nav className="flex flex-wrap gap-2">
+          {[
+            { key: 'data', label: 'נתונים ומשיכה' },
+            { key: 'settings', label: 'הגדרות' },
+          ].map((tab) => (
+            <Link
+              key={tab.key}
+              href={`/admin?season=${selectedSeason?.id || ''}&adminTab=${tab.key}`}
+              className={`rounded-full px-5 py-2.5 text-sm font-bold transition ${
+                adminTab === tab.key
+                  ? 'bg-stone-900 text-white shadow-sm'
+                  : 'bg-white text-stone-600 hover:bg-stone-100'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Settings tab */}
+        {adminTab === 'settings' ? (
+          <div className="space-y-4">
+            <AdminLiveCountriesClient options={liveCountries} initialSelectedCountries={liveCountryLabels || liveCountries} />
+            <AdminHomepageLiveSettingsClient initialHomepageLiveLimit={homepageLiveLimit} />
+            <AdminPlayerDisplaySettingsClient initialDisplayZeroStatPlayers={displayZeroStatPlayers} />
+            <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
+          </div>
+        ) : null}
+
+        {/* Data tab (default) */}
+        {adminTab === 'data' ? (
+          <AdminManagerClient
+            teams={groupedTeams}
+            fetchTeams={teams}
+            fetchJobs={fetchJobs}
+            seasons={seasons}
+            selectedSeasonId={selectedSeason?.id || null}
+            rawData={rawData}
+            coverageRows={coverageRows}
+          />
+        ) : null}
       </div>
     </div>
   );

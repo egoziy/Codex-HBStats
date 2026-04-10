@@ -1,0 +1,893 @@
+/**
+ * Merge Engine — previews, executes, and rolls back data merges
+ * from scraped tables (scraped_*) into main tables (players, standings, etc.)
+ *
+ * Flow: preview → approve → execute → (optional) rollback
+ *
+ * Principles:
+ * - NEVER overwrite non-null/non-zero fields from API-Football
+ * - Only fill empty fields or records
+ * - Every change is recorded in snapshotJson for rollback
+ * - Match by Hebrew name (fuzzy) when IDs don't match
+ */
+
+import prisma from '@/lib/prisma';
+
+// ──────────────────────────────────────────────
+// Name matching utilities
+// ──────────────────────────────────────────────
+
+function normalizeName(name: string): string {
+  return name
+    .replace(/&#\d+;/g, '')       // HTML entities like &#39;
+    .replace(/&\w+;/g, '')        // Named HTML entities like &amp;
+    .replace(/['"״׳\-\.`']/g, '') // Quotes, dashes, dots
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function namesMatch(a: string, b: string): boolean {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+
+  // Last word match (family name)
+  const partsA = na.split(' ');
+  const partsB = nb.split(' ');
+  if (partsA.length > 1 && partsB.length > 1) {
+    const lastA = partsA[partsA.length - 1];
+    const lastB = partsB[partsB.length - 1];
+    if (lastA === lastB) return true;
+    // Fuzzy last name: allow 1-2 char difference for transliteration variants
+    if (lastA.length >= 3 && lastB.length >= 3 && levenshtein(lastA, lastB) <= 2) return true;
+  }
+
+  // Full name fuzzy: allow distance proportional to name length
+  const maxDist = Math.max(1, Math.floor(Math.max(na.length, nb.length) * 0.2));
+  if (levenshtein(na, nb) <= maxDist) return true;
+
+  // First name match + similar last name
+  if (partsA.length > 1 && partsB.length > 1 && partsA[0] === partsB[0]) {
+    const lastDist = levenshtein(partsA[partsA.length - 1], partsB[partsB.length - 1]);
+    if (lastDist <= 3) return true;
+  }
+
+  return false;
+}
+
+// ──────────────────────────────────────────────
+// Season name normalization (sport5: "2024/25" → DB: "2024-2025")
+// ──────────────────────────────────────────────
+
+function normalizeSeasonName(scraped: string): string {
+  // "2024/25" → "2024-2025", "2024/2025" → "2024-2025"
+  const m = scraped.match(/(\d{4})\/(\d{2,4})/);
+  if (!m) return scraped;
+  const startYear = m[1];
+  const endYear = m[2].length === 2 ? `20${m[2]}` : m[2];
+  return `${startYear}-${endYear}`;
+}
+
+// ──────────────────────────────────────────────
+// IFA abbreviated team name mapping
+// ──────────────────────────────────────────────
+
+const IFA_TEAM_ABBREVS: Record<string, string[]> = {
+  'הפועל ב"ש': ['הפועל באר שבע'],
+  'הפועל ת"א': ['הפועל תל אביב'],
+  'מכבי ת"א': ['מכבי תל אביב'],
+  'בית"ר י-ם': ['בית"ר ירושלים', 'ביתר ירושלים'],
+  'הפועל י-ם': ['הפועל ירושלים'],
+  'הפועל פ"ת': ['הפועל פתח תקווה'],
+  'הפועל ק"ש': ['עירוני קריית שמונה', 'הפועל קריית שמונה'],
+  'הפועל ר"ג': ['הפועל רמת גן'],
+  'הפועל כפ"ס': ['הפועל כפר סבא'],
+  'מכבי פ"ת': ['מכבי פתח תקווה'],
+  'הפ\' חדרה ש. שוורץ': ['הפועל חדרה'],
+  'הפ\' חדרה': ['הפועל חדרה'],
+  'הפועל ע"א': ['הפועל עפולה'],
+  'עירוני ק"ש': ['עירוני קריית שמונה'],
+  'מ.ס. אשדוד': ['מ.ס. אשדוד', 'אשדוד'],
+  'בני יהודה ת"א': ['בני יהודה'],
+  'הפועל ק"ג': ['הפועל קריית גת'],
+  'מכבי ק"ג': ['מכבי קריית גת'],
+  'הפועל ר"ל': ['הפועל ראשון לציון'],
+  'עירוני ר"ל': ['עירוני ראשון לציון'],
+  'מכבי ב"ר': ['מכבי בני ריינה'],
+  'בני סכנין': ['בני סכנין'],
+  'מכבי נתניה': ['מכבי נתניה'],
+  'מכבי חיפה': ['מכבי חיפה'],
+  'הפועל חיפה': ['הפועל חיפה'],
+  'עירוני טבריה': ['עירוני טבריה'],
+  // Walla spelling variants
+  'עירוני קרית שמונה': ['עירוני קריית שמונה', 'הפועל קריית שמונה'],
+  'עירוני קרית-שמונה': ['עירוני קריית שמונה'],
+  'מכבי פתח תקוה': ['מכבי פתח תקווה'],
+  'הפועל פתח תקוה': ['הפועל פתח תקווה'],
+  'בני יהודה תל-אביב': ['בני יהודה'],
+  'הפועל ראשון לציון': ['הפועל ראשון לציון'],
+  'מכבי קרית-גת': ['מכבי קריית גת'],
+  'מכבי הרצליה': ['מכבי הרצליה'],
+  'הפועל נוף הגליל': ['הפועל נצרת עילית', 'הפועל נוף הגליל'],
+  'הפועל כפר סבא': ['הפועל כפר סבא'],
+  'הפועל אום אל-פחם': ['הפועל אום אל פאחם'],
+};
+
+function matchTeamName(ifaName: string, dbName: string): boolean {
+  // Direct match
+  if (namesMatch(ifaName, dbName)) return true;
+  // Check abbreviation mapping
+  const expansions = IFA_TEAM_ABBREVS[ifaName];
+  if (expansions) {
+    return expansions.some((exp) => namesMatch(exp, dbName));
+  }
+  // Fuzzy: strip quotes and compare
+  const cleanIfa = normalizeName(ifaName);
+  const cleanDb = normalizeName(dbName);
+  if (cleanIfa === cleanDb) return true;
+  // If one contains the other
+  if (cleanDb.includes(cleanIfa) || cleanIfa.includes(cleanDb)) return true;
+  return false;
+}
+
+// ──────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────
+
+type PreviewChange = {
+  type: 'update' | 'create' | 'skip';
+  entity: 'player' | 'playerStats' | 'standing' | 'game' | 'gameEvent' | 'gameLineup';
+  scrapedName: string;
+  matchedName?: string;
+  matchedId?: string;
+  fields?: Record<string, { old: any; new: any }>;
+  reason?: string;
+  leagueNameHe?: string; // for standings — to resolve competitionId
+  meta?: Record<string, any>; // extra data for game merge (sourceId, events count, etc.)
+};
+
+type MergePreview = {
+  changes: PreviewChange[];
+  summary: {
+    updates: number;
+    creates: number;
+    skips: number;
+  };
+};
+
+// ──────────────────────────────────────────────
+// Preview: show what would change
+// ──────────────────────────────────────────────
+
+export async function previewPlayerMerge(source: string): Promise<MergePreview> {
+  const changes: PreviewChange[] = [];
+
+  const scrapedPlayers = await prisma.scrapedPlayer.findMany({
+    where: { source },
+    include: {
+      team: { select: { nameHe: true, season: true } },
+      seasonStats: true,
+    },
+  });
+
+  // Get all DB seasons
+  const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
+  const seasonMap = new Map(dbSeasons.map((s) => [s.name, s.id]));
+
+  for (const scraped of scrapedPlayers) {
+    for (const stat of scraped.seasonStats) {
+      const dbSeasonName = normalizeSeasonName(stat.season);
+      const seasonId = seasonMap.get(dbSeasonName);
+      if (!seasonId) {
+        changes.push({ type: 'skip', entity: 'playerStats', scrapedName: `${scraped.nameHe} (${stat.season})`, reason: `עונה ${dbSeasonName} לא נמצאה ב-DB` });
+        continue;
+      }
+
+      // Find matching team in this season
+      const dbTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true, nameEn: true } });
+      const matchedTeam = dbTeams.find((t) => namesMatch(t.nameHe, scraped.team.nameHe));
+      if (!matchedTeam) {
+        changes.push({ type: 'skip', entity: 'playerStats', scrapedName: `${scraped.nameHe} (${stat.season})`, reason: `קבוצה ${scraped.team.nameHe} לא נמצאה בעונה ${dbSeasonName}` });
+        continue;
+      }
+
+      // Find matching player
+      const dbPlayers = await prisma.player.findMany({ where: { teamId: matchedTeam.id }, select: { id: true, nameHe: true, nameEn: true } });
+      const matchedPlayer = dbPlayers.find((p) => namesMatch(p.nameHe, scraped.nameHe));
+      if (!matchedPlayer) {
+        changes.push({ type: 'skip', entity: 'playerStats', scrapedName: `${scraped.nameHe} (${stat.season})`, reason: 'שחקן לא נמצא ב-DB' });
+        continue;
+      }
+
+      // Check existing stats
+      const existingStats = await prisma.playerStatistics.findFirst({
+        where: { playerId: matchedPlayer.id, seasonId },
+      });
+
+      if (existingStats) {
+        const fields: Record<string, { old: any; new: any }> = {};
+        if (existingStats.goals === 0 && stat.goals > 0) fields.goals = { old: 0, new: stat.goals };
+        if (existingStats.gamesPlayed === 0 && stat.appearances > 0) fields.gamesPlayed = { old: 0, new: stat.appearances };
+        if (existingStats.starts === 0 && stat.starts > 0) fields.starts = { old: 0, new: stat.starts };
+        if (existingStats.yellowCards === 0 && stat.yellowCards > 0) fields.yellowCards = { old: 0, new: stat.yellowCards };
+        if (existingStats.redCards === 0 && stat.redCards > 0) fields.redCards = { old: 0, new: stat.redCards };
+        if (existingStats.substituteAppearances === 0 && stat.subsIn > 0) fields.substituteAppearances = { old: 0, new: stat.subsIn };
+        if (existingStats.timesSubbedOff === 0 && stat.subsOut > 0) fields.timesSubbedOff = { old: 0, new: stat.subsOut };
+
+        if (Object.keys(fields).length > 0) {
+          changes.push({
+            type: 'update', entity: 'playerStats',
+            scrapedName: `${scraped.nameHe} (${stat.season})`,
+            matchedName: matchedPlayer.nameHe, matchedId: existingStats.id,
+            fields,
+          });
+        } else {
+          changes.push({ type: 'skip', entity: 'playerStats', scrapedName: `${scraped.nameHe} (${stat.season})`, reason: 'כל השדות כבר מלאים', fields: {} });
+        }
+      } else {
+        changes.push({ type: 'skip', entity: 'playerStats', scrapedName: `${scraped.nameHe} (${stat.season})`, reason: 'אין רשומת סטטיסטיקות קיימת — לא יוצרים חדשה מסריקה', fields: {} });
+      }
+    }
+  }
+
+  return { changes, summary: buildSummary(changes) };
+}
+
+function buildSummary(changes: PreviewChange[]) {
+  return {
+    updates: changes.filter((c) => c.type === 'update').length,
+    creates: changes.filter((c) => c.type === 'create').length,
+    skips: changes.filter((c) => c.type === 'skip').length,
+  };
+}
+
+// ──────────────────────────────────────────────
+// Preview: IFA standings merge
+// ──────────────────────────────────────────────
+
+// IFA abbreviated name → full Hebrew name mapping for team creation
+const IFA_FULL_NAMES: Record<string, { nameHe: string; nameEn: string }> = {
+  'הפועל ב"ש': { nameHe: 'הפועל באר שבע', nameEn: 'Hapoel Beer Sheva' },
+  'הפועל ת"א': { nameHe: 'הפועל תל אביב', nameEn: 'Hapoel Tel Aviv' },
+  'מכבי ת"א': { nameHe: 'מכבי תל אביב', nameEn: 'Maccabi Tel Aviv' },
+  'בית"ר י-ם': { nameHe: 'בית"ר ירושלים', nameEn: 'Beitar Jerusalem' },
+  'הפועל י-ם': { nameHe: 'הפועל ירושלים', nameEn: 'Hapoel Jerusalem' },
+  'הפועל פ"ת': { nameHe: 'הפועל פתח תקווה', nameEn: 'Hapoel Petach Tikva' },
+  'הפועל ק"ש': { nameHe: 'עירוני קריית שמונה', nameEn: 'Ironi Kiryat Shmona' },
+  'הפועל ר"ג': { nameHe: 'הפועל רמת גן', nameEn: 'Hapoel Ramat Gan' },
+  'הפועל כפ"ס': { nameHe: 'הפועל כפר סבא', nameEn: 'Hapoel Kfar Saba' },
+  'מכבי פ"ת': { nameHe: 'מכבי פתח תקווה', nameEn: 'Maccabi Petach Tikva' },
+  'מ.ס. אשדוד': { nameHe: 'מ.ס. אשדוד', nameEn: 'MS Ashdod' },
+  'בני יהודה ת"א': { nameHe: 'בני יהודה', nameEn: 'Bnei Yehuda' },
+  'בני סכנין': { nameHe: 'בני סכנין', nameEn: 'Bnei Sakhnin' },
+  'מכבי חיפה': { nameHe: 'מכבי חיפה', nameEn: 'Maccabi Haifa' },
+  'מכבי נתניה': { nameHe: 'מכבי נתניה', nameEn: 'Maccabi Netanya' },
+  'הפועל חיפה': { nameHe: 'הפועל חיפה', nameEn: 'Hapoel Haifa' },
+  'הפועל רעננה': { nameHe: 'הפועל רעננה', nameEn: 'Hapoel Raanana' },
+  'הפועל עכו': { nameHe: 'הפועל עכו', nameEn: 'Hapoel Acre' },
+  'הפועל ראשל"צ': { nameHe: 'הפועל ראשון לציון', nameEn: 'Hapoel Rishon LeZion' },
+  'סקציה נס ציונה': { nameHe: 'סקציה נס ציונה', nameEn: 'Sektzia Nes Tziona' },
+  'הפ\' חדרה ש. שוורץ': { nameHe: 'הפועל חדרה', nameEn: 'Hapoel Hadera' },
+  'הפ\' חדרה': { nameHe: 'הפועל חדרה', nameEn: 'Hapoel Hadera' },
+  'הפ\' נוף הגליל': { nameHe: 'הפועל נוף הגליל', nameEn: 'Hapoel Nof HaGalil' },
+  'הפועל ע. עפולה': { nameHe: 'הפועל עפולה', nameEn: 'Hapoel Afula' },
+  'הפ\' בני לוד רכבת': { nameHe: 'הפועל בני לוד', nameEn: 'Hapoel Bnei Lod' },
+  'בית"ר ת"א חולון': { nameHe: 'בית"ר תל אביב', nameEn: 'Beitar Tel Aviv' },
+  'הפועל ע. אשקלון / לא פעיל': { nameHe: 'הפועל אשקלון', nameEn: 'Hapoel Ashkelon' },
+  'עירוני דורות טבריה': { nameHe: 'עירוני טבריה', nameEn: 'Ironi Tiberias' },
+  'הפועל כפר שלם': { nameHe: 'הפועל כפר שלם', nameEn: 'Hapoel Kfar Shalem' },
+  'הפועל ירושלים': { nameHe: 'הפועל ירושלים', nameEn: 'Hapoel Jerusalem' },
+  'הפועל א.א. פאחם': { nameHe: 'הפועל אום אל פאחם', nameEn: 'Hapoel Umm al-Fahm' },
+  'עירוני נשר': { nameHe: 'עירוני נשר', nameEn: 'Ironi Nesher' },
+  'א.ס. אשדוד': { nameHe: 'א.ס. אשדוד', nameEn: 'AS Ashdod' },
+  'הפועל הרצליה עירוני': { nameHe: 'הפועל הרצליה', nameEn: 'Hapoel Herzliya' },
+  'איחוד בני שפרעם': { nameHe: 'איחוד בני שפרעם', nameEn: 'Ihud Bnei Shefaram' },
+  // Walla full names
+  'עירוני קרית שמונה': { nameHe: 'עירוני קריית שמונה', nameEn: 'Ironi Kiryat Shmona' },
+  'עירוני קרית-שמונה': { nameHe: 'עירוני קריית שמונה', nameEn: 'Ironi Kiryat Shmona' },
+  'מכבי פתח תקוה': { nameHe: 'מכבי פתח תקווה', nameEn: 'Maccabi Petach Tikva' },
+  'הפועל פתח תקוה': { nameHe: 'הפועל פתח תקווה', nameEn: 'Hapoel Petach Tikva' },
+  'בני יהודה תל-אביב': { nameHe: 'בני יהודה', nameEn: 'Bnei Yehuda' },
+  'מכבי קרית-גת': { nameHe: 'מכבי קריית גת', nameEn: 'Maccabi Kiryat Gat' },
+  'הפועל אום אל-פחם': { nameHe: 'הפועל אום אל פאחם', nameEn: 'Hapoel Umm al-Fahm' },
+  'הפועל נוף הגליל': { nameHe: 'הפועל נוף הגליל', nameEn: 'Hapoel Nof HaGalil' },
+  'סקציה נס-ציונה': { nameHe: 'סקציה נס ציונה', nameEn: 'Sektzia Nes Tziona' },
+};
+
+function resolveTeamNames(ifaName: string): { nameHe: string; nameEn: string } {
+  return IFA_FULL_NAMES[ifaName] || { nameHe: ifaName, nameEn: ifaName };
+}
+
+// Map scraped event types to DB EventType enum
+function mapEventType(type: string): 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION_IN' | 'OWN_GOAL' | 'PENALTY_GOAL' | null {
+  switch (type) {
+    case 'goal': return 'GOAL';
+    case 'yellow_card': return 'YELLOW_CARD';
+    case 'red_card': return 'RED_CARD';
+    case 'sub': return 'SUBSTITUTION_IN';
+    case 'own_goal': return 'OWN_GOAL';
+    case 'penalty_goal': return 'PENALTY_GOAL';
+    default: return null;
+  }
+}
+
+export async function previewStandingsMerge(
+  source: string,
+  options?: { season?: string },
+): Promise<MergePreview> {
+  const changes: PreviewChange[] = [];
+
+  const whereClause: any = { source };
+  if (options?.season) whereClause.season = options.season;
+
+  const scrapedStandings = await prisma.scrapedStanding.findMany({
+    where: whereClause,
+    orderBy: [{ season: 'desc' }, { position: 'asc' }],
+  });
+
+  const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
+  const seasonMap = new Map(dbSeasons.map((s) => [s.name, s.id]));
+
+  // Collect seasons that need to be created
+  const missingSeasonsSet = new Set<string>();
+
+  for (const scraped of scrapedStandings) {
+    const dbSeasonName = normalizeSeasonName(scraped.season);
+    let seasonId = seasonMap.get(dbSeasonName);
+    if (!seasonId) {
+      missingSeasonsSet.add(dbSeasonName);
+      // Still allow showing as "create" — season will be created during execute
+      const resolved = resolveTeamNames(scraped.teamNameHe);
+      changes.push({
+        type: 'create', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || undefined,
+        scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
+        matchedName: `[חדש] ${resolved.nameHe}`,
+        reason: `ייצור עונה ${dbSeasonName} + קבוצה + שורת טבלה`,
+        fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
+      });
+      continue;
+    }
+
+    // Find matching team
+    const dbTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true, nameEn: true } });
+    const matchedTeam = dbTeams.find((t) => matchTeamName(scraped.teamNameHe, t.nameHe));
+
+    if (matchedTeam) {
+      // Team exists — check standings
+      const existing = await prisma.standing.findFirst({ where: { seasonId, teamId: matchedTeam.id } });
+      if (existing) {
+        const fields: Record<string, { old: any; new: any }> = {};
+        if (existing.played === 0 && scraped.played > 0) fields.played = { old: 0, new: scraped.played };
+        if (existing.wins === 0 && scraped.wins > 0) fields.wins = { old: 0, new: scraped.wins };
+        if (existing.draws === 0 && scraped.draws > 0) fields.draws = { old: 0, new: scraped.draws };
+        if (existing.losses === 0 && scraped.losses > 0) fields.losses = { old: 0, new: scraped.losses };
+        if (existing.goalsFor === 0 && scraped.goalsFor > 0) fields.goalsFor = { old: 0, new: scraped.goalsFor };
+        if (existing.goalsAgainst === 0 && scraped.goalsAgainst > 0) fields.goalsAgainst = { old: 0, new: scraped.goalsAgainst };
+        if (existing.points === 0 && scraped.points > 0) fields.points = { old: 0, new: scraped.points };
+        if (Object.keys(fields).length > 0) {
+          changes.push({ type: 'update', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || undefined, scrapedName: `${scraped.teamNameHe} (${scraped.season})`, matchedName: matchedTeam.nameHe, matchedId: existing.id, fields });
+        } else {
+          changes.push({ type: 'skip', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || undefined, scrapedName: `${scraped.teamNameHe} (${scraped.season})`, reason: 'כל השדות מלאים', fields: {} });
+        }
+      } else {
+        // Team exists but no standing — create
+        changes.push({
+          type: 'create', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || undefined,
+          scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
+          matchedName: matchedTeam.nameHe,
+          fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
+        });
+      }
+    } else {
+      // No team in DB — propose creating team + standing
+      const resolved = resolveTeamNames(scraped.teamNameHe);
+      changes.push({
+        type: 'create', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || undefined,
+        scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
+        matchedName: `[חדש] ${resolved.nameHe}`,
+        reason: 'ייצור קבוצה חדשה + שורת טבלה',
+        fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
+      });
+    }
+  }
+
+  return { changes, summary: buildSummary(changes) };
+}
+
+// ──────────────────────────────────────────────
+// Preview: IFA games merge (games + lineups + events)
+// ──────────────────────────────────────────────
+
+export async function previewGamesMerge(
+  source: string,
+  options?: { season?: string },
+): Promise<MergePreview> {
+  const changes: PreviewChange[] = [];
+
+  const whereClause: any = { source };
+  if (options?.season) whereClause.season = options.season;
+
+  const scrapedMatches = await prisma.scrapedMatch.findMany({
+    where: whereClause,
+    include: {
+      events: true,
+      lineups: true,
+    },
+    orderBy: [{ season: 'desc' }, { dateTime: 'asc' }],
+  });
+
+  const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
+  const seasonMap = new Map(dbSeasons.map((s) => [s.name, s.id]));
+
+  for (const match of scrapedMatches) {
+    const dbSeasonName = normalizeSeasonName(match.season);
+    const seasonId = seasonMap.get(dbSeasonName);
+    if (!seasonId) {
+      changes.push({ type: 'skip', entity: 'game', scrapedName: `${match.homeTeamName} vs ${match.awayTeamName} (${match.season})`, reason: `עונה ${dbSeasonName} לא קיימת` });
+      continue;
+    }
+
+    // Find teams
+    const dbTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true, nameEn: true } });
+    const homeTeam = dbTeams.find((t) => matchTeamName(match.homeTeamName, t.nameHe));
+    const awayTeam = dbTeams.find((t) => matchTeamName(match.awayTeamName, t.nameHe));
+
+    if (!homeTeam || !awayTeam) {
+      changes.push({
+        type: 'skip', entity: 'game',
+        scrapedName: `${match.homeTeamName} vs ${match.awayTeamName} (${match.dateStr || ''})`,
+        reason: `קבוצה לא נמצאה: ${!homeTeam ? match.homeTeamName : ''} ${!awayTeam ? match.awayTeamName : ''}`.trim(),
+      });
+      continue;
+    }
+
+    // Check if game already exists (by date + teams)
+    const existingGame = match.dateTime ? await prisma.game.findFirst({
+      where: {
+        seasonId,
+        homeTeamId: homeTeam.id,
+        awayTeamId: awayTeam.id,
+        dateTime: {
+          gte: new Date(match.dateTime.getTime() - 24 * 60 * 60 * 1000),
+          lte: new Date(match.dateTime.getTime() + 24 * 60 * 60 * 1000),
+        },
+      },
+      include: { events: { select: { id: true } }, lineupEntries: { select: { id: true } } },
+    }) : null;
+
+    const label = `${match.homeTeamName} ${match.homeScore ?? '?'}-${match.awayScore ?? '?'} ${match.awayTeamName} (${match.dateStr || match.season})`;
+
+    if (existingGame) {
+      // Game exists — check what can be enriched
+      const fields: Record<string, { old: any; new: any }> = {};
+
+      if (existingGame.homeScore === null && match.homeScore !== null) fields.homeScore = { old: null, new: match.homeScore };
+      if (existingGame.awayScore === null && match.awayScore !== null) fields.awayScore = { old: null, new: match.awayScore };
+      if (!existingGame.refereeHe && match.referee) fields.refereeHe = { old: null, new: match.referee };
+      if (!existingGame.venueNameHe && match.venue) fields.venueNameHe = { old: null, new: match.venue };
+
+      const hasEvents = existingGame.events.length > 0;
+      const hasLineups = existingGame.lineupEntries.length > 0;
+      const newEvents = match.events.length;
+      const newLineups = match.lineups.length;
+
+      if (!hasEvents && newEvents > 0) fields._events = { old: 0, new: newEvents };
+      if (!hasLineups && newLineups > 0) fields._lineups = { old: 0, new: newLineups };
+
+      if (Object.keys(fields).length > 0) {
+        changes.push({
+          type: 'update', entity: 'game', scrapedName: label,
+          matchedName: `${homeTeam.nameHe} vs ${awayTeam.nameHe}`,
+          matchedId: existingGame.id, fields,
+          meta: { sourceId: match.sourceId, homeTeamId: homeTeam.id, awayTeamId: awayTeam.id, seasonId },
+        });
+      } else {
+        changes.push({ type: 'skip', entity: 'game', scrapedName: label, reason: 'משחק קיים ומלא' });
+      }
+    } else {
+      // New game — create
+      changes.push({
+        type: 'create', entity: 'game', scrapedName: label,
+        leagueNameHe: match.leagueNameHe || undefined,
+        fields: {
+          homeScore: { old: null, new: match.homeScore },
+          awayScore: { old: null, new: match.awayScore },
+          events: { old: 0, new: match.events.length },
+          lineups: { old: 0, new: match.lineups.length },
+        },
+        meta: {
+          sourceId: match.sourceId, homeTeamId: homeTeam.id, awayTeamId: awayTeam.id,
+          seasonId, dateTime: match.dateTime?.toISOString(), venue: match.venue,
+          referee: match.referee, coachHome: match.coachHome, coachAway: match.coachAway,
+          framework: match.framework, round: match.round,
+          homeHalfScore: match.homeHalfScore, awayHalfScore: match.awayHalfScore,
+        },
+      });
+    }
+  }
+
+  return { changes, summary: buildSummary(changes) };
+}
+
+// ──────────────────────────────────────────────
+// Combined preview with source + type selection
+// ──────────────────────────────────────────────
+
+export async function previewMerge(
+  source: string,
+  mergeType: 'players' | 'standings' | 'games' | 'all',
+  options?: { season?: string },
+): Promise<MergePreview> {
+  if (mergeType === 'players') return previewPlayerMerge(source);
+  if (mergeType === 'standings') return previewStandingsMerge(source, options);
+  if (mergeType === 'games') return previewGamesMerge(source, options);
+
+  // 'all' — combine all
+  const [players, standings, games] = await Promise.all([
+    previewPlayerMerge(source),
+    previewStandingsMerge(source, options),
+    previewGamesMerge(source, options),
+  ]);
+  return {
+    changes: [...players.changes, ...standings.changes, ...games.changes],
+    summary: {
+      updates: players.summary.updates + standings.summary.updates + games.summary.updates,
+      creates: players.summary.creates + standings.summary.creates + games.summary.creates,
+      skips: players.summary.skips + standings.summary.skips + games.summary.skips,
+    },
+  };
+}
+
+// ──────────────────────────────────────────────
+// Execute: apply approved changes
+// ──────────────────────────────────────────────
+
+export async function executeMerge(mergeId: string): Promise<{ updated: number; errors: string[] }> {
+  const merge = await prisma.mergeOperation.findUnique({ where: { id: mergeId } });
+  if (!merge || merge.status !== 'approved') {
+    throw new Error('Merge must be approved before execution');
+  }
+
+  const preview = merge.previewJson as { changes: PreviewChange[] } | null;
+  if (!preview?.changes) throw new Error('No preview data');
+
+  const actionableChanges = preview.changes.filter((c) => c.type === 'update' || c.type === 'create');
+  const snapshots: Array<{ id: string; entity: string; original: Record<string, any>; action: 'update' | 'create' }> = [];
+  const applied: Array<{ id: string; entity: string; fields: Record<string, any> }> = [];
+  const errors: string[] = [];
+
+  for (const change of actionableChanges) {
+    try {
+      if (change.entity === 'playerStats' && change.type === 'update' && change.matchedId) {
+        const original = await prisma.playerStatistics.findUnique({ where: { id: change.matchedId } });
+        if (!original) { errors.push(`PlayerStats ${change.matchedId} not found`); continue; }
+        const originalFields: Record<string, any> = {};
+        const updateData: Record<string, any> = {};
+        for (const [field, { new: newVal }] of Object.entries(change.fields)) {
+          originalFields[field] = (original as any)[field];
+          updateData[field] = newVal;
+        }
+        snapshots.push({ id: change.matchedId, entity: 'playerStats', original: originalFields, action: 'update' });
+        await prisma.playerStatistics.update({ where: { id: change.matchedId }, data: updateData });
+        applied.push({ id: change.matchedId, entity: 'playerStats', fields: updateData });
+      }
+
+      if (change.entity === 'standing' && change.type === 'update' && change.matchedId) {
+        const original = await prisma.standing.findUnique({ where: { id: change.matchedId } });
+        if (!original) { errors.push(`Standing ${change.matchedId} not found`); continue; }
+        const originalFields: Record<string, any> = {};
+        const updateData: Record<string, any> = {};
+        for (const [field, { new: newVal }] of Object.entries(change.fields)) {
+          originalFields[field] = (original as any)[field];
+          updateData[field] = newVal;
+        }
+        snapshots.push({ id: change.matchedId, entity: 'standing', original: originalFields, action: 'update' });
+        await prisma.standing.update({ where: { id: change.matchedId }, data: updateData });
+        applied.push({ id: change.matchedId, entity: 'standing', fields: updateData });
+      }
+
+      if (change.entity === 'standing' && change.type === 'create') {
+        const scrapedSeason = change.scrapedName.match(/\(([^)]+)\)/)?.[1] || '';
+        const dbSeasonName = normalizeSeasonName(scrapedSeason);
+        const dbSeasons = await prisma.season.findMany({ select: { id: true, name: true } });
+        let seasonId = dbSeasons.find((s) => s.name === dbSeasonName)?.id;
+
+        // Create season if it doesn't exist
+        if (!seasonId) {
+          const yearMatch = dbSeasonName.match(/^(\d{4})/);
+          const year = yearMatch ? parseInt(yearMatch[1], 10) : 0;
+          if (year > 0) {
+            const newSeason = await prisma.season.create({
+              data: { year, name: dbSeasonName, startDate: new Date(`${year}-08-01`), endDate: new Date(`${year + 1}-06-30`) },
+            });
+            seasonId = newSeason.id;
+            snapshots.push({ id: newSeason.id, entity: 'season', original: {}, action: 'create' });
+          } else {
+            errors.push(`Cannot create season: ${dbSeasonName}`);
+            continue;
+          }
+        }
+
+        // Find or create team
+        const isNewTeam = change.matchedName?.startsWith('[חדש]');
+        let teamId: string;
+
+        if (isNewTeam) {
+          // Extract the original IFA name from scrapedName
+          const ifaName = change.scrapedName.replace(/\s*\([^)]+\)$/, '');
+          const resolved = resolveTeamNames(ifaName);
+          const newTeam = await prisma.team.create({
+            data: { nameHe: resolved.nameHe, nameEn: resolved.nameEn, seasonId },
+          });
+          teamId = newTeam.id;
+          snapshots.push({ id: newTeam.id, entity: 'team', original: {}, action: 'create' });
+        } else {
+          const teams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true } });
+          const matchedTeamName = change.matchedName || '';
+          const team = teams.find((t) => matchTeamName(matchedTeamName, t.nameHe) || t.nameHe === matchedTeamName);
+          if (!team) { errors.push(`Team ${matchedTeamName} not found in ${dbSeasonName}`); continue; }
+          teamId = team.id;
+        }
+
+        // Resolve competition from league name
+        let competitionId: string | null = null;
+        const leagueName = change.leagueNameHe || '';
+        if (leagueName.includes('לאומית')) {
+          competitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 382 } }))?.id || null;
+        } else {
+          // Default to Liga Ha'al (apiFootballId=383) for all top-flight league names
+          competitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 383 } }))?.id || null;
+        }
+
+        // Ensure CompetitionSeason exists
+        if (competitionId) {
+          await prisma.competitionSeason.upsert({
+            where: { competitionId_seasonId: { competitionId, seasonId } },
+            update: {},
+            create: { competitionId, seasonId },
+          }).catch(() => null);
+        }
+
+        const created = await prisma.standing.create({
+          data: {
+            seasonId,
+            teamId,
+            competitionId,
+            position: change.fields.position?.new ?? 0,
+            played: change.fields.played?.new ?? 0,
+            wins: change.fields.wins?.new ?? 0,
+            draws: change.fields.draws?.new ?? 0,
+            losses: change.fields.losses?.new ?? 0,
+            goalsFor: change.fields.goalsFor?.new ?? 0,
+            goalsAgainst: change.fields.goalsAgainst?.new ?? 0,
+            points: change.fields.points?.new ?? 0,
+          },
+        });
+        snapshots.push({ id: created.id, entity: 'standing', original: {}, action: 'create' });
+        applied.push({ id: created.id, entity: 'standing', fields: change.fields });
+      }
+
+      // ── Game update (enrich existing game) ──
+      if (change.entity === 'game' && change.type === 'update' && change.matchedId) {
+        const original = await prisma.game.findUnique({ where: { id: change.matchedId } });
+        if (!original) { errors.push(`Game ${change.matchedId} not found`); continue; }
+
+        const originalFields: Record<string, any> = {};
+        const updateData: Record<string, any> = {};
+        for (const [field, { new: newVal }] of Object.entries(change.fields)) {
+          if (field.startsWith('_')) continue; // skip pseudo-fields like _events, _lineups
+          originalFields[field] = (original as any)[field];
+          updateData[field] = newVal;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          snapshots.push({ id: change.matchedId, entity: 'game', original: originalFields, action: 'update' });
+          await prisma.game.update({ where: { id: change.matchedId }, data: updateData });
+        }
+
+        // Add events if game had none
+        if (change.fields._events && change.meta?.sourceId) {
+          const scrapedEvents = await prisma.scrapedMatchEvent.findMany({ where: { source: 'footballOrgIl', matchSourceId: change.meta.sourceId } });
+          for (const ev of scrapedEvents) {
+            const eventType = mapEventType(ev.type);
+            if (!eventType) continue;
+            await prisma.gameEvent.create({
+              data: {
+                gameId: change.matchedId,
+                minute: ev.minute,
+                type: eventType,
+                team: ev.teamName || '',
+                teamId: ev.teamSide === 'home' ? change.meta.homeTeamId : ev.teamSide === 'away' ? change.meta.awayTeamId : null,
+                notesHe: ev.secondPlayerName ? `${ev.playerName} → ${ev.secondPlayerName}` : ev.playerName,
+                participantName: ev.playerName,
+                relatedParticipantName: ev.secondPlayerName,
+              },
+            });
+          }
+        }
+
+        // Add lineups if game had none
+        if (change.fields._lineups && change.meta?.sourceId) {
+          const scrapedLineups = await prisma.scrapedMatchLineup.findMany({ where: { source: 'footballOrgIl', matchSourceId: change.meta.sourceId } });
+          for (const lu of scrapedLineups) {
+            const role = lu.role === 'starter' ? 'STARTER' : lu.role === 'sub' ? 'SUBSTITUTE' : null;
+            if (!role) continue;
+            const teamId = lu.teamSide === 'home' ? change.meta.homeTeamId : change.meta.awayTeamId;
+            await prisma.gameLineupEntry.create({
+              data: {
+                gameId: change.matchedId, teamId, role, participantName: lu.playerName,
+                jerseyNumber: lu.playerNumber, positionName: lu.positionMarker,
+              },
+            }).catch(() => null); // skip duplicates
+          }
+        }
+
+        applied.push({ id: change.matchedId, entity: 'game', fields: change.fields });
+      }
+
+      // ── Game create (new game + events + lineups) ──
+      if (change.entity === 'game' && change.type === 'create' && change.meta) {
+        const m = change.meta;
+
+        // Resolve competition
+        let competitionId: string | null = null;
+        const leagueName = change.leagueNameHe || '';
+        if (m.framework === 'league') {
+          if (leagueName.includes('לאומית')) {
+            competitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 382 } }))?.id || null;
+          } else {
+            competitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 383 } }))?.id || null;
+          }
+        }
+
+        const newGame = await prisma.game.create({
+          data: {
+            seasonId: m.seasonId,
+            homeTeamId: m.homeTeamId,
+            awayTeamId: m.awayTeamId,
+            competitionId,
+            dateTime: m.dateTime ? new Date(m.dateTime) : new Date(),
+            homeScore: change.fields.homeScore?.new ?? null,
+            awayScore: change.fields.awayScore?.new ?? null,
+            status: change.fields.homeScore?.new !== null ? 'COMPLETED' : 'SCHEDULED',
+            venueNameHe: m.venue || null,
+            refereeHe: m.referee || null,
+            roundNameHe: m.round ? `מחזור ${m.round}` : null,
+          },
+        });
+        snapshots.push({ id: newGame.id, entity: 'game', original: {}, action: 'create' });
+
+        // Create events
+        if (m.sourceId) {
+          const scrapedEvents = await prisma.scrapedMatchEvent.findMany({ where: { source: 'footballOrgIl', matchSourceId: m.sourceId } });
+          for (const ev of scrapedEvents) {
+            const eventType = mapEventType(ev.type);
+            if (!eventType) continue;
+            await prisma.gameEvent.create({
+              data: {
+                gameId: newGame.id, minute: ev.minute, type: eventType,
+                team: ev.teamName || '',
+                teamId: ev.teamSide === 'home' ? m.homeTeamId : ev.teamSide === 'away' ? m.awayTeamId : null,
+                notesHe: ev.secondPlayerName ? `${ev.playerName} → ${ev.secondPlayerName}` : ev.playerName,
+                participantName: ev.playerName,
+                relatedParticipantName: ev.secondPlayerName,
+              },
+            }).catch(() => null);
+          }
+
+          // Create lineups
+          const scrapedLineups = await prisma.scrapedMatchLineup.findMany({ where: { source: 'footballOrgIl', matchSourceId: m.sourceId } });
+          for (const lu of scrapedLineups) {
+            const role = lu.role === 'starter' ? 'STARTER' : lu.role === 'sub' ? 'SUBSTITUTE' : null;
+            if (!role) continue;
+            const teamId = lu.teamSide === 'home' ? m.homeTeamId : m.awayTeamId;
+            await prisma.gameLineupEntry.create({
+              data: {
+                gameId: newGame.id, teamId, role, participantName: lu.playerName,
+                jerseyNumber: lu.playerNumber, positionName: lu.positionMarker,
+              },
+            }).catch(() => null);
+          }
+        }
+
+        applied.push({ id: newGame.id, entity: 'game', fields: change.fields });
+      }
+    } catch (e: any) {
+      errors.push(`${change.scrapedName}: ${e.message}`);
+    }
+  }
+
+  await prisma.mergeOperation.update({
+    where: { id: mergeId },
+    data: {
+      status: errors.length > 0 && applied.length === 0 ? 'failed' : 'executed',
+      changesJson: { applied, errors },
+      snapshotJson: { snapshots },
+      recordsUpdated: applied.length,
+      executedAt: new Date(),
+    },
+  });
+
+  return { updated: applied.length, errors };
+}
+
+// ──────────────────────────────────────────────
+// Rollback: revert executed merge
+// ──────────────────────────────────────────────
+
+export async function rollbackMerge(mergeId: string): Promise<{ reverted: number; errors: string[] }> {
+  const merge = await prisma.mergeOperation.findUnique({ where: { id: mergeId } });
+  if (!merge || merge.status !== 'executed') {
+    throw new Error('Can only rollback executed merges');
+  }
+
+  const snapshot = merge.snapshotJson as { snapshots: Array<{ id: string; entity: string; original: Record<string, any>; action?: string }> } | null;
+  if (!snapshot?.snapshots) throw new Error('No snapshot data for rollback');
+
+  let reverted = 0;
+  const errors: string[] = [];
+
+  for (const snap of snapshot.snapshots) {
+    try {
+      if (snap.action === 'create') {
+        // Delete the created record (game cascade deletes events + lineups)
+        if (snap.entity === 'game') {
+          await prisma.game.delete({ where: { id: snap.id } }).catch(() => null);
+          reverted++;
+        }
+        if (snap.entity === 'standing') {
+          await prisma.standing.delete({ where: { id: snap.id } }).catch(() => null);
+          reverted++;
+        }
+        if (snap.entity === 'team') {
+          await prisma.team.delete({ where: { id: snap.id } }).catch(() => null);
+          reverted++;
+        }
+        if (snap.entity === 'season') {
+          await prisma.season.delete({ where: { id: snap.id } }).catch(() => null);
+          reverted++;
+        }
+      } else {
+        // Revert to original values
+        if (snap.entity === 'playerStats') {
+          await prisma.playerStatistics.update({ where: { id: snap.id }, data: snap.original });
+          reverted++;
+        }
+        if (snap.entity === 'standing') {
+          await prisma.standing.update({ where: { id: snap.id }, data: snap.original });
+          reverted++;
+        }
+        if (snap.entity === 'game') {
+          await prisma.game.update({ where: { id: snap.id }, data: snap.original });
+          reverted++;
+        }
+      }
+    } catch (e: any) {
+      errors.push(`Rollback ${snap.id}: ${e.message}`);
+    }
+  }
+
+  await prisma.mergeOperation.update({
+    where: { id: mergeId },
+    data: { status: 'rolled_back', rolledBackAt: new Date() },
+  });
+
+  return { reverted, errors };
+}

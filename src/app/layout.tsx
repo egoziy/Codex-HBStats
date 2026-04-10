@@ -7,14 +7,14 @@ export const metadata: Metadata = {
   description: 'מערכת עברית לסטטיסטיקות כדורגל, ניתוח נתונים, משחקים, שחקנים וקבוצות.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
     <html lang="he" dir="rtl">
-      <body className="bg-stone-100 text-stone-900">
+      <body className="bg-[#f4f6fb] text-slate-950">
         <Navbar />
         <div className="border-b border-stone-200 bg-black">
           <div className="mx-auto max-w-7xl px-4 py-4">

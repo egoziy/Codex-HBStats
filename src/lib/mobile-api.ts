@@ -1,4 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
+import { getCompetitionDisplayName, getRoundDisplayName } from '@/lib/competition-display';
 import { getCurrentSeasonStartYear, getHomepageLiveSnapshots, type HomepageLiveSnapshot } from '@/lib/home-live';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
@@ -24,7 +25,7 @@ function getTeamLabel(team: { nameHe: string | null; nameEn: string }) {
 }
 
 function getRoundLabel(game: { roundNameHe: string | null; roundNameEn: string | null }) {
-  return game.roundNameHe || game.roundNameEn || null;
+  return getRoundDisplayName(game.roundNameHe, game.roundNameEn);
 }
 
 function gameMatchesPreferredTeam(
@@ -48,6 +49,39 @@ function gameMatchesPreferredCompetition(
 function truncateText(text: string, maxLength: number) {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength).trim()}...`;
+}
+
+function parseScoreLabel(scoreLabel: string) {
+  const match = scoreLabel.match(/^(\d+)\s*-\s*(\d+)$/);
+  if (!match) return { homeScore: 0, awayScore: 0 };
+  return {
+    homeScore: Number(match[1]),
+    awayScore: Number(match[2]),
+  };
+}
+
+function parseGameIdFromHref(gameHref: string) {
+  const match = gameHref.match(/\/games\/([^/?#]+)/);
+  return match?.[1] || gameHref;
+}
+
+function mapHomepageLiveSnapshot(snapshot: HomepageLiveSnapshot) {
+  const { homeScore, awayScore } = parseScoreLabel(snapshot.scoreLabel);
+
+  return {
+    id: snapshot.id,
+    gameId: parseGameIdFromHref(snapshot.gameHref),
+    homeTeamName: snapshot.homeTeamName,
+    awayTeamName: snapshot.awayTeamName,
+    homeScore,
+    awayScore,
+    minuteLabel: snapshot.minuteLabel,
+    statusLabel: snapshot.statusLabel,
+    countryLabel: snapshot.countryLabel,
+    countryFlagUrl: snapshot.countryFlagUrl,
+    leagueLabel: snapshot.leagueLabel,
+    eventCount: snapshot.eventCount,
+  };
 }
 
 async function getConfiguredTelegramSources() {
@@ -376,7 +410,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         ? {
             id: nextGame.id,
             href: `/games/${nextGame.id}`,
-            competition: nextGame.competition?.nameHe || nextGame.competition?.nameEn || 'ללא מסגרת',
+            competition: getCompetitionDisplayName(nextGame.competition),
             homeTeamName: getTeamLabel(nextGame.homeTeam),
             awayTeamName: getTeamLabel(nextGame.awayTeam),
             dateTime: nextGame.dateTime.toISOString(),
@@ -387,7 +421,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         ? {
             id: lastGame.id,
             href: `/games/${lastGame.id}`,
-            competition: lastGame.competition?.nameHe || lastGame.competition?.nameEn || 'ללא מסגרת',
+            competition: getCompetitionDisplayName(lastGame.competition),
             homeTeamName: getTeamLabel(lastGame.homeTeam),
             awayTeamName: getTeamLabel(lastGame.awayTeam),
             dateTime: lastGame.dateTime.toISOString(),
@@ -407,7 +441,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         id: prediction.id,
         gameId: prediction.game.id,
         href: `/games/${prediction.game.id}`,
-        competition: prediction.game.competition?.nameHe || prediction.game.competition?.nameEn || 'ללא מסגרת',
+        competition: getCompetitionDisplayName(prediction.game.competition),
         homeTeamName: getTeamLabel(prediction.game.homeTeam),
         awayTeamName: getTeamLabel(prediction.game.awayTeam),
         dateTime: prediction.game.dateTime.toISOString(),
@@ -431,12 +465,12 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
       upcomingMatches: nextRoundGames.map((game) => ({
         id: game.id,
         href: `/games/${game.id}`,
-        competition: game.competition?.nameHe || game.competition?.nameEn || 'ללא מסגרת',
+        competition: getCompetitionDisplayName(game.competition),
         homeTeamName: getTeamLabel(game.homeTeam),
         awayTeamName: getTeamLabel(game.awayTeam),
         dateTime: game.dateTime.toISOString(),
       })),
-      live: liveItems,
+      live: liveItems.map(mapHomepageLiveSnapshot),
       news: telegramMessages.slice(0, 5).map((message) => ({
         id: message.id,
         source: message.sourceLabel,
@@ -454,8 +488,9 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
 
 export async function getMobileLivePayload(limit = 50) {
   const items = await getHomepageLiveSnapshots(null, { limit });
+  const mobileItems = items.map(mapHomepageLiveSnapshot);
 
-  const groups = items.reduce(
+  const groups = mobileItems.reduce(
     (map, item) => {
       const key = `${item.countryLabel}__${item.leagueLabel}`;
       if (!map[key]) {
@@ -478,16 +513,16 @@ export async function getMobileLivePayload(limit = 50) {
         countryLabel: string;
         countryFlagUrl: string | null;
         leagueLabel: string;
-        matches: HomepageLiveSnapshot[];
+        matches: ReturnType<typeof mapHomepageLiveSnapshot>[];
       }
     >
   );
 
   return {
     updatedAt: new Date().toISOString(),
-    hasLive: items.length > 0,
-    message: items.length > 0 ? null : 'נכון לעכשיו אין משחקים בלייב',
-    items,
+    hasLive: mobileItems.length > 0,
+    message: mobileItems.length > 0 ? null : 'נכון לעכשיו אין משחקים בלייב',
+    items: mobileItems,
     groups: Object.values(groups),
   };
 }

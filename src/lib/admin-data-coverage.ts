@@ -19,6 +19,7 @@ type CoverageCompetitionSeason = {
 type CoverageTeam = {
   id: string;
   apiFootballId: number | null;
+  venueId: string | null;
   nameHe: string;
   nameEn: string;
   _count: {
@@ -31,9 +32,14 @@ type CoverageGame = {
   competitionId: string | null;
   homeTeamId: string;
   awayTeamId: string;
+  venueId: string | null;
   status: 'SCHEDULED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
   dateTime: Date | string;
   updatedAt: Date | string;
+  _count?: {
+    events: number;
+    lineupEntries: number;
+  };
 };
 
 type CoverageStanding = {
@@ -121,6 +127,8 @@ export type AdminCoverageTeamRow = {
   rosterPlayersCount: number;
   playersCount: number;
   gamesCount: number;
+  eventsCount: number;
+  lineupsCount: number;
   standingsCount: number;
   predictionsCount: number;
   h2hCount: number;
@@ -143,8 +151,11 @@ export type AdminCoverageRow = {
   competitionNameHe: string;
   competitionNameEn: string;
   teamsCount: number;
+  venuesCount: number;
   playersCount: number;
   gamesCount: number;
+  eventsCount: number;
+  lineupsCount: number;
   standingsCount: number;
   predictionsCount: number;
   h2hCount: number;
@@ -204,6 +215,8 @@ function getStatusMeta({
   hasUpcomingOrLive,
   lastFetchAt,
   latestCoverageUpdateAt,
+  hasMissingEventData,
+  hasMissingOddsData,
 }: {
   hasAnyData: boolean;
   seasonEnded: boolean;
@@ -211,6 +224,8 @@ function getStatusMeta({
   hasUpcomingOrLive: boolean;
   lastFetchAt: Date | null;
   latestCoverageUpdateAt: Date | null;
+  hasMissingEventData?: boolean;
+  hasMissingOddsData?: boolean;
 }) {
   if (!hasAnyData) {
     return {
@@ -221,6 +236,17 @@ function getStatusMeta({
   }
 
   if ((seasonEnded || competitionFinished) && !hasUpcomingOrLive) {
+    const missingParts: string[] = [];
+    if (hasMissingEventData) missingParts.push('אירועים');
+    if (hasMissingOddsData) missingParts.push('תחזיות/יחסים');
+
+    if (missingParts.length > 0) {
+      return {
+        status: 'STALE' as const,
+        statusLabel: `חסרים ${missingParts.join(' + ')}`,
+        statusNote: `יש משחקים שהסתיימו בלי ${missingParts.join(' ו')} — ניתן למשוך אותם.`,
+      };
+    }
     return {
       status: 'DONE' as const,
       statusLabel: 'אין מה למשוך',
@@ -272,7 +298,7 @@ function parseLatestStepSummary(stepsJson: unknown) {
       return { key, label, syncedCount };
     })
     .filter((step): step is { key: string; label: string; syncedCount: number } => Boolean(step))
-    .slice(0, 6);
+    .slice(0, 12);
 }
 
 export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverageRow[] {
@@ -373,7 +399,15 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
       const teamIds = primaryTeamIds.size > 0 ? primaryTeamIds : fallbackTeamIds;
 
       const teamsInScope = season.teams.filter((team) => teamIds.has(team.id));
+      const venueIdsInScope = new Set(
+        [
+          ...teamsInScope.map((team) => team.venueId),
+          ...scopedGames.map((game) => game.venueId),
+        ].filter((venueId): venueId is string => Boolean(venueId))
+      );
       const uniquePlayerIds = new Set(scopedPlayerStats.map((stat) => stat.player.id));
+      const totalEventsCount = scopedGames.reduce((sum, game) => sum + (game._count?.events || 0), 0);
+      const totalLineupsCount = scopedGames.reduce((sum, game) => sum + (game._count?.lineupEntries || 0), 0);
       const latestFetchAt = getLatestDate(
         scopedJobs.map((job) => job.finishedAt || job.createdAt)
       );
@@ -408,14 +442,35 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
 
       const totalCount =
         teamsInScope.length +
+        venueIdsInScope.size +
         uniquePlayerIds.size +
         scopedGames.length +
+        totalEventsCount +
+        totalLineupsCount +
         scopedStandings.length +
         scopedPredictions.length +
         scopedHeadToHead.length +
         scopedOdds.length +
         scopedLive.length;
 
+      const completedGamesCount = scopedGames.filter((g) => g.status === 'COMPLETED').length;
+      const completedGamesWithoutEvents = scopedGames.filter(
+        (game) => game.status === 'COMPLETED' && (game._count?.events || 0) === 0
+      ).length;
+      // Only flag missing events if >10% of completed games lack them AND we haven't already tried fetching
+      const hasCompletedEventsFetch = scopedJobs.some((job) => {
+        const steps = Array.isArray(job.stepsJson) ? job.stepsJson as Array<Record<string, unknown>> : [];
+        return steps.some((s) => s.key === 'events' && (s.status === 'done' || s.status === 'completed'));
+      });
+      const significantMissingEvents = completedGamesCount > 0
+        && completedGamesWithoutEvents > Math.max(2, completedGamesCount * 0.1)
+        && !hasCompletedEventsFetch;
+      // Only flag missing odds if we never tried fetching them (no completed fetch job with odds)
+      const hasCompletedOddsFetch = scopedJobs.some((job) => {
+        const steps = Array.isArray(job.stepsJson) ? job.stepsJson as Array<Record<string, unknown>> : [];
+        return steps.some((s) => s.key === 'odds' && (s.status === 'done' || s.status === 'completed'));
+      });
+      const hasMissingOdds = completedGamesCount > 3 && scopedOdds.length === 0 && !hasCompletedOddsFetch;
       const statusMeta = getStatusMeta({
         hasAnyData: totalCount > 0,
         seasonEnded,
@@ -423,6 +478,8 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
         hasUpcomingOrLive,
         lastFetchAt: latestFetchAt,
         latestCoverageUpdateAt,
+        hasMissingEventData: significantMissingEvents,
+        hasMissingOddsData: hasMissingOdds,
       });
 
       const teamRows: AdminCoverageTeamRow[] = teamsInScope
@@ -467,14 +524,27 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
             const gameDate = asDate(game.dateTime);
             return Boolean(gameDate && gameDate.getTime() >= Date.now() - 3 * 60 * 60 * 1000);
           });
+          const teamEventsCount = teamGames.reduce((sum, game) => sum + (game._count?.events || 0), 0);
+          const teamLineupsCount = teamGames.reduce((sum, game) => sum + (game._count?.lineupEntries || 0), 0);
           const teamTotalCount =
+            (team.venueId ? 1 : 0) +
             new Set(teamPlayerStats.map((stat) => stat.player.id)).size +
             teamGames.length +
+            teamEventsCount +
+            teamLineupsCount +
             teamStandings.length +
             teamPredictions.length +
             teamH2H.length +
             teamOdds.length +
             teamLive.length;
+          const teamCompletedCount = teamGames.filter((g) => g.status === 'COMPLETED').length;
+          const teamCompletedWithoutEvents = teamGames.filter(
+            (game) => game.status === 'COMPLETED' && (game._count?.events || 0) === 0
+          ).length;
+          const teamSignificantMissingEvents = teamCompletedCount > 0
+            && teamCompletedWithoutEvents > Math.max(2, teamCompletedCount * 0.1)
+            && !hasCompletedEventsFetch;
+          const teamMissingOdds = teamCompletedCount > 3 && teamOdds.length === 0 && !hasCompletedOddsFetch;
           const teamStatusMeta = getStatusMeta({
             hasAnyData: teamTotalCount > 0 || team._count.players > 0,
             seasonEnded,
@@ -482,6 +552,8 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
             hasUpcomingOrLive: teamHasUpcomingOrLive,
             lastFetchAt: latestTeamFetchAt,
             latestCoverageUpdateAt: latestTeamUpdateAt,
+            hasMissingEventData: teamSignificantMissingEvents,
+            hasMissingOddsData: teamMissingOdds,
           });
 
           return {
@@ -492,6 +564,8 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
             rosterPlayersCount: team._count.players,
             playersCount: new Set(teamPlayerStats.map((stat) => stat.player.id)).size,
             gamesCount: teamGames.length,
+            eventsCount: teamEventsCount,
+            lineupsCount: teamLineupsCount,
             standingsCount: teamStandings.length,
             predictionsCount: teamPredictions.length,
             h2hCount: teamH2H.length,
@@ -516,8 +590,11 @@ export function buildAdminCoverageRows(seasons: CoverageSeason[]): AdminCoverage
         competitionNameHe: competitionSeason?.competition.nameHe || source.nameHe,
         competitionNameEn: competitionSeason?.competition.nameEn || source.nameEn,
         teamsCount: teamsInScope.length,
+        venuesCount: venueIdsInScope.size,
         playersCount: uniquePlayerIds.size,
         gamesCount: scopedGames.length,
+        eventsCount: totalEventsCount,
+        lineupsCount: totalLineupsCount,
         standingsCount: scopedStandings.length,
         predictionsCount: scopedPredictions.length,
         h2hCount: scopedHeadToHead.length,

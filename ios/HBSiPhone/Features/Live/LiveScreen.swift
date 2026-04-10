@@ -17,21 +17,14 @@ struct LiveScreen: View {
                 ForEach(payload.groups) { group in
                     Section("\(group.countryLabel) • \(group.leagueLabel)") {
                         ForEach(group.matches) { match in
-                            Button {
-                                router(.game(match.gameId))
-                            } label: {
-                                HStack {
-                                    Text("\(match.homeScore)-\(match.awayScore)")
-                                        .fontWeight(.bold)
-                                    Spacer()
-                                    VStack(alignment: .trailing, spacing: 4) {
-                                        Text("\(match.homeTeamName) - \(match.awayTeamName)")
-                                            .lineLimit(1)
-                                        Text(match.minuteLabel)
-                                            .font(.caption)
-                                            .foregroundStyle(AppTheme.brand)
-                                    }
+                            if canOpenGame(match.gameId) {
+                                Button {
+                                    router(.game(match.gameId))
+                                } label: {
+                                    liveRow(match)
                                 }
+                            } else {
+                                liveRow(match)
                             }
                         }
                     }
@@ -53,6 +46,25 @@ struct LiveScreen: View {
             state = .loaded(try await service.fetchLive())
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    private func canOpenGame(_ gameId: String) -> Bool {
+        gameId.hasPrefix("/games/") && gameId.count > 8
+    }
+
+    private func liveRow(_ match: MobileLiveItem) -> some View {
+        HStack {
+            Text("\(match.homeScore)-\(match.awayScore)")
+                .fontWeight(.bold)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("\(match.homeTeamName) - \(match.awayTeamName)")
+                    .lineLimit(1)
+                Text(match.minuteLabel)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.brand)
+            }
         }
     }
 }

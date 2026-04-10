@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { getCurrentUser } from '@/lib/auth';
+import SmartFilterForm from '@/components/SmartFilterForm';
+import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
 import { formatPlayerName } from '@/lib/player-display';
@@ -25,12 +28,42 @@ export default async function GamesPage({
     competitionId?: string;
     round?: string;
     teamId?: string;
+    view?: string;
   };
 }) {
+  const displayMode = await getDisplayMode(searchParams?.view);
+  const currentUser = await getCurrentUser();
   const seasons = await prisma.season.findMany({
     orderBy: { year: 'desc' },
-    take: 10,
   });
+  const seasonIds = seasons.map((season) => season.id);
+  const [allFilterTeams, allFilterGames] = seasonIds.length
+    ? await Promise.all([
+        prisma.team.findMany({
+          where: { seasonId: { in: seasonIds } },
+          select: { id: true, seasonId: true, nameHe: true, nameEn: true },
+          orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
+        }),
+        prisma.game.findMany({
+          where: { seasonId: { in: seasonIds } },
+          select: {
+            seasonId: true,
+            competitionId: true,
+            roundNameHe: true,
+            roundNameEn: true,
+            homeTeamId: true,
+            awayTeamId: true,
+            competition: {
+              select: {
+                id: true,
+                nameHe: true,
+                nameEn: true,
+              },
+            },
+          },
+        }),
+      ])
+    : [[], []];
 
   const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
@@ -87,6 +120,127 @@ export default async function GamesPage({
 
   const selectedRound = searchParams?.round || 'all';
 
+  const gamesFilterFields = (() => {
+    const competitionMap = new Map<string, { value: string; label: string; seasonMeta: Set<string> }>();
+    const roundMap = new Map<
+      string,
+      { value: string; label: string; seasonMeta: Set<string>; competitionMeta: Set<string> }
+    >();
+    const teamMap = new Map<
+      string,
+      { value: string; label: string; seasonMeta: Set<string>; competitionMeta: Set<string>; roundMeta: Set<string> }
+    >();
+
+    for (const game of allFilterGames) {
+      if (game.competitionId && game.competition) {
+        const competitionEntry = competitionMap.get(game.competitionId);
+        if (competitionEntry) {
+          competitionEntry.seasonMeta.add(game.seasonId);
+        } else {
+          competitionMap.set(game.competitionId, {
+            value: game.competitionId,
+            label: getCompetitionDisplayName(game.competition),
+            seasonMeta: new Set([game.seasonId]),
+          });
+        }
+      }
+
+      const roundValue = game.roundNameHe || game.roundNameEn;
+      if (roundValue) {
+        const roundKey = `${game.seasonId}__${roundValue}`;
+        const roundEntry = roundMap.get(roundKey);
+        if (roundEntry) {
+          if (game.competitionId) roundEntry.competitionMeta.add(game.competitionId);
+        } else {
+          roundMap.set(roundKey, {
+            value: roundValue,
+            label: getRoundDisplayName(roundValue, roundValue),
+            seasonMeta: new Set([game.seasonId]),
+            competitionMeta: new Set(game.competitionId ? [game.competitionId] : []),
+          });
+        }
+      }
+
+      for (const teamId of [game.homeTeamId, game.awayTeamId]) {
+        const team = allFilterTeams.find((entry) => entry.id === teamId);
+        if (!team) continue;
+
+        const teamEntry = teamMap.get(teamId);
+        if (teamEntry) {
+          teamEntry.seasonMeta.add(game.seasonId);
+          if (game.competitionId) teamEntry.competitionMeta.add(game.competitionId);
+          if (roundValue) teamEntry.roundMeta.add(roundValue);
+        } else {
+          teamMap.set(teamId, {
+            value: teamId,
+            label: team.nameHe || team.nameEn,
+            seasonMeta: new Set([game.seasonId]),
+            competitionMeta: new Set(game.competitionId ? [game.competitionId] : []),
+            roundMeta: new Set(roundValue ? [roundValue] : []),
+          });
+        }
+      }
+    }
+
+    const selectClassName = `rounded-2xl px-4 py-3 font-semibold ${
+      displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50'
+    }`;
+
+    return [
+      {
+        name: 'season',
+        options: seasons.map((season) => ({ value: season.id, label: season.name })),
+        className: selectClassName,
+      },
+      {
+        name: 'competitionId',
+        includeAllOption: true,
+        allLabel: 'כל המסגרות',
+        options: Array.from(competitionMap.values())
+          .sort((a, b) => a.label.localeCompare(b.label, 'he'))
+          .map((option) => ({
+            value: option.value,
+            label: option.label,
+            meta: { season: Array.from(option.seasonMeta) },
+          })),
+        className: selectClassName,
+      },
+      {
+        name: 'round',
+        includeAllOption: true,
+        allLabel: 'כל המחזורים',
+        options: Array.from(roundMap.values())
+          .sort((a, b) => a.label.localeCompare(b.label, 'he'))
+          .map((option) => ({
+            value: option.value,
+            label: option.label,
+            meta: {
+              season: Array.from(option.seasonMeta),
+              competitionId: Array.from(option.competitionMeta),
+            },
+          })),
+        className: selectClassName,
+      },
+      {
+        name: 'teamId',
+        includeAllOption: true,
+        allLabel: 'כל הקבוצות',
+        options: Array.from(teamMap.values())
+          .sort((a, b) => a.label.localeCompare(b.label, 'he'))
+          .map((option) => ({
+            value: option.value,
+            label: option.label,
+            meta: {
+              season: Array.from(option.seasonMeta),
+              competitionId: Array.from(option.competitionMeta),
+              round: Array.from(option.roundMeta),
+            },
+          })),
+        className: selectClassName,
+      },
+    ];
+  })();
+
   const games = selectedSeason
     ? await prisma.game.findMany({
         where: {
@@ -121,69 +275,30 @@ export default async function GamesPage({
     : [];
 
   return (
-    <div className="min-h-screen bg-stone-100 px-4 py-8">
+    <div className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#edf2ff_100%)]' : 'bg-stone-100'}`}>
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-700">Matches</p>
-          <h1 className="mt-2 text-3xl font-black text-stone-900">מרכז המשחקים</h1>
-          <p className="mt-3 max-w-3xl text-stone-600">
+        <section className={`rounded-[28px] border p-6 shadow-sm ${displayMode === 'premier' ? 'border-white/70 bg-[linear-gradient(140deg,#12002f,#4a006f_48%,#05a3d6)] text-white' : 'border-stone-200 bg-white'}`}>
+          <p className={`text-sm font-semibold tracking-[0.25em] ${displayMode === 'premier' ? 'text-cyan-100' : 'text-amber-700'}`}>משחקים</p>
+          <h1 className={`mt-2 text-3xl font-black ${displayMode === 'premier' ? 'text-white' : 'text-stone-900'}`}>מרכז המשחקים</h1>
+          <p className={`mt-3 max-w-3xl ${displayMode === 'premier' ? 'text-white/80' : 'text-stone-600'}`}>
             בחרו עונה, ליגה או גביע, מחזור וקבוצה כדי לראות את רשימת המשחקים ואת האירועים המרכזיים בכל משחק.
           </p>
 
-          <form className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]" action="/games">
-            <select
-              name="season"
-              defaultValue={selectedSeason?.id || ''}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
-            >
-              {seasons.map((season) => (
-                <option key={season.id} value={season.id}>
-                  {season.name}
-                </option>
-              ))}
-            </select>
+          <SmartFilterForm
+            action="/games"
+            hiddenFields={{ view: displayMode }}
+            fields={gamesFilterFields}
+            initialValues={{
+              season: selectedSeason?.id || '',
+              competitionId: selectedCompetitionId,
+              round: selectedRound,
+              teamId: selectedTeamId,
+            }}
+            formClassName="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]"
+            buttonClassName="rounded-full bg-stone-900 px-5 py-3 font-bold text-white"
+            submitLabel="סנן משחקים"
+          />
 
-            <select
-              name="competitionId"
-              defaultValue={selectedCompetitionId}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
-            >
-              <option value="all">כל המסגרות</option>
-              {competitions.map((competition) => (
-                <option key={competition.id} value={competition.id}>
-                  {getCompetitionDisplayName(competition)}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="round"
-              defaultValue={selectedRound}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
-            >
-              <option value="all">כל המחזורים</option>
-              {rounds.map((round) => (
-                <option key={round} value={round}>
-                  {getRoundDisplayName(round, round)}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="teamId"
-              defaultValue={selectedTeamId}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
-            >
-              <option value="all">כל הקבוצות</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.nameHe || team.nameEn}
-                </option>
-              ))}
-            </select>
-
-            <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">סנן משחקים</button>
-          </form>
         </section>
 
         <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
@@ -195,14 +310,29 @@ export default async function GamesPage({
           </div>
 
           <div className="space-y-4">
-            {games.map((game) => (
+            {games.map((game) => {
+              const statusBadge = game.status === 'COMPLETED'
+                ? { label: 'הסתיים', cls: 'bg-emerald-100 text-emerald-700' }
+                : game.status === 'ONGOING'
+                  ? { label: 'שידור חי', cls: 'bg-red-100 text-red-700 animate-pulse' }
+                  : game.status === 'CANCELLED'
+                    ? { label: 'בוטל', cls: 'bg-stone-200 text-stone-500' }
+                    : { label: 'מתוכנן', cls: 'bg-blue-100 text-blue-700' };
+
+              return (
               <article key={game.id} className="overflow-hidden rounded-[24px] border border-stone-200 bg-stone-50">
                 <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto_1fr] md:items-center">
-                  <div className="text-center md:text-left">
-                    <div className="text-lg font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
-                    <div className="text-sm text-stone-500">{game.homeTeam.nameEn}</div>
+                  <div className="flex items-center gap-3 md:justify-start justify-center">
+                    {game.homeTeam.logoUrl ? (
+                      <img src={game.homeTeam.logoUrl} alt="" className="h-10 w-10 rounded-full border border-stone-200 bg-white object-contain p-1" />
+                    ) : null}
+                    <div className="text-center md:text-left">
+                      <div className="text-lg font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
+                      <div className="text-sm text-stone-500">{game.homeTeam.nameEn}</div>
+                    </div>
                   </div>
                   <div className="text-center">
+                    <span className={`mb-2 inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold ${statusBadge.cls}`}>{statusBadge.label}</span>
                     <div className="inline-flex rounded-full bg-stone-900 px-5 py-3 text-xl font-black text-white">
                       {getGameScoreDisplay(game)}
                     </div>
@@ -214,17 +344,30 @@ export default async function GamesPage({
                       {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(game.dateTime)}
                     </div>
                   </div>
-                  <div className="text-center md:text-right">
-                    <div className="text-lg font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
-                    <div className="text-sm text-stone-500">{game.awayTeam.nameEn}</div>
+                  <div className="flex items-center gap-3 md:justify-end justify-center">
+                    <div className="text-center md:text-right">
+                      <div className="text-lg font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
+                      <div className="text-sm text-stone-500">{game.awayTeam.nameEn}</div>
+                    </div>
+                    {game.awayTeam.logoUrl ? (
+                      <img src={game.awayTeam.logoUrl} alt="" className="h-10 w-10 rounded-full border border-stone-200 bg-white object-contain p-1" />
+                    ) : null}
                   </div>
                 </div>
 
                 <div className="border-t border-stone-200 bg-white px-5 py-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <Link href={`/games/${game.id}`} className="rounded-full bg-red-800 px-4 py-2 text-sm font-bold text-white">
+                    <Link href={`/games/${game.id}?view=${displayMode}`} className="rounded-full bg-red-800 px-4 py-2 text-sm font-bold text-white">
                       לעמוד המשחק המלא
                     </Link>
+                    {currentUser?.role === 'ADMIN' ? (
+                      <Link
+                        href={`/games/${game.id}?view=${displayMode}${displayMode === 'premier' ? '&tab=events' : ''}#admin-editor`}
+                        className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900"
+                      >
+                        עריכת אדמין
+                      </Link>
+                    ) : null}
                     <details className="group w-full md:w-auto">
                       <summary className="cursor-pointer list-none rounded-full border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 transition hover:border-red-300 hover:text-red-800">
                         פתח אירועים מרכזיים
@@ -260,7 +403,8 @@ export default async function GamesPage({
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
 
             {games.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center text-sm text-stone-500">

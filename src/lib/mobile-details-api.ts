@@ -1,5 +1,6 @@
 import { getCompetitionDisplayName, getGameScoreDisplay, getRoundDisplayName } from '@/lib/competition-display';
 import { derivePlayerDeepStats, deriveTeamDeepStats } from '@/lib/deep-stats';
+import { getEventDisplayLabel } from '@/lib/event-display';
 import { formatPlayerName } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
@@ -600,7 +601,7 @@ export async function getMobileGamePayload(gameId: string) {
       stats: comparisonRows,
       events: game.events.map((event) => ({
         id: event.id,
-        type: event.type,
+        type: getEventDisplayLabel(event.type),
         minute: event.minute,
         extraMinute: event.extraMinute,
         displayMinute: `${event.minute}${event.extraMinute ? `+${event.extraMinute}` : ''}'`,

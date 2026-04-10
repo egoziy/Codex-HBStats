@@ -7,6 +7,69 @@ function normalizeCoachName(name: string | null | undefined) {
   return value || null;
 }
 
+function normalizeVenueName(value: string | null | undefined) {
+  return (value || '')
+    .toLocaleLowerCase('en-US')
+    .normalize('NFKD')
+    .replace(/['"`.]/g, '')
+    .replace(/[\u0591-\u05C7]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function resolveTeamVenue({
+  venueId,
+  stadiumHe,
+  existingTeam,
+}: {
+  venueId: string | null | undefined;
+  stadiumHe: string | null | undefined;
+  existingTeam: {
+    id: string;
+    venueId?: string | null;
+    stadiumHe?: string | null;
+    stadiumEn?: string | null;
+  };
+}) {
+  if (venueId) {
+    return prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        nameHe: true,
+        nameEn: true,
+        cityHe: true,
+        cityEn: true,
+      },
+    });
+  }
+
+  const candidateNames = [stadiumHe, existingTeam.stadiumHe, existingTeam.stadiumEn]
+    .map((value) => normalizeVenueName(value))
+    .filter(Boolean);
+
+  if (!candidateNames.length) {
+    return null;
+  }
+
+  const venues = await prisma.venue.findMany({
+    select: {
+      id: true,
+      nameHe: true,
+      nameEn: true,
+      cityHe: true,
+      cityEn: true,
+    },
+  });
+
+  return (
+    venues.find((venue) => {
+      const venueNames = [venue.nameHe, venue.nameEn].map((value) => normalizeVenueName(value));
+      return candidateNames.some((candidate) => venueNames.includes(candidate));
+    }) || null
+  );
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const seasonId = searchParams.get('seasonId');
@@ -18,6 +81,7 @@ export async function GET(request: NextRequest) {
       include: {
         players: true,
         season: true,
+        venue: true,
         coachAssignments: {
           orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
         },
@@ -42,6 +106,7 @@ export async function GET(request: NextRequest) {
     where: { seasonId },
     include: {
       players: true,
+      venue: true,
       coachAssignments: {
         orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
       },
@@ -104,7 +169,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(team, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to create team', details: error.message },
+      { error: 'Failed to create team' },
       { status: 400 }
     );
   }
@@ -133,6 +198,7 @@ export async function PUT(request: NextRequest) {
     countryHe,
     cityHe,
     stadiumHe,
+    venueId,
     notesHe,
   } = body;
 
@@ -146,7 +212,16 @@ export async function PUT(request: NextRequest) {
   try {
     const existingTeam = await prisma.team.findUnique({
       where: { id },
-      select: { additionalInfo: true, apiFootballId: true, nameEn: true, seasonId: true },
+      select: {
+        id: true,
+        additionalInfo: true,
+        apiFootballId: true,
+        nameEn: true,
+        seasonId: true,
+        venueId: true,
+        stadiumHe: true,
+        stadiumEn: true,
+      },
     });
 
     if (!existingTeam) {
@@ -172,6 +247,11 @@ export async function PUT(request: NextRequest) {
 
     const nextCoachNameEn = normalizeCoachName(coach);
     const nextCoachNameHe = normalizeCoachName(coachHe);
+    const linkedVenue = await resolveTeamVenue({
+      venueId,
+      stadiumHe,
+      existingTeam,
+    });
 
     const team = await prisma.team.update({
       where: { id },
@@ -184,8 +264,20 @@ export async function PUT(request: NextRequest) {
         ...(coachHe !== undefined && { coachHe: nextCoachNameHe }),
         ...(logoUrl !== undefined && { logoUrl }),
         ...(countryHe !== undefined && { countryHe: countryHe || null }),
-        ...(cityHe !== undefined && { cityHe: cityHe || null }),
-        ...(stadiumHe !== undefined && { stadiumHe: stadiumHe || null }),
+        ...(cityHe !== undefined || linkedVenue
+          ? { cityHe: linkedVenue?.cityHe || cityHe || null }
+          : {}),
+        ...(stadiumHe !== undefined || venueId !== undefined || linkedVenue
+          ? { stadiumHe: linkedVenue?.nameHe || stadiumHe || null }
+          : {}),
+        ...(linkedVenue
+          ? {
+              stadiumEn: linkedVenue.nameEn || null,
+              venueId: linkedVenue.id,
+            }
+          : venueId !== undefined
+            ? { venueId: null }
+            : {}),
         ...(notesHe !== undefined && {
           additionalInfo: {
             ...((existingTeam?.additionalInfo as Record<string, unknown> | null) || {}),
@@ -225,6 +317,7 @@ export async function PUT(request: NextRequest) {
     const refreshedTeam = await prisma.team.findUnique({
       where: { id: team.id },
       include: {
+        venue: true,
         coachAssignments: {
           orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
         },
@@ -234,7 +327,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(refreshedTeam || team);
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to update team', details: error.message },
+      { error: 'Failed to update team' },
       { status: 400 }
     );
   }
@@ -264,7 +357,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json(
-      { error: 'Failed to delete team', details: error.message },
+      { error: 'Failed to delete team' },
       { status: 400 }
     );
   }

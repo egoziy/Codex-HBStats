@@ -41,6 +41,7 @@ const resourceDefs: ResourceDef[] = [
   { key: 'players', label: 'שחקנים וסטטיסטיקות שחקן', supported: true },
   { key: 'fixtures', label: 'משחקים ותוצאות', supported: true },
   { key: 'standings', label: 'טבלאות ליגה', supported: true },
+  { key: 'venues', label: 'אצטדיונים', supported: true },
   { key: 'events', label: 'אירועי משחק', supported: true },
   { key: 'lineups', label: 'הרכבים', supported: true },
   { key: 'statistics', label: 'סטטיסטיקות משחק', supported: true },
@@ -58,7 +59,8 @@ const resourceDefs: ResourceDef[] = [
 
 const ALL_TEAMS_ONLY_RESOURCE_NOTE = 'זמין רק בבחירה של כל הקבוצות';
 const RESOURCE_HELP_TEXT: Record<string, string> = {
-  odds: 'זמין עבור משחקים עתידיים או חיים שכבר יובאו למערכת.',
+  venues: 'שומר אצטדיונים ומגרשים מתוך נתוני הקבוצות והמשחקים שכבר נשלפו.',
+  odds: 'זמין עבור משחקים עתידיים או חיים שכבר יובאו למערכת, כולל bookmakers ו-bets מנורמלים.',
   predictions: 'זמין עבור משחקים עתידיים או חיים שכבר יובאו למערכת.',
   h2h: 'זמין עבור משחקים עתידיים או חיים שכבר יובאו למערכת.',
   livescore: 'זמין רק כשיש כרגע משחקים חיים בליגה שנבחרה.',
@@ -106,6 +108,7 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
     'teams',
     'players',
     'fixtures',
+    'venues',
     'standings',
     'events',
   ]);
@@ -288,7 +291,7 @@ export default function ApiFetchForm({ teams }: { teams: TeamOption[] }) {
           : selectedStepStates.map((step) => ({ ...step, status: 'done' as const }))
       );
       setResult(
-        `המשיכה הסתיימה. סונכרנו ${payload.countriesSaved || 0} מדינות, ${payload.seasonsSaved || 0} עונות, ${payload.leaguesSaved || 0} ליגות, נוספו או עודכנו ${payload.teamsAdded} קבוצות, ${payload.playersAdded} שחקנים, ${payload.sidelinedSaved || 0} שחקנים מושבתים, ${payload.gamesAdded} משחקים, ${payload.standingsUpdated} שורות טבלה, ${payload.eventsSaved || 0} אירועים, ${payload.injuriesSaved || 0} פציעות, ${payload.transfersSaved || 0} העברות, ${payload.trophiesSaved || 0} תארים, ${payload.predictionsSaved || 0} תחזיות, ${payload.h2hSaved || 0} רשומות ראש בראש, ${payload.oddsSaved || 0} יחסים ו-${payload.livescoreSaved || 0} משחקי לייב.`
+        `המשיכה הסתיימה. סונכרנו ${payload.countriesSaved || 0} מדינות, ${payload.seasonsSaved || 0} עונות, ${payload.leaguesSaved || 0} ליגות, נוספו או עודכנו ${payload.venuesSaved || 0} אצטדיונים, ${payload.teamsAdded} קבוצות, ${payload.playersAdded} שחקנים, ${payload.sidelinedSaved || 0} שחקנים מושבתים, ${payload.gamesAdded} משחקים, ${payload.standingsUpdated} שורות טבלה, ${payload.eventsSaved || 0} אירועים, ${payload.injuriesSaved || 0} פציעות, ${payload.transfersSaved || 0} העברות, ${payload.trophiesSaved || 0} תארים, ${payload.predictionsSaved || 0} תחזיות, ${payload.h2hSaved || 0} רשומות ראש בראש, ${payload.oddsSaved || 0} יחסים ו-${payload.livescoreSaved || 0} משחקי לייב.`
       );
       router.refresh();
     } catch {

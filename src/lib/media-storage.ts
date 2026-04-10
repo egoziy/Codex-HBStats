@@ -35,7 +35,13 @@ async function saveRemoteFile(remoteUrl: string, targetRelativePath: string) {
 
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
-  const absolutePath = path.join(process.cwd(), 'public', targetRelativePath);
+  const baseDir = path.resolve(process.cwd(), 'public', 'uploads');
+  const absolutePath = path.resolve(process.cwd(), 'public', targetRelativePath);
+
+  // Prevent path traversal
+  if (!absolutePath.startsWith(baseDir)) {
+    throw new Error('Invalid file path');
+  }
 
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, buffer);
@@ -44,7 +50,13 @@ async function saveRemoteFile(remoteUrl: string, targetRelativePath: string) {
 }
 
 async function saveBufferFile(buffer: Buffer, targetRelativePath: string) {
-  const absolutePath = path.join(process.cwd(), 'public', targetRelativePath);
+  const baseDir = path.resolve(process.cwd(), 'public', 'uploads');
+  const absolutePath = path.resolve(process.cwd(), 'public', targetRelativePath);
+
+  // Prevent path traversal
+  if (!absolutePath.startsWith(baseDir)) {
+    throw new Error('Invalid file path');
+  }
 
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, buffer);
@@ -125,8 +137,8 @@ export async function storeUploadedImage({
   label,
 }: {
   file: File;
-  entityType: 'teams' | 'players';
-  seasonYear: number;
+  entityType: 'teams' | 'players' | 'venues';
+  seasonYear?: number | null;
   folderName: string;
   entityId: string;
   label: string;
@@ -135,9 +147,16 @@ export async function storeUploadedImage({
   const buffer = Buffer.from(arrayBuffer);
   const ext = extensionFromUrl(file.name) || extensionFromContentType(file.type);
   const safeName = `${Date.now()}-${slugify(label || file.name || entityId)}${ext}`;
+  const relativePath =
+    entityType === 'venues'
+      ? path.join('uploads', entityType, slugify(folderName || entityId), `${entityId}-${safeName}`)
+      : path.join(
+          'uploads',
+          entityType,
+          String(seasonYear || 'shared'),
+          slugify(folderName || entityId),
+          `${entityId}-${safeName}`
+        );
 
-  return saveBufferFile(
-    buffer,
-    path.join('uploads', entityType, String(seasonYear), slugify(folderName || entityId), `${entityId}-${safeName}`)
-  );
+  return saveBufferFile(buffer, relativePath);
 }
