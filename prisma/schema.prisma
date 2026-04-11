@@ -316,6 +316,8 @@ model Game {
   extra               Int?
   homeScore           Int?
   awayScore           Int?
+  homeScoreRegular    Int?              // תוצאת 90 דקות (כשיש הארכה)
+  awayScoreRegular    Int?
   homePenalty         Int?
   awayPenalty         Int?
   status              GameStatus        @default(SCHEDULED)
@@ -1111,8 +1113,10 @@ model ScrapedMatch {
   dateTime        DateTime?
   homeTeamName    String
   awayTeamName    String
-  homeScore       Int?
+  homeScore       Int?            // תוצאה סופית (כולל הארכה)
   awayScore       Int?
+  homeScoreRegular Int?          // תוצאת 90 דקות (כשיש הארכה)
+  awayScoreRegular Int?
   homePenalty     Int?
   awayPenalty     Int?
   status          String?         // 'completed', 'scheduled', etc.
