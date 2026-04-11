@@ -104,7 +104,7 @@ async function fetchAjax(method, params) {
   try {
     const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
     const data = curlGet(`${url}?${qs}`);
-    const m = data.match(/<HtmlData>([\s\S]*?)<\/HtmlData>/);
+    const m = data.match(/<HtmlData>([\s\S]*)<\/HtmlData>/);
     if (m) return cheerio.load(unescapeHtml(m[1]));
   } catch (e) { /* fall through */ }
 
@@ -151,8 +151,9 @@ async function scrapeStandings(leagueId, sid) {
     // Parse remaining cols by position (after pos + name)
     const numCols = [];
     cols.each((i, c) => {
-      const t = $(c).text().trim();
       if ($(c).hasClass('place') || $(c).hasClass('team_name') || $(c).hasClass('goals-col')) return;
+      const $c = $(c).clone(); $c.find('.sr-only').remove();
+      const t = $c.text().trim();
       const n = parseInt(t, 10);
       if (!isNaN(n)) numCols.push(n);
     });
@@ -575,7 +576,7 @@ async function scrapePlayerStats(teamSourceId, teamName, sid) {
     try {
       const body = `team_id=${teamSourceId}&season_id=${sid}&language=-1&isFemale=false&orderBy=GamesCount&asc=false`;
       const data = curlPost(`${BASE}/Components.asmx/TeamPlayersStatistics`, body, 'application/x-www-form-urlencoded');
-      const m = data.match(/<HtmlData>([\s\S]*?)<\/HtmlData>/);
+      const m = data.match(/<HtmlData>([\s\S]*)<\/HtmlData>/);
       if (m) $ = cheerio.load(unescapeHtml(m[1]));
       else {
         try { const p = JSON.parse(data); if (p?.d?.HtmlData) $ = cheerio.load(p.d.HtmlData); } catch (_) {}
