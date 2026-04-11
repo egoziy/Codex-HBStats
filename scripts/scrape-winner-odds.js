@@ -1,148 +1,116 @@
 #!/usr/bin/env node
 /**
- * Winner.co.il Odds Scraper
+ * Winner.co.il Odds Scraper — Puppeteer version
  * Fetches 1X2 odds for Israeli Premier League matches (and optionally all soccer)
  *
  * Usage:
  *   node scripts/scrape-winner-odds.js              # ליגת העל בלבד
  *   node scripts/scrape-winner-odds.js --all        # כל הכדורגל
  *   node scripts/scrape-winner-odds.js --json       # פלט JSON
- *
- * How it works:
- *   - lineChecksum=0 forces the API to return all currently-open bets
- *   - The API returns only matches with open betting lines
- *   - Implied probability = 1/odds, normalized to remove bookmaker margin
  */
 
-const ISRAELI_LEAGUES = ['ליגת העל', 'ליגה לאומית', 'גביע המדינה', 'גביע טוטו'];
+const puppeteer = require('puppeteer-core');
 
-const HEADERS = {
-  'accept': 'application/json',
-  'accept-language': 'he-IL,he;q=0.9,en;q=0.8',
-  'appversion': '2.6.0',
-  'content-type': 'application/json',
-  'deviceid': 'eb28e61e3fb79e583ef0b1e73aa225a9',
-  'referer': 'https://www.winner.co.il/',
-  'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
-  'useragentdata': JSON.stringify({
-    devicemodel: 'Macintosh',
-    deviceos: 'mac os',
-    deviceosversion: '10.15.7',
-    appversion: '2.6.0',
-    apptype: 'mobileweb',
-    originId: '3',
-    isAccessibility: false,
-  }),
-  'x-csrf-token': 'null',
-};
+const ISRAELI_LEAGUES = ['ליגת העל', 'ליגה לאומית', 'גביע המדינה', 'גביע טוטו', 'ליגת Winner'];
 
 function parseDate(eDate, mHour) {
-  // eDate format: YYMMDD, mHour: HHMM
   const s = String(eDate);
   const yy = s.slice(0, 2);
   const mm = s.slice(2, 4);
   const dd = s.slice(4, 6);
-  const hh = mHour.slice(0, 2);
-  const min = mHour.slice(2, 4);
+  const hh = String(mHour).padStart(4, '0').slice(0, 2);
+  const min = String(mHour).padStart(4, '0').slice(2, 4);
   return `20${yy}-${mm}-${dd} ${hh}:${min}`;
 }
 
 function calcOdds(outcomes) {
-  // Find 1X2 outcomes (home, draw, away)
   if (!outcomes || outcomes.length < 3) return null;
-
-  // Filter to only 1X2 type (3 outcomes with no spread)
-  const basic = outcomes.filter(o => o.spread === '' && !o.desc.includes('-'));
+  // Find the 3 basic 1X2 outcomes (no spread, simple desc)
+  const basic = outcomes.filter(o => o.spread === '' && !o.desc.match(/\d\s*-\s*\d/));
   if (basic.length !== 3) return null;
 
   const [home, draw, away] = basic;
   const h = parseFloat(home.price);
   const d = parseFloat(draw.price);
   const a = parseFloat(away.price);
-
   if (!h || !d || !a) return null;
 
-  // Implied probabilities (raw)
   const pH = 1 / h;
   const pD = 1 / d;
   const pA = 1 / a;
-  const total = pH + pD + pA; // > 1.0 = bookmaker margin (overround)
+  const total = pH + pD + pA;
   const margin = ((total - 1) * 100).toFixed(1);
 
-  // Normalized probabilities (remove margin)
-  const normH = ((pH / total) * 100).toFixed(1);
-  const normD = ((pD / total) * 100).toFixed(1);
-  const normA = ((pA / total) * 100).toFixed(1);
-
   return {
-    home:  { name: home.desc, odds: h, pct: normH },
-    draw:  { name: draw.desc, odds: d, pct: normD },
-    away:  { name: away.desc, odds: a, pct: normA },
+    home: { name: home.desc, odds: h, pct: ((pH / total) * 100).toFixed(1) },
+    draw: { name: draw.desc, odds: d, pct: ((pD / total) * 100).toFixed(1) },
+    away: { name: away.desc, odds: a, pct: ((pA / total) * 100).toFixed(1) },
     margin,
   };
 }
 
-async function fetchLine() {
-  // Use checksum=0 — server returns full current line (all open bets)
-  const url = 'https://www.winner.co.il/api/v2/publicapi/GetDMobileLine?lineChecksum=0';
-  const res = await fetch(url, { headers: HEADERS });
-
-  if (!res.ok) {
-    // checksum=0 may return 500; fall back to a known-working approach:
-    // fetch the page first to get a valid checksum, then use it
-    throw new Error(`HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
-  return data.lines;
-}
-
-async function fetchLineWithFallback() {
-  // Try checksum=0 first (full line)
-  try {
-    return await fetchLine();
-  } catch {
-    // Fallback: use a very old checksum which triggers full response
-    const url = 'https://www.winner.co.il/api/v2/publicapi/GetDMobileLine?lineChecksum=3171258493';
-    const res = await fetch(url, { headers: HEADERS });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return data.lines;
-  }
-}
-
-async function main() {
-  const args = process.argv.slice(2);
-  const showAll = args.includes('--all');
-  const jsonOutput = args.includes('--json');
-
-  console.error('מושך נתונים מ-Winner...');
-
-  const lines = await fetchLineWithFallback();
-  const all = [...(lines.u || []), ...(lines.a || [])];
-
-  // Filter: only 1X2 soccer matches
-  const soccer = all.filter(m => {
-    const isCorrectType = m.mp && m.mp.includes('1X2');
-    const isSoccer = m.sId === 240 || m.league; // sId 240 = soccer
-    return isCorrectType && isSoccer;
+async function fetchOdds() {
+  const browser = await puppeteer.launch({
+    headless: false, // Incapsula blocks headless Chrome; must run visible
+    executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,800'],
   });
 
-  // Filter by Israeli league if not --all
-  const matches = showAll
+  try {
+    const page = await browser.newPage();
+
+    // Intercept the GetDMobileLine API response
+    let lineData = null;
+
+    page.on('response', async (response) => {
+      const url = response.url();
+      if (url.includes('GetCMobileLine') && response.status() === 200) {
+        try {
+          const text = await response.text();
+          const json = JSON.parse(text);
+          // API uses 'markets' array (not 'lines.u/a')
+          const markets = json?.markets || [];
+          if (markets.length > 0) {
+            if (!lineData) lineData = [];
+            lineData.push(...markets);
+          }
+        } catch {}
+      }
+    });
+
+    // Navigate and wait for data to load
+    await page.goto('https://www.winner.co.il/he/sports/soccer', {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    });
+
+    // Wait for GetCMobileLine to load (large response ~1.9MB)
+    await new Promise(r => setTimeout(r, 8000));
+
+    return lineData || [];
+  } finally {
+    await browser.close();
+  }
+}
+
+function printResults(matches, showAll, jsonOutput) {
+  // Filter to 1X2 only
+  const soccer = matches.filter(m => m.mp && m.mp.includes('1X2'));
+
+  const filtered = showAll
     ? soccer
     : soccer.filter(m => ISRAELI_LEAGUES.some(l => m.league?.includes(l)));
 
-  if (matches.length === 0) {
+  if (filtered.length === 0) {
     const leagues = [...new Set(soccer.map(m => m.league))].sort();
     console.error(`לא נמצאו משחקים${showAll ? '' : ' ישראליים'}.`);
     console.error('ליגות זמינות:', leagues.join(', ') || 'אין');
     if (!showAll) console.error('השתמש ב --all לראות כל הכדורגל');
-    process.exit(0);
+    return;
   }
 
   if (jsonOutput) {
-    const out = matches.map(m => {
+    const out = filtered.map(m => {
       const odds = calcOdds(m.outcomes);
       return {
         matchId: m.mId,
@@ -158,15 +126,14 @@ async function main() {
     return;
   }
 
-  // Pretty print
   console.log(`\n📊 יחסי הימורים — Winner.co.il`);
   console.log(`עודכן: ${new Date().toLocaleString('he-IL')}\n`);
 
   let currentLeague = '';
-  for (const m of matches) {
+  for (const m of filtered) {
     if (m.league !== currentLeague) {
       currentLeague = m.league;
-      console.log(`\n🏆 ${m.league} (${m.country})`);
+      console.log(`\n🏆 ${m.league}${m.country ? ` (${m.country})` : ''}`);
       console.log('─'.repeat(70));
     }
 
@@ -177,22 +144,34 @@ async function main() {
 
     const odds = calcOdds(m.outcomes);
     if (odds) {
-      console.log(
-        `  1  ${odds.home.name.padEnd(20)} יחס: ${String(odds.home.odds).padStart(5)}   אחוז: ${odds.home.pct}%`
-      );
-      console.log(
-        `  X  ${'תיקו'.padEnd(20)} יחס: ${String(odds.draw.odds).padStart(5)}   אחוז: ${odds.draw.pct}%`
-      );
-      console.log(
-        `  2  ${odds.away.name.padEnd(20)} יחס: ${String(odds.away.odds).padStart(5)}   אחוז: ${odds.away.pct}%`
-      );
+      console.log(`  1  ${odds.home.name.padEnd(22)} יחס: ${String(odds.home.odds).padStart(5)}   אחוז: ${odds.home.pct}%`);
+      console.log(`  X  ${'תיקו'.padEnd(22)} יחס: ${String(odds.draw.odds).padStart(5)}   אחוז: ${odds.draw.pct}%`);
+      console.log(`  2  ${odds.away.name.padEnd(22)} יחס: ${String(odds.away.odds).padStart(5)}   אחוז: ${odds.away.pct}%`);
       console.log(`  📈 שולי הימור: ${odds.margin}%`);
-    } else {
-      console.log('  (לא נמצאו יחסי 1X2)');
     }
   }
+  console.log(`\n\nסה"כ ${filtered.length} משחקים.`);
+}
 
-  console.log(`\n\nסה"כ ${matches.length} משחקים.`);
+async function main() {
+  const args = process.argv.slice(2);
+  const showAll = args.includes('--all');
+  const jsonOutput = args.includes('--json');
+
+  console.error('פותח דפדפן ומושך נתונים מ-Winner...');
+  const matches = await fetchOdds();
+  console.error(`נמצאו ${matches.length} שורות מה-API.`);
+
+  // Deduplicate by matchId + mp
+  const seen = new Set();
+  const unique = matches.filter(m => {
+    const key = `${m.mId}|${m.mp}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  printResults(unique, showAll, jsonOutput);
 }
 
 main().catch(err => {
