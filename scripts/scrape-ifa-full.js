@@ -104,7 +104,7 @@ async function fetchAjax(method, params) {
   try {
     const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
     const data = curlGet(`${url}?${qs}`);
-    const m = data.match(/<HtmlData>([\s\S]*?)<\/HtmlData>/);
+    const m = data.match(/<HtmlData>([\s\S]*)<\/HtmlData>/);
     if (m) return cheerio.load(unescapeHtml(m[1]));
   } catch (e) { /* fall through */ }
 
@@ -151,8 +151,9 @@ async function scrapeStandings(leagueId, sid) {
     // Parse remaining cols by position (after pos + name)
     const numCols = [];
     cols.each((i, c) => {
-      const t = $(c).text().trim();
       if ($(c).hasClass('place') || $(c).hasClass('team_name') || $(c).hasClass('goals-col')) return;
+      const $c = $(c).clone(); $c.find('.sr-only').remove();
+      const t = $c.text().trim();
       const n = parseInt(t, 10);
       if (!isNaN(n)) numCols.push(n);
     });
@@ -356,9 +357,26 @@ async function scrapeGameDetails(gameId, sid) {
   const halfText = $half.text().trim();
   const venueText = $('#gTimeHolder a.place').text().trim();
 
+  // Parse extra time / penalty scores from full holder text
+  const holderText = $('#gTimeHolder').text().replace(/\s+/g, ' ');
+  const etMatch = holderText.match(/הארכה\s*:\s*.*?(\d+)\s*:\s*.*?(\d+)/);
+  let extraTimeHome = null, extraTimeAway = null;
+  if (etMatch) { extraTimeHome = +etMatch[1]; extraTimeAway = +etMatch[2]; }
+  const penMatch = holderText.match(/פנדלים\s*:\s*.*?(\d+)\s*:\s*.*?(\d+)/);
+  let penaltyHome = null, penaltyAway = null;
+  if (penMatch) { penaltyHome = +penMatch[1]; penaltyAway = +penMatch[2]; }
+
   let homeScore = null, awayScore = null;
+  let homeScoreRegular = null, awayScoreRegular = null;
   const sm = totalText.match(/(\d+)\s*:\s*(\d+)/);
   if (sm) { homeScore = +sm[1]; awayScore = +sm[2]; }
+  // Use extra time as final score if available, save regular time separately
+  if (extraTimeHome !== null) {
+    homeScoreRegular = homeScore;
+    awayScoreRegular = awayScore;
+    homeScore = extraTimeHome;
+    awayScore = extraTimeAway;
+  }
 
   let homeHalf = null, awayHalf = null;
   const hm = halfText.match(/(\d+)\s*:\s*(\d+)/);
@@ -430,7 +448,7 @@ async function scrapeGameDetails(gameId, sid) {
     update: {
       homeTeamName: homeTeamName || undefined,
       awayTeamName: awayTeamName || undefined,
-      homeScore, awayScore, homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      homeScore, awayScore, homeScoreRegular: homeScoreRegular, awayScoreRegular: awayScoreRegular, homeHalfScore: homeHalf, awayHalfScore: awayHalf, homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText || undefined, dateTime: dateTime || undefined,
       venue: venueText || undefined,
       ...refData,
@@ -445,7 +463,7 @@ async function scrapeGameDetails(gameId, sid) {
       source: SOURCE, sourceId: gameId, season: label,
       homeTeamName: homeTeamName || 'Unknown',
       awayTeamName: awayTeamName || 'Unknown',
-      homeScore, awayScore, homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      homeScore, awayScore, homeScoreRegular: homeScoreRegular, awayScoreRegular: awayScoreRegular, homeHalfScore: homeHalf, awayHalfScore: awayHalf, homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText, dateTime,
       venue: venueText,
       ...refData,
@@ -575,7 +593,7 @@ async function scrapePlayerStats(teamSourceId, teamName, sid) {
     try {
       const body = `team_id=${teamSourceId}&season_id=${sid}&language=-1&isFemale=false&orderBy=GamesCount&asc=false`;
       const data = curlPost(`${BASE}/Components.asmx/TeamPlayersStatistics`, body, 'application/x-www-form-urlencoded');
-      const m = data.match(/<HtmlData>([\s\S]*?)<\/HtmlData>/);
+      const m = data.match(/<HtmlData>([\s\S]*)<\/HtmlData>/);
       if (m) $ = cheerio.load(unescapeHtml(m[1]));
       else {
         try { const p = JSON.parse(data); if (p?.d?.HtmlData) $ = cheerio.load(p.d.HtmlData); } catch (_) {}

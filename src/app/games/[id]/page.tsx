@@ -669,7 +669,7 @@ function ClassicEventCard({ event }: { event: any }) {
           </div>
         ))}
       </div>
-      {event.notesHe ? <div className="mt-1 text-xs text-stone-500">{event.notesHe}</div> : null}
+      {event.team ? <div className="mt-1 text-xs text-stone-500">{event.team}</div> : null}
     </article>
   );
 }
@@ -724,7 +724,7 @@ function PremierEventCard({ event }: { event: any }) {
           </div>
         ))}
       </div>
-      {event.notesHe ? <div className="mt-1 text-xs text-slate-500">{event.notesHe}</div> : null}
+      {event.team ? <div className="mt-1 text-xs text-slate-500">{event.team}</div> : null}
     </article>
   );
 }
@@ -733,10 +733,12 @@ function getEventParticipantRows(event: any) {
   const primaryPlayer =
     event.player ? formatPlayerName(event.player) :
     event.participantName ? event.participantName :
+    event.notesHe ? event.notesHe.split('→')[0].replace(/^יצא\s*/, '').trim() :
     null;
   const relatedPlayer =
     event.relatedPlayer ? formatPlayerName(event.relatedPlayer) :
     event.relatedParticipantName ? event.relatedParticipantName :
+    (event.notesHe && event.notesHe.includes('→')) ? event.notesHe.split('→')[1].replace(/^נכנס\s*/, '').trim() :
     null;
 
   if (event.type === 'SUBSTITUTION_OUT') {
@@ -748,8 +750,8 @@ function getEventParticipantRows(event: any) {
 
   if (event.type === 'SUBSTITUTION_IN') {
     return [
-      { label: 'נכנס', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
-      ...(relatedPlayer ? [{ label: 'יוצא', value: relatedPlayer, emphasis: false }] : []),
+      { label: 'יצא', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
+      ...(relatedPlayer ? [{ label: 'נכנס', value: relatedPlayer, emphasis: false }] : []),
     ];
   }
 

@@ -34,35 +34,40 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const { searchParams } = new URL(request.url);
+    const format = searchParams.get('format') || 'dump';
+    const isSql = format === 'sql';
+
     const db = parseDatabaseUrl();
     const pgDump = findPgTool('pg_dump');
     const tmpDir = path.join(process.cwd(), 'tmp');
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true });
 
     const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const filename = `hbs_backup_${timestamp}.dump`;
+    const ext = isSql ? 'sql' : 'dump';
+    const filename = `hbs_backup_${timestamp}.${ext}`;
     const filepath = path.join(tmpDir, filename);
 
-    // Use custom format (-Fc) for compression (~7x smaller)
-    const cmd = `${pgDump} -h ${db.host} -p ${db.port} -U ${db.user} -d ${db.db} --no-owner --no-privileges -Fc -f "${filepath}"`;
+    const cmd = isSql
+      ? `${pgDump} -h ${db.host} -p ${db.port} -U ${db.user} -d ${db.db} --no-owner --no-privileges --clean --if-exists -f "${filepath}"`
+      : `${pgDump} -h ${db.host} -p ${db.port} -U ${db.user} -d ${db.db} --no-owner --no-privileges -Fc -f "${filepath}"`;
 
     execSync(cmd, {
       maxBuffer: 500 * 1024 * 1024,
-      timeout: 300000, // 5 minutes
+      timeout: 300000,
       env: { ...process.env, PGPASSWORD: db.password },
     });
 
     const stats = statSync(filepath);
     const sizeMB = (stats.size / 1024 / 1024).toFixed(1);
 
-    // Read and return as download
     const fileBuffer = readFileSync(filepath);
-    unlinkSync(filepath); // Clean up
+    unlinkSync(filepath);
 
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
-        'Content-Type': 'application/octet-stream',
+        'Content-Type': isSql ? 'application/sql' : 'application/octet-stream',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'X-File-Size': `${sizeMB}MB`,
       },

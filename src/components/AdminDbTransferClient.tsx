@@ -14,20 +14,19 @@ export default function AdminDbTransferClient() {
     if (type !== 'info') setTimeout(() => setMessage(null), 8000);
   };
 
-  const handleExport = async () => {
+  const handleExport = async (format: 'dump' | 'sql') => {
     setExporting(true);
-    showMessage('מייצא את בסיס הנתונים...', 'info');
+    showMessage(`מייצא ${format === 'sql' ? 'SQL' : 'DUMP'} — זה יכול לקחת דקה...`, 'info');
     try {
-      const res = await fetch('/api/admin/db-transfer');
+      const res = await fetch(`/api/admin/db-transfer?format=${format}`);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Export failed');
       }
       const blob = await res.blob();
       const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
-      const filename = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'hbs_backup.sql';
+      const filename = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || `hbs_backup.${format}`;
 
-      // Trigger download
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -113,13 +112,22 @@ export default function AdminDbTransferClient() {
           <br />
           הקובץ שנוצר ניתן לייבוא במחשב אחר.
         </p>
-        <button
-          onClick={handleExport}
-          disabled={exporting || importing}
-          className="mt-5 rounded-full bg-stone-900 px-8 py-3 text-sm font-bold text-white transition hover:bg-stone-800 disabled:opacity-50"
-        >
-          {exporting ? 'מייצא...' : 'ייצוא DB לקובץ SQL'}
-        </button>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            onClick={() => handleExport('dump')}
+            disabled={exporting || importing}
+            className="rounded-full bg-stone-900 px-8 py-3 text-sm font-bold text-white transition hover:bg-stone-800 disabled:opacity-50"
+          >
+            {exporting ? 'מייצא...' : 'ייצוא DUMP (דחוס ~50MB)'}
+          </button>
+          <button
+            onClick={() => handleExport('sql')}
+            disabled={exporting || importing}
+            className="rounded-full border-2 border-stone-300 px-8 py-3 text-sm font-bold text-stone-700 transition hover:border-stone-400 disabled:opacity-50"
+          >
+            {exporting ? 'מייצא...' : 'ייצוא SQL (קריא ~350MB)'}
+          </button>
+        </div>
       </div>
 
       {/* Import */}

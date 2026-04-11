@@ -38,6 +38,8 @@ export function getCompetitionDisplayName(competition?: {
 export function getGameScoreDisplay(game: {
   homeScore: number | null;
   awayScore: number | null;
+  homeScoreRegular?: number | null;
+  awayScoreRegular?: number | null;
   homePenalty?: number | null;
   awayPenalty?: number | null;
   statusShort?: string | null;
@@ -45,11 +47,15 @@ export function getGameScoreDisplay(game: {
 }) {
   if (game.status === 'COMPLETED' || game.status === 'ONGOING') {
     const score = `${game.homeScore ?? 0} - ${game.awayScore ?? 0}`;
-    if (game.statusShort === 'PEN' && game.homePenalty != null && game.awayPenalty != null) {
-      return `${score} (פנ׳ ${game.homePenalty}-${game.awayPenalty})`;
+    const hasExtraTime = game.statusShort === 'AET' || (game.homeScoreRegular != null && game.awayScoreRegular != null);
+    const hasPenalties = game.homePenalty != null && game.awayPenalty != null;
+    const regularScore = hasExtraTime ? `${game.homeScoreRegular ?? 0} - ${game.awayScoreRegular ?? 0}` : null;
+
+    if (hasPenalties) {
+      return `${score} (פנ׳ ${game.homePenalty}-${game.awayPenalty})${regularScore ? ` | ${regularScore} בתום 90׳` : ''}`;
     }
-    if (game.statusShort === 'AET') {
-      return `${score} (הארכה)`;
+    if (hasExtraTime) {
+      return `${score} הארכה${regularScore ? ` (${regularScore} בתום 90׳)` : ''}`;
     }
     return score;
   }
