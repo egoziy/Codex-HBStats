@@ -37,13 +37,18 @@ npm run dev -- --port 8011 # שרת פיתוח
 
 | נתון | כמות | מקור | עונות |
 |---|---|---|---|
-| עונות | 26 | Walla + API-Football | 2000-2026 |
-| קבוצות | ~1,350 | Walla + API-Football | 2000-2026 |
-| טבלאות | ~716 | Walla + IFA | 2000-2026 |
-| משחקים | ~5,414 | Walla + API-Football | 2000-2026 |
-| שחקנים | ~15,368 | Walla leaderboards + API-Football | 2000-2026 |
-| סטטיסטיקות שחקנים | ~35,965 | Walla + API-Football | 2000-2026 |
-| Leaderboards | ~29,398 | Walla (6 categories) | 2000-2026 |
+| עונות | 26 | IFA + Walla | 2000-2026 |
+| קבוצות | ~793 | IFA + Walla | 2000-2026 |
+| טבלאות | ~729 | IFA + Walla | 2000-2026 |
+| משחקים | ~13,064 | IFA (ליגה + גביע מדינה + טוטו) + Walla | 2000-2026 |
+| אירועי משחק | ~122,360 | IFA (97% מקושרים לשחקנים) | 2006-2026 |
+| הרכבים | ~208,673 | IFA (82% מקושרים לשחקנים) | 2006-2026 |
+| שחקנים | ~19,994 | IFA (83% מקושרים cross-season) | 2006-2026 |
+| סטטיסטיקות שחקנים | ~19,994 | IFA (10 שדות per player per season) | 2006-2026 |
+| Leaderboards | ~29,299 | Walla (6 קטגוריות) | 2000-2026 |
+| אצטדיונים | 248 | IFA | 2006-2026 |
+| שופטים | 125 | IFA (ראשיים בלבד, בעברית) | 2006-2026 |
+| תמונות שחקנים | ~20,890 | IFA (מקומיות) | 2006-2026 |
 
 ## מבנה התיקיות
 
@@ -77,6 +82,8 @@ src/
       admin/setup/             # ייבוא מלא ברקע
       admin/scrape/            # סריקת אתרים חיצוניים
       admin/merge/             # מיזוג עם preview + rollback
+      admin/db-transfer/       # ייצוא/ייבוא DB (pg_dump/pg_restore)
+      referees/                # CRUD + merge שופטים
       events/                  # CRUD אירועי משחק
       games/                   # CRUD משחקים
       players/sidelined/       # ניהול פציעות ידני
@@ -90,7 +97,11 @@ scripts/
   scrape-walla-games.js        # Walla: תוצאות משחקים (Puppeteer)
   scrape-walla-player-stats.js # Walla: סטטיסטיקות שחקנים מלאות
   scrape-walla-advanced-puppeteer.js # Walla: סטטיסטיקות מתקדמות
-  scrape-ifa.js                # IFA: טבלאות (Puppeteer)
+  scrape-ifa-full.js           # IFA: טבלאות + משחקים + שחקנים + אירועים (HTTP, ללא Puppeteer)
+  scrape-ifa-cups.js           # IFA: גביע מדינה + גביע טוטו (HTTP)
+  scrape-ifa.js                # IFA: טבלאות (Puppeteer, ישן)
+  download-ifa-photos.js       # הורדת תמונות שחקנים מ-IFA למקומי
+  compare-sources.js           # השוואת IFA vs Walla
   scrape-all-sport5.js         # Sport5: קבוצות + שחקנים
   merge-walla-standings.js     # מיזוג טבלאות → DB
   merge-walla-games.js         # מיזוג משחקים → DB
@@ -117,9 +128,16 @@ docs/
 - תוצאות משחקים עם תוצאות מחצית
 - סטטיסטיקות מתקדמות (19 קטגוריות per season)
 
-### football.org.il — IFA (2006-2026)
-- טבלאות ליגת העל + ליגה לאומית
-- דורש Puppeteer (ASP.NET דינמי)
+### football.org.il — IFA (2006-2026) — מקור ראשי
+- טבלאות ליגה (ASMX: LeagueTable)
+- משחקים מחזור-מחזור (ASMX: LeagueGamesList)
+- גביע מדינה (ASMX: NatCupAllTables, national_cup_id=618)
+- גביע טוטו ליגת העל (ASMX: TotoCup_AllTables, league_id=625)
+- גביע טוטו ליגה לאומית (ASMX: TotoCup_AllTables, league_id=630)
+- פרטי משחק: תוצאות, מחצית, הארכה, פנדלים, הרכבים, אירועים, שופטים (מפורסרים), מאמנים
+- סטטיסטיקות שחקנים (ASMX: GetTeamPlayersStatisticsList) — 10 שדות
+- פרטי שחקן: תמונה, תאריך לידה, אזרחות
+- HTTP בלבד (curl) — ללא Puppeteer
 
 ### Sport5 (2022-2025)
 - סגלי שחקנים עם סטטיסטיקות פרטניות
@@ -140,9 +158,11 @@ docs/
 
 נתונים סרוקים נשמרים בנפרד לפני מיזוג:
 - **ScrapedTeam** — קבוצה + עונה + מקור
-- **ScrapedPlayer** — שחקן + קבוצה
-- **ScrapedPlayerSeason** — סטטיסטיקות per season per player
-- **ScrapedMatch** — תוצאת משחק עם מחצית
+- **ScrapedPlayer** — שחקן + קבוצה + תמונה + תאריך לידה + אזרחות
+- **ScrapedPlayerSeason** — סטטיסטיקות per season per player (10 שדות + yellowCardsToto)
+- **ScrapedMatch** — תוצאת משחק + מחצית + הארכה + פנדלים + שופטים מפורסרים (6 שדות)
+- **ScrapedMatchEvent** — אירועי משחק: שערים, כרטיסים, חילופים + דקה + שחקנים
+- **ScrapedMatchLineup** — הרכבים: פותח, מחליפים, ספסל + מספר חולצה + עמדה
 - **ScrapedStanding** — שורת טבלה
 - **ScrapedLeaderboard** — leaderboard entry (שערים, בישולים, כרטיסים, מתקדמים)
 - **ScrapeJob** — מעקב עבודות סריקה
@@ -154,8 +174,16 @@ docs/
 - **לא מוחק** נתונים קיימים
 - **לא דורס** שדות שכבר מלאים מ-API-Football
 - **ממלא** רק שדות ריקים
-- **Levenshtein fuzzy matching** להתאמת שמות שחקנים
+- **Exact + abbreviation matching** להתאמת שמות קבוצות (IFA_TEAM_ABBREVS)
+- **Name reversal + all-words matching** לשחקנים (שם פרטי/משפחה)
+- **Competition-aware** — מזהה ליגה/גביע מדינה/טוטו לפי leagueNameHe + framework
 - **Snapshot + Rollback** — כל מיזוג ניתן לביטול
+- **Player linking** — מקשר אירועים והרכבים ל-playerId (97% הצלחה)
+
+### סדר מיזוג נכון
+1. **standings** — יוצר seasons + teams + standings
+2. **games** — צריך seasons + teams, יוצר games + events + lineups
+3. **players** — צריך seasons + teams, יוצר players + playerStatistics
 
 ### זרימה
 ```
@@ -170,9 +198,11 @@ docs/
 - `/admin` — לוח בקרה ראשי (נתונים + הגדרות)
 - `/admin/setup` — **ייבוא מלא** מה-UI (3 מצבים: full/quick/merge-only)
 - `/admin/scrape` — סריקות חיצוניות (Sport5, Walla, IFA)
-- `/admin/merge` — מיזוג עם preview + rollback
+- `/admin/merge` — מיזוג עם preview + rollback (standings/games/players/all)
 - `/admin/games` — עורך משחקים
 - `/admin/venues` — ניהול אצטדיונים
+- `/admin/referees` — ניהול שופטים (עריכה inline, מיזוג כפולים, סינון מדינה/מסגרת)
+- `/admin/db-transfer` — ייצוא/ייבוא DB מלא (DUMP דחוס + SQL קריא)
 - `/admin/teams/[key]` — עורך קבוצה
 
 ### ייבוא מלא (`/admin/setup`)
