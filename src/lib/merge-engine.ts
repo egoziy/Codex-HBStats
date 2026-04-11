@@ -629,6 +629,8 @@ export async function previewGamesMerge(
           referee: match.referee, coachHome: match.coachHome, coachAway: match.coachAway,
           framework: match.framework, round: match.round,
           homeHalfScore: match.homeHalfScore, awayHalfScore: match.awayHalfScore,
+          homeScoreRegular: (match as any).homeScoreRegular, awayScoreRegular: (match as any).awayScoreRegular,
+          homePenalty: match.homePenalty, awayPenalty: match.awayPenalty,
         },
       });
     }
@@ -935,6 +937,10 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
             dateTime: m.dateTime ? new Date(m.dateTime) : new Date(),
             homeScore: change.fields.homeScore?.new ?? null,
             awayScore: change.fields.awayScore?.new ?? null,
+            homeScoreRegular: m.homeScoreRegular ?? null,
+            awayScoreRegular: m.awayScoreRegular ?? null,
+            homePenalty: m.homePenalty ?? null,
+            awayPenalty: m.awayPenalty ?? null,
             status: change.fields.homeScore?.new !== null ? 'COMPLETED' : 'SCHEDULED',
             venueNameHe: m.venue || null,
             refereeHe: m.referee || null,

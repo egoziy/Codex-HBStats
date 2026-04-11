@@ -303,6 +303,8 @@ async function scrapeGameDetails(gameId, sid) {
       // If extra time exists, use it as final score; regular time stays in homeScore/awayScore
       homeScore: extraTimeHome ?? homeScore,
       awayScore: extraTimeAway ?? awayScore,
+      homeScoreRegular: extraTimeHome !== null ? homeScore : null,
+      awayScoreRegular: extraTimeHome !== null ? awayScore : null,
       homeHalfScore: homeHalf, awayHalfScore: awayHalf,
       homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText || undefined, dateTime: dateTime || undefined,
@@ -326,6 +328,8 @@ async function scrapeGameDetails(gameId, sid) {
       awayTeamName: awayTeamName || 'Unknown',
       homeScore: extraTimeHome ?? homeScore,
       awayScore: extraTimeAway ?? awayScore,
+      homeScoreRegular: extraTimeHome !== null ? homeScore : null,
+      awayScoreRegular: extraTimeHome !== null ? awayScore : null,
       homeHalfScore: homeHalf, awayHalfScore: awayHalf,
       homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText, dateTime,

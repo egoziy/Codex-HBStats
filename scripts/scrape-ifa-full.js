@@ -367,10 +367,16 @@ async function scrapeGameDetails(gameId, sid) {
   if (penMatch) { penaltyHome = +penMatch[1]; penaltyAway = +penMatch[2]; }
 
   let homeScore = null, awayScore = null;
+  let homeScoreRegular = null, awayScoreRegular = null;
   const sm = totalText.match(/(\d+)\s*:\s*(\d+)/);
   if (sm) { homeScore = +sm[1]; awayScore = +sm[2]; }
-  // Use extra time as final score if available
-  if (extraTimeHome !== null) { homeScore = extraTimeHome; awayScore = extraTimeAway; }
+  // Use extra time as final score if available, save regular time separately
+  if (extraTimeHome !== null) {
+    homeScoreRegular = homeScore;
+    awayScoreRegular = awayScore;
+    homeScore = extraTimeHome;
+    awayScore = extraTimeAway;
+  }
 
   let homeHalf = null, awayHalf = null;
   const hm = halfText.match(/(\d+)\s*:\s*(\d+)/);
@@ -442,7 +448,7 @@ async function scrapeGameDetails(gameId, sid) {
     update: {
       homeTeamName: homeTeamName || undefined,
       awayTeamName: awayTeamName || undefined,
-      homeScore, awayScore, homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      homeScore, awayScore, homeScoreRegular: homeScoreRegular, awayScoreRegular: awayScoreRegular, homeHalfScore: homeHalf, awayHalfScore: awayHalf, homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText || undefined, dateTime: dateTime || undefined,
       venue: venueText || undefined,
       ...refData,
@@ -457,7 +463,7 @@ async function scrapeGameDetails(gameId, sid) {
       source: SOURCE, sourceId: gameId, season: label,
       homeTeamName: homeTeamName || 'Unknown',
       awayTeamName: awayTeamName || 'Unknown',
-      homeScore, awayScore, homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      homeScore, awayScore, homeScoreRegular: homeScoreRegular, awayScoreRegular: awayScoreRegular, homeHalfScore: homeHalf, awayHalfScore: awayHalf, homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText, dateTime,
       venue: venueText,
       ...refData,
