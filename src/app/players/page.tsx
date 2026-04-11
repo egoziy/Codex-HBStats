@@ -13,19 +13,32 @@ function buildPlayersFilterFields({
   displayMode,
   seasons,
   allTeams,
+  competitions,
 }: {
   displayMode: string;
   seasons: Array<{ id: string; name: string }>;
   allTeams: Array<{ id: string; seasonId: string; nameHe: string | null; nameEn: string }>;
+  competitions: Array<{ id: string; nameHe: string | null; nameEn: string }>;
 }) {
+  const selectClass =
+    displayMode === 'premier'
+      ? 'rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none'
+      : 'rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold';
   return [
     {
       name: 'season',
       options: seasons.map((season) => ({ value: season.id, label: season.name })),
-      className:
-        displayMode === 'premier'
-          ? 'rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none'
-          : 'rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold',
+      className: selectClass,
+    },
+    {
+      name: 'competitionId',
+      includeAllOption: true,
+      allLabel: 'כל המסגרות',
+      options: competitions.map((comp) => ({
+        value: comp.id,
+        label: comp.nameHe || comp.nameEn,
+      })),
+      className: selectClass,
     },
     {
       name: 'teamId',
@@ -36,18 +49,17 @@ function buildPlayersFilterFields({
         label: team.nameHe || team.nameEn,
         meta: { season: [team.seasonId] },
       })),
-      className:
-        displayMode === 'premier'
-          ? 'rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none'
-          : 'rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold',
+      className: selectClass,
     },
   ];
 }
 
+const DEFAULT_COMPETITION_ID = 'comp_liga_haal';
+
 export default async function PlayersPage({
   searchParams,
 }: {
-  searchParams?: { season?: string; teamId?: string; view?: string };
+  searchParams?: { season?: string; teamId?: string; view?: string; competitionId?: string };
 }) {
   const displayMode = await getDisplayMode(searchParams?.view);
   const seasons = await prisma.season.findMany({
@@ -61,9 +73,15 @@ export default async function PlayersPage({
         orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
       })
     : [];
+  const competitions = await prisma.competition.findMany({
+    select: { id: true, nameHe: true, nameEn: true },
+    orderBy: { nameHe: 'asc' },
+  });
 
   const selectedSeasonId = searchParams?.season || seasons.find((season) => season.year <= 2025)?.id || seasons[0]?.id;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
+  const selectedCompetitionId = searchParams?.competitionId || DEFAULT_COMPETITION_ID;
+  const filterByCompetition = selectedCompetitionId !== 'all';
   const displayZeroStatPlayers = await getDisplayZeroStatPlayersSetting();
 
   const teams = selectedSeason
@@ -73,12 +91,29 @@ export default async function PlayersPage({
       })
     : [];
 
+  // Find team IDs that participate in the selected competition (have games/standings)
+  const competitionTeamIds = filterByCompetition && selectedSeason
+    ? new Set(
+        (await prisma.game.findMany({
+          where: { seasonId: selectedSeason.id, competitionId: selectedCompetitionId },
+          select: { homeTeamId: true, awayTeamId: true },
+        })).flatMap((g) => [g.homeTeamId, g.awayTeamId])
+      )
+    : null;
+
   const selectedTeamId = searchParams?.teamId || 'all';
   const playersFilterFields = buildPlayersFilterFields({
     displayMode,
     seasons,
     allTeams,
+    competitions,
   });
+
+  const teamFilter = selectedTeamId !== 'all'
+    ? { teamId: selectedTeamId }
+    : competitionTeamIds
+      ? { teamId: { in: Array.from(competitionTeamIds) } }
+      : {};
 
   const players = selectedSeason
     ? await prisma.player.findMany({
@@ -86,12 +121,15 @@ export default async function PlayersPage({
           team: {
             seasonId: selectedSeason.id,
           },
-          ...(selectedTeamId !== 'all' ? { teamId: selectedTeamId } : {}),
+          ...teamFilter,
         },
         include: {
           team: true,
           playerStats: {
-            where: { seasonId: selectedSeason.id },
+            where: {
+              seasonId: selectedSeason.id,
+              ...(filterByCompetition ? { competitionId: selectedCompetitionId } : {}),
+            },
           },
           uploads: {
             orderBy: [{ createdAt: 'asc' }],
@@ -154,7 +192,10 @@ export default async function PlayersPage({
 
   const seasonGames = selectedSeason
     ? await prisma.game.findMany({
-        where: { seasonId: selectedSeason.id },
+        where: {
+          seasonId: selectedSeason.id,
+          ...(filterByCompetition ? { competitionId: selectedCompetitionId } : {}),
+        },
         include: {
           events: {
             select: {
@@ -203,23 +244,23 @@ export default async function PlayersPage({
         player.id,
         seasonGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)
       );
-      // Use derived stats from game events if available, otherwise fall back to playerStats from DB
+      // Prefer DB stats (authoritative from IFA/API) over derived (event-counted) when available
       const dbStat = player.playerStats[0] || null;
-      const stat = derivedStat.gamesPlayed > 0 || derivedStat.goals > 0
-        ? derivedStat
-        : dbStat
-          ? {
-              ...derivedStat,
-              gamesPlayed: dbStat.gamesPlayed || derivedStat.gamesPlayed,
-              goals: dbStat.goals || derivedStat.goals,
-              assists: dbStat.assists || derivedStat.assists,
-              yellowCards: dbStat.yellowCards || derivedStat.yellowCards,
-              redCards: dbStat.redCards || derivedStat.redCards,
-              minutesPlayed: dbStat.minutesPlayed || derivedStat.minutesPlayed,
-              starts: dbStat.starts || derivedStat.starts,
-              substituteAppearances: dbStat.substituteAppearances || derivedStat.substituteAppearances,
-            }
-          : derivedStat;
+      const hasDbStat = dbStat && (dbStat.gamesPlayed > 0 || dbStat.goals > 0);
+      const pickField = (derived: number, db: number | undefined) => hasDbStat && (db ?? 0) > 0 ? db! : Math.max(derived, db ?? 0);
+      const stat = hasDbStat
+        ? {
+            ...derivedStat,
+            gamesPlayed: pickField(derivedStat.gamesPlayed, dbStat.gamesPlayed),
+            goals: pickField(derivedStat.goals, dbStat.goals),
+            assists: pickField(derivedStat.assists, dbStat.assists),
+            yellowCards: pickField(derivedStat.yellowCards, dbStat.yellowCards),
+            redCards: pickField(derivedStat.redCards, dbStat.redCards),
+            minutesPlayed: pickField(derivedStat.minutesPlayed, dbStat.minutesPlayed),
+            starts: pickField(derivedStat.starts, dbStat.starts),
+            substituteAppearances: pickField(derivedStat.substituteAppearances, dbStat.substituteAppearances),
+          }
+        : derivedStat;
       const hasSeasonStats =
         player.playerStats.some((row) =>
           row.gamesPlayed > 0 || row.minutesPlayed > 0 || row.goals > 0 || row.assists > 0 ||
@@ -254,6 +295,8 @@ export default async function PlayersPage({
         seasons={seasons}
         selectedSeason={selectedSeason}
         selectedSeasonId={selectedSeasonId || ''}
+        competitions={competitions}
+        selectedCompetitionId={selectedCompetitionId}
         teams={teams}
         allTeams={allTeams}
         selectedTeamId={selectedTeamId}
@@ -280,9 +323,10 @@ export default async function PlayersPage({
             fields={playersFilterFields}
             initialValues={{
               season: selectedSeason?.id || '',
+              competitionId: selectedCompetitionId,
               teamId: selectedTeamId,
             }}
-            formClassName="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_auto]"
+            formClassName="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto]"
             buttonClassName="rounded-full bg-stone-900 px-5 py-3 font-bold text-white"
             submitLabel="הצג שחקנים"
           />
@@ -384,6 +428,8 @@ function PremierPlayersView({
   seasons,
   selectedSeason,
   selectedSeasonId,
+  competitions,
+  selectedCompetitionId,
   teams,
   allTeams,
   selectedTeamId,
@@ -394,6 +440,8 @@ function PremierPlayersView({
   seasons: Array<{ id: string; name: string }>;
   selectedSeason: { id: string; name: string } | null;
   selectedSeasonId: string;
+  competitions: Array<{ id: string; nameHe: string | null; nameEn: string }>;
+  selectedCompetitionId: string;
   teams: Array<{ id: string; nameHe: string | null; nameEn: string }>;
   allTeams: Array<{ id: string; seasonId: string; nameHe: string | null; nameEn: string }>;
   selectedTeamId: string;
@@ -405,6 +453,7 @@ function PremierPlayersView({
     displayMode: 'premier',
     seasons,
     allTeams,
+    competitions,
   });
   const activePlayers = visiblePlayers.filter((player) => player.stat.gamesPlayed > 0 || player.stat.minutesPlayed > 0);
   const topContributors = [...activePlayers]
@@ -432,9 +481,10 @@ function PremierPlayersView({
               fields={playersFilterFields}
               initialValues={{
                 season: selectedSeason?.id || '',
+                competitionId: selectedCompetitionId,
                 teamId: selectedTeamId,
               }}
-              formClassName="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+              formClassName="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]"
               buttonClassName="rounded-2xl bg-white px-5 py-3 text-sm font-black text-[#360065]"
               submitLabel="הצג שחקנים"
             />

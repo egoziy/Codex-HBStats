@@ -716,11 +716,8 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
         });
         snapshots.push({ id: newPlayer.id, entity: 'player', original: {}, action: 'create' });
 
-        // Create PlayerStatistics
-        const newStats = await prisma.playerStatistics.create({
-          data: {
-            playerId: newPlayer.id,
-            seasonId: m.seasonId,
+        // Create or update PlayerStatistics (find-then-upsert to avoid duplicates on re-run)
+        const statsData = {
             gamesPlayed: f.appearances?.new ?? 0,
             goals: f.goals?.new ?? 0,
             starts: f.starts?.new ?? 0,
@@ -729,31 +726,38 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
             substituteAppearances: f.subsIn?.new ?? 0,
             timesSubbedOff: f.subsOut?.new ?? 0,
             minutesPlayed: f.minutesPlayed?.new ?? 0,
-          },
+        };
+        const existingStats = await prisma.playerStatistics.findFirst({
+          where: { playerId: newPlayer.id, seasonId: m.seasonId, competitionId: null },
         });
-        snapshots.push({ id: newStats.id, entity: 'playerStats', original: {}, action: 'create' });
+        const newStats = existingStats
+          ? await prisma.playerStatistics.update({ where: { id: existingStats.id }, data: statsData })
+          : await prisma.playerStatistics.create({ data: { playerId: newPlayer.id, seasonId: m.seasonId, ...statsData } });
+        snapshots.push({ id: newStats.id, entity: 'playerStats', original: existingStats ? { ...existingStats } : {}, action: existingStats ? 'update' : 'create' });
         applied.push({ id: newPlayer.id, entity: 'player', fields: change.fields || {} });
       }
 
-      // ── Create stats for existing player ──
+      // ── Create stats for existing player (find-then-upsert to avoid duplicates) ──
       if (change.entity === 'playerStats' && change.type === 'create' && change.meta) {
         const m = change.meta;
         const f = change.fields || {};
-        const newStats = await prisma.playerStatistics.create({
-          data: {
-            playerId: m.playerId,
-            seasonId: m.seasonId,
-            gamesPlayed: f.appearances?.new ?? 0,
-            goals: f.goals?.new ?? 0,
-            starts: f.starts?.new ?? 0,
-            yellowCards: f.yellowCards?.new ?? 0,
-            redCards: f.redCards?.new ?? 0,
-            substituteAppearances: f.subsIn?.new ?? 0,
-            timesSubbedOff: f.subsOut?.new ?? 0,
-            minutesPlayed: f.minutesPlayed?.new ?? 0,
-          },
+        const statsData = {
+          gamesPlayed: f.appearances?.new ?? 0,
+          goals: f.goals?.new ?? 0,
+          starts: f.starts?.new ?? 0,
+          yellowCards: f.yellowCards?.new ?? 0,
+          redCards: f.redCards?.new ?? 0,
+          substituteAppearances: f.subsIn?.new ?? 0,
+          timesSubbedOff: f.subsOut?.new ?? 0,
+          minutesPlayed: f.minutesPlayed?.new ?? 0,
+        };
+        const existingStats = await prisma.playerStatistics.findFirst({
+          where: { playerId: m.playerId, seasonId: m.seasonId, competitionId: null },
         });
-        snapshots.push({ id: newStats.id, entity: 'playerStats', original: {}, action: 'create' });
+        const newStats = existingStats
+          ? await prisma.playerStatistics.update({ where: { id: existingStats.id }, data: statsData })
+          : await prisma.playerStatistics.create({ data: { playerId: m.playerId, seasonId: m.seasonId, ...statsData } });
+        snapshots.push({ id: newStats.id, entity: 'playerStats', original: existingStats ? { ...existingStats } : {}, action: existingStats ? 'update' : 'create' });
         applied.push({ id: newStats.id, entity: 'playerStats', fields: change.fields || {} });
       }
 

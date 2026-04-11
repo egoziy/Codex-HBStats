@@ -148,6 +148,9 @@ function translateName(name: string | null | undefined) {
   if (!name) return name || '';
   if (NAME_TRANSLATIONS[name]) return NAME_TRANSLATIONS[name];
   if (teamNameCache.has(name)) return teamNameCache.get(name)!;
+  // Normalize round names: "Regular Season - N" → "מחזור N"
+  const roundMatch = name.match(/^Regular Season\s*-\s*(\d+)$/);
+  if (roundMatch) return `מחזור ${roundMatch[1]}`;
   return name;
 }
 
@@ -673,6 +676,13 @@ async function syncDerivedStatistics({
         keyPasses: Math.max(apiPlayerStat?.keyPasses || 0, existingPlayerStat?.keyPasses || 0),
       };
       totalAssists += mergedPlayerStat.assists;
+
+      // Remove orphaned null-competition record if we now have a specific competitionId
+      if (competitionId) {
+        await prisma.playerStatistics.deleteMany({
+          where: { playerId: player.id, seasonId, competitionId: null },
+        });
+      }
 
       await prisma.playerStatistics.upsert({
         where: {
@@ -1449,7 +1459,8 @@ export async function POST(request: NextRequest) {
                   : null;
             const canonicalPlayer = await findCanonicalPlayerMatch(playerRow.id || null, playerRow.name || null);
 
-            const existingPlayer =
+            // Find existing player: first in same team, then globally by apiFootballId
+            const existingPlayerInTeam =
               (playerRow.id
                 ? await prisma.player.findFirst({
                     where: {
@@ -1473,21 +1484,41 @@ export async function POST(request: NextRequest) {
                   nameEn: playerRow.name,
                   teamId: dbTeam.id,
                 },
+              })) ||
+              // Fallback: match by translated Hebrew name (catches IFA players without apiFootballId)
+              (await prisma.player.findFirst({
+                where: {
+                  nameHe: translateName(playerRow.name),
+                  teamId: dbTeam.id,
+                },
               }));
+            // Also check: does this player exist in ANY team (previous season)?
+            // Use their Hebrew name if so, even if creating a new record for this team.
+            const globalPlayer = !existingPlayerInTeam && playerRow.id
+              ? await prisma.player.findFirst({
+                  where: { apiFootballId: playerRow.id },
+                  select: { nameHe: true, firstNameHe: true, lastNameHe: true, nationalityHe: true, birthPlaceHe: true, birthCountryHe: true },
+                  orderBy: { updatedAt: 'desc' },
+                })
+              : null;
+            const existingPlayer = existingPlayerInTeam;
 
             const canonicalPlayerId =
               canonicalPlayer && canonicalPlayer.id !== existingPlayer?.id ? canonicalPlayer.id : existingPlayer?.canonicalPlayerId || null;
             const resolvedNameHe =
               existingPlayer?.nameHe ||
               canonicalPlayer?.nameHe ||
+              globalPlayer?.nameHe ||
               translateName(playerRow.name);
             const resolvedFirstNameHe =
               existingPlayer?.firstNameHe ||
               canonicalPlayer?.firstNameHe ||
+              globalPlayer?.firstNameHe ||
               null;
             const resolvedLastNameHe =
               existingPlayer?.lastNameHe ||
               canonicalPlayer?.lastNameHe ||
+              globalPlayer?.lastNameHe ||
               null;
             const jerseyConflict =
               jerseyNumber !== null

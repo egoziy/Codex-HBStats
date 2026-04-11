@@ -164,3 +164,22 @@ export function PlayerChartsView({
     </div>
   );
 }
+
+export function GoalMinutesChart({ data }: { data: Array<{ name: string; goals: number }> }) {
+  return (
+    <div className="h-[200px] w-full" dir="ltr">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+          <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+          <YAxis tick={{ fontSize: 11 }} />
+          <Tooltip
+            contentStyle={{ borderRadius: 12, border: '1px solid #e7e5e4', fontSize: 12 }}
+            formatter={(value: number) => [`${value} שערים`, 'שערים']}
+          />
+          <Bar dataKey="goals" fill="#991b1b" radius={[6, 6, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
