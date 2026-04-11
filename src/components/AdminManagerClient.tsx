@@ -195,7 +195,7 @@ type RawCompetitionSeason = {
 
 type RawLeaderboardEntry = {
   id: string;
-  category: 'TOP_SCORERS' | 'TOP_ASSISTS';
+  category: string;
   rank: number;
   value: number;
   gamesPlayed: number;

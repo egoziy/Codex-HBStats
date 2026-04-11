@@ -12,6 +12,27 @@
 
 import prisma from '@/lib/prisma';
 
+export type Sport5PlayerSeason = {
+  season: string;
+  team: string;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  appearances: number;
+};
+
+export type Sport5PlayerData = {
+  name: string;
+  jerseyNumber?: number | null;
+  seasons: Sport5PlayerSeason[];
+};
+
+export type Sport5TeamData = {
+  nameHe: string;
+  players: Sport5PlayerData[];
+};
+
 const SPORT5_BASE = 'https://www.sport5.co.il';
 const REQUEST_DELAY_MS = 600;
 const SOURCE = 'sport5';

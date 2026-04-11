@@ -166,6 +166,8 @@ export default function GameAdminQuickEditorClient({
     status: string;
     homeScore: number | null;
     awayScore: number | null;
+    homePenalty: number | null;
+    awayPenalty: number | null;
     roundNameHe: string | null;
     roundNameEn: string | null;
     refereeHe: string | null;

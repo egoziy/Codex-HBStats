@@ -76,7 +76,7 @@ export default async function AdminSetupPage() {
         <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-black text-stone-900">הערות חשובות</h2>
           <ul className="mt-3 space-y-2 text-sm text-stone-600">
-            <li>• <strong>API-Football</strong> — צריך למשוך בנפרד דרך דף "נתונים ומשיכה" באדמין (לעונות 2016+).</li>
+            <li>• <strong>API-Football</strong> — צריך למשוך בנפרד דרך דף &quot;נתונים ומשיכה&quot; באדמין (לעונות 2016+).</li>
             <li>• <strong>Puppeteer</strong> — מצבים full ו-merge-only דורשים Google Chrome מותקן על השרת.</li>
             <li>• <strong>זמנים</strong> — תלויים במהירות האינטרנט ועומס השרתים החיצוניים.</li>
             <li>• <strong>בטיחות</strong> — הייבוא לא מוחק נתונים קיימים. רק ממלא חסרים.</li>
