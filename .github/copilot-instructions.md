@@ -31,7 +31,7 @@ npm install
 Create `.env.local`:
 ```
 DATABASE_URL="postgresql://user:password@localhost:5432/soccer_league"
-NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_URL="http://localhost:3100"
 NEXTAUTH_SECRET="your-secret-key"
 JWT_SECRET="your-jwt-secret"
 ```
