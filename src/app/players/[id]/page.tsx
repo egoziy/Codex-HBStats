@@ -349,17 +349,21 @@ export default async function PlayerPage({
     }),
     { goals: 0, assists: 0, yellowCards: 0, redCards: 0, gamesPlayed: 0, minutesPlayed: 0, starts: 0, substituteAppearances: 0, timesSubbedOff: 0 }
   );
+  // Prefer DB stats when available (authoritative source from IFA/API).
+  // Fall back to derived (event-based) stats only when DB has no data for a field.
+  const hasDbStats = dbSeasonTotals.gamesPlayed > 0 || dbSeasonTotals.goals > 0;
+  const pick = (derived: number, db: number) => hasDbStats && db > 0 ? db : Math.max(derived, db);
   const derivedTotals = {
     ...derivedTotalsBase,
-    goals: Math.max(derivedTotalsBase.goals, dbSeasonTotals.goals),
-    assists: Math.max(derivedTotalsBase.assists, dbSeasonTotals.assists),
-    yellowCards: Math.max(derivedTotalsBase.yellowCards, dbSeasonTotals.yellowCards),
-    redCards: Math.max(derivedTotalsBase.redCards, dbSeasonTotals.redCards),
-    gamesPlayed: Math.max(derivedTotalsBase.gamesPlayed, dbSeasonTotals.gamesPlayed),
-    minutesPlayed: Math.max(derivedTotalsBase.minutesPlayed, dbSeasonTotals.minutesPlayed),
-    starts: Math.max(derivedTotalsBase.starts, dbSeasonTotals.starts),
-    substituteAppearances: Math.max(derivedTotalsBase.substituteAppearances, dbSeasonTotals.substituteAppearances),
-    timesSubbedOff: Math.max(derivedTotalsBase.timesSubbedOff, dbSeasonTotals.timesSubbedOff),
+    goals: pick(derivedTotalsBase.goals, dbSeasonTotals.goals),
+    assists: pick(derivedTotalsBase.assists, dbSeasonTotals.assists),
+    yellowCards: pick(derivedTotalsBase.yellowCards, dbSeasonTotals.yellowCards),
+    redCards: pick(derivedTotalsBase.redCards, dbSeasonTotals.redCards),
+    gamesPlayed: pick(derivedTotalsBase.gamesPlayed, dbSeasonTotals.gamesPlayed),
+    minutesPlayed: pick(derivedTotalsBase.minutesPlayed, dbSeasonTotals.minutesPlayed),
+    starts: pick(derivedTotalsBase.starts, dbSeasonTotals.starts),
+    substituteAppearances: pick(derivedTotalsBase.substituteAppearances, dbSeasonTotals.substituteAppearances),
+    timesSubbedOff: pick(derivedTotalsBase.timesSubbedOff, dbSeasonTotals.timesSubbedOff),
   };
 
   const uploads = linkedPlayers
@@ -926,6 +930,7 @@ function PremierPlayerView({
                     </option>
                   ))}
                 </select>
+                <button className="rounded-2xl bg-[#3d0067] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#4f0086]">הצג עונה</button>
               </form>
             </div>
 

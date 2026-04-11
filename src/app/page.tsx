@@ -13,6 +13,8 @@ import {
 import { getHomepageLiveLimitSetting } from '@/lib/homepage-live-settings';
 import { getCurrentSeasonStartYear, getHomepageLiveSnapshots } from '@/lib/home-live';
 import HomeLivePanel from '@/components/HomeLivePanel';
+import { GoalMinutesChart } from '@/components/Charts';
+import HomeFilterBar from '@/components/HomeFilterBar';
 
 export const dynamic = 'force-dynamic';
 
@@ -201,10 +203,10 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
         take: 24,
       }),
       prisma.gamePrediction.findMany({
-        where: { seasonId: latestSeason.id },
+        where: { seasonId: latestSeason.id, game: { status: 'SCHEDULED', dateTime: { gte: now } } },
         include: { game: { include: { homeTeam: true, awayTeam: true, competition: { select: { nameHe: true, nameEn: true, apiFootballId: true } } } } },
         orderBy: { game: { dateTime: 'asc' } },
-        take: 12,
+        take: 6,
       }),
       prisma.gameHeadToHeadEntry.findMany({
         where: {
@@ -213,11 +215,12 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
             OR: [
               { status: 'SCHEDULED', dateTime: { gte: now } },
               { status: 'ONGOING' },
+              { status: 'COMPLETED', dateTime: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } },
             ],
           },
         },
         include: { game: { include: { homeTeam: true, awayTeam: true, competition: { select: { nameHe: true, nameEn: true, apiFootballId: true } } } } },
-        orderBy: [{ game: { dateTime: 'asc' } }, { relatedDate: 'desc' }],
+        orderBy: [{ game: { dateTime: 'desc' } }, { relatedDate: 'desc' }],
         take: 60,
       }),
       prisma.game.findMany({
@@ -233,6 +236,69 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       fetchTelegramMessagesFromSources(effectiveTelegramSources, 5).catch(() => []),
       getHomepageLiveSnapshots(null, { limit: homepageLiveLimit }),
     ]);
+
+  // ── Additional data: leaderboards, red cards, goal minutes ──
+  const [topScorers, topAssists, recentRedCards, yellowCardCounts, goalMinutesRaw] = await Promise.all([
+    prisma.competitionLeaderboardEntry.findMany({
+      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_SCORERS' },
+      orderBy: { value: 'desc' },
+      take: 5,
+      select: { playerNameHe: true, teamNameHe: true, value: true, playerId: true },
+    }),
+    prisma.competitionLeaderboardEntry.findMany({
+      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_ASSISTS' },
+      orderBy: { value: 'desc' },
+      take: 5,
+      select: { playerNameHe: true, teamNameHe: true, value: true, playerId: true },
+    }),
+    prisma.gameEvent.findMany({
+      where: {
+        type: 'RED_CARD',
+        playerId: { not: null },
+        game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', status: 'COMPLETED' },
+      },
+      select: {
+        player: { select: { id: true, nameHe: true, team: { select: { nameHe: true } } } },
+        game: { select: { roundNameHe: true, dateTime: true } },
+      },
+      orderBy: { game: { dateTime: 'desc' } },
+      take: 5,
+    }),
+    // Yellow card counts per player this season (for 5th/9th yellow detection)
+    prisma.gameEvent.groupBy({
+      by: ['playerId'],
+      where: {
+        type: 'YELLOW_CARD',
+        playerId: { not: null },
+        game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal' },
+      },
+      _count: { playerId: true },
+      having: { playerId: { _count: { gte: 5 } } },
+    }),
+    prisma.$queryRaw<Array<{ bucket: string; goals: number }>>`
+      SELECT
+        CASE
+          WHEN minute BETWEEN 1 AND 15 THEN '1-15'
+          WHEN minute BETWEEN 16 AND 30 THEN '16-30'
+          WHEN minute BETWEEN 31 AND 45 THEN '31-45'
+          WHEN minute BETWEEN 46 AND 60 THEN '46-60'
+          WHEN minute BETWEEN 61 AND 75 THEN '61-75'
+          WHEN minute BETWEEN 76 AND 90 THEN '76-90'
+          WHEN minute > 90 THEN '90+'
+        END as bucket,
+        COUNT(*)::int as goals
+      FROM game_events ge
+      JOIN games g ON ge."gameId" = g.id
+      WHERE ge.type IN ('GOAL', 'PENALTY_GOAL')
+      AND g."seasonId" = ${latestSeason.id}
+      AND g."competitionId" = 'comp_liga_haal'
+      GROUP BY bucket
+      ORDER BY MIN(minute)
+    `,
+  ]);
+
+  // Find suspended players: red card in current or previous round, OR 5th/9th yellow
+  const goalMinutesData = goalMinutesRaw.map((row) => ({ name: row.bucket, goals: Number(row.goals) }));
 
   const nextGame = nextGamesRaw
     .filter((game) => gameMatchesPreferredTeam(game, selectedTeamIds))
@@ -251,13 +317,52 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     .filter((entry) => gameMatchesPreferredCompetition(entry, selectedCompetitionApiIds));
   const nextRoundLabel = nextGame ? getRoundLabel(nextGame) : null;
   const nextRoundCompetitionId = nextGame?.competitionId || null;
-  const nextRoundGames = nextGame
+  const nextRoundGamesAll = nextGame
     ? nextRoundGamesRaw
         .filter((game) => (nextRoundCompetitionId ? game.competitionId === nextRoundCompetitionId : true) && getRoundLabel(game) === nextRoundLabel)
-        .filter((game) => gameMatchesPreferredTeam(game, selectedTeamIds))
         .filter((game) => gameMatchesPreferredCompetition(game, selectedCompetitionApiIds))
-        .slice(0, 6)
     : [];
+  // Sort: favorite team games first, then by date
+  const nextRoundGames = nextRoundGamesAll.sort((a, b) => {
+    const aFav = selectedTeamIds.includes(a.homeTeamId) || selectedTeamIds.includes(a.awayTeamId) ? 0 : 1;
+    const bFav = selectedTeamIds.includes(b.homeTeamId) || selectedTeamIds.includes(b.awayTeamId) ? 0 : 1;
+    if (aFav !== bFav) return aFav - bFav;
+    return +new Date(a.dateTime || 0) - +new Date(b.dateTime || 0);
+  });
+
+  // Suspended players: red card in last 2 rounds + 5th/9th yellow
+  const currentRoundLabel = nextRoundLabel || recentRedCards[0]?.game?.roundNameHe || null;
+  const currentRoundNum = currentRoundLabel ? parseInt(currentRoundLabel.replace(/\D/g, '')) || 0 : 0;
+  const relevantRounds = [currentRoundNum, currentRoundNum - 1].filter(Boolean).map((n) => `מחזור ${n}`);
+
+  const redCardSuspended = recentRedCards
+    .filter((e) => relevantRounds.includes(e.game.roundNameHe || '') && e.player)
+    .map((e) => ({ id: e.player!.id, name: e.player!.nameHe, team: e.player!.team?.nameHe || '', reason: `כרטיס אדום ב${e.game.roundNameHe}` }));
+
+  const yellowSuspensionPlayerIds = yellowCardCounts
+    .filter((row) => row._count.playerId === 5 || row._count.playerId === 9)
+    .map((row) => row.playerId!)
+    .filter(Boolean);
+
+  const yellowSuspendedPlayers = yellowSuspensionPlayerIds.length
+    ? await prisma.player.findMany({
+        where: { id: { in: yellowSuspensionPlayerIds } },
+        select: { id: true, nameHe: true, team: { select: { nameHe: true } } },
+      })
+    : [];
+
+  const yellowSuspended = yellowSuspendedPlayers.map((pl) => ({
+    id: pl.id,
+    name: pl.nameHe,
+    team: pl.team?.nameHe || '',
+    reason: `צהוב ${yellowCardCounts.find((r) => r.playerId === pl.id)?._count.playerId || 5} — הרחקה`,
+  }));
+
+  const suspendedMap = new Map<string, { id: string; name: string; team: string; reason: string }>();
+  for (const s of [...redCardSuspended, ...yellowSuspended]) {
+    if (!suspendedMap.has(s.id)) suspendedMap.set(s.id, s);
+  }
+  const suspendedPlayers = Array.from(suspendedMap.values());
 
   const groupedHeadToHeadMap = new Map<string, HeadToHeadGroup>();
   for (const entry of headToHeadEntries) {
@@ -339,6 +444,9 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
         </section>
       ) : null}
 
+      {/* ── Team/League selector ── */}
+      <HomeFilterBar teams={seasonTeams} selectedTeamIds={selectedTeamIds} />
+
       {/* ── MAIN GRID ── */}
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="grid gap-5 lg:grid-cols-3">
@@ -378,10 +486,27 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                   {predictions.map((prediction) => (
                     <Link key={prediction.id} href={`/games/${prediction.game.id}`} className="block rounded-xl border border-stone-100 bg-stone-50 p-3 transition hover:border-stone-300 hover:bg-white">
                       <div className="text-sm font-bold text-stone-900">{getTeamLabel(prediction.game.homeTeam)} - {getTeamLabel(prediction.game.awayTeam)}</div>
-                      <div className="mt-1.5 flex gap-2 text-[11px]">
+                      <div className="mt-1.5 flex flex-wrap gap-2 text-[11px]">
                         <span className="rounded-full bg-stone-200 px-2 py-0.5 font-bold text-stone-600">{prediction.winnerTeamNameHe || prediction.winnerTeamNameEn || 'ללא הכרעה'}</span>
                         <span className="rounded-full bg-red-100 px-2 py-0.5 font-bold text-red-800">בית {prediction.percentHome ?? '—'}%</span>
+                        <span className="rounded-full bg-stone-100 px-2 py-0.5 font-bold text-stone-600">תיקו {prediction.percentDraw ?? '—'}%</span>
                         <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-800">חוץ {prediction.percentAway ?? '—'}%</span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {suspendedPlayers.length > 0 && (
+              <Card title="מורחקים" actionHref="/statistics" actionLabel="לסטטיסטיקות">
+                <div className="space-y-2">
+                  {suspendedPlayers.map((player) => (
+                    <Link key={player.id} href={`/players/${player.id}`} className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50 p-3 transition hover:border-red-300">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-800 text-xs font-black text-white">X</span>
+                      <div>
+                        <div className="text-sm font-black text-red-900">{player.name}</div>
+                        <div className="text-[11px] text-red-700">{player.team} · {player.reason}</div>
                       </div>
                     </Link>
                   ))}
@@ -392,17 +517,26 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
 
           {/* ── COL 2: Next Round + Last Game ── */}
           <div className="space-y-5">
-            <Card title="משחקי המחזור" actionHref="/games" actionLabel="כל המשחקים">
+            <Card title={`משחקי ${nextRoundLabel || 'המחזור'}`} actionHref="/games" actionLabel="כל המשחקים">
               <div className="space-y-2">
-                {nextRoundGames.map((game) => (
-                  <Link key={game.id} href={`/games/${game.id}`} className="flex items-center justify-between rounded-xl border border-stone-100 bg-stone-50 p-3 transition hover:border-stone-300 hover:bg-white">
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-stone-900">{getTeamLabel(game.homeTeam)} - {getTeamLabel(game.awayTeam)}</div>
-                      <div className="mt-1 text-[11px] text-stone-400">{formatDate(game.dateTime, true)}</div>
-                    </div>
-                    <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold ${game.status === 'COMPLETED' ? 'bg-stone-200 text-stone-600' : 'bg-red-100 text-red-800'}`}>{getStatusLabel(game.status)}</span>
-                  </Link>
-                ))}
+                {nextRoundGames.map((game) => {
+                  const isFav = selectedTeamIds.includes(game.homeTeamId) || selectedTeamIds.includes(game.awayTeamId);
+                  const completed = game.status === 'COMPLETED';
+                  return (
+                    <Link key={game.id} href={`/games/${game.id}`} className={`block rounded-xl border p-3 transition hover:bg-white ${isFav ? 'border-red-200 bg-red-50' : 'border-stone-100 bg-stone-50 hover:border-stone-300'}`}>
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                        <span className={`text-center text-sm font-bold ${isFav ? 'text-red-900' : 'text-stone-900'}`}>{getTeamLabel(game.homeTeam)}</span>
+                        {completed ? (
+                          <span className="shrink-0 rounded-lg bg-stone-900 px-3 py-1 text-sm font-black tabular-nums text-white">{game.homeScore ?? 0} - {game.awayScore ?? 0}</span>
+                        ) : (
+                          <span className="shrink-0 rounded-lg bg-red-100 px-3 py-1 text-[11px] font-bold text-red-800">{getStatusLabel(game.status)}</span>
+                        )}
+                        <span className={`text-center text-sm font-bold ${isFav ? 'text-red-900' : 'text-stone-900'}`}>{getTeamLabel(game.awayTeam)}</span>
+                      </div>
+                      <div className="mt-1 text-center text-[11px] text-stone-400">{formatDate(game.dateTime, true)}</div>
+                    </Link>
+                  );
+                })}
                 {nextRoundGames.length === 0 && <EmptyState text="אין משחקי מחזור קרוב." />}
               </div>
             </Card>
@@ -410,11 +544,11 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
             {lastGame && heroGame?.id !== lastGame.id && (
               <Card title="משחק אחרון" actionHref={`/games/${lastGame.id}`} actionLabel="לדף המשחק">
                 <Link href={`/games/${lastGame.id}`} className="block rounded-xl border border-stone-200 bg-stone-50 p-4 transition hover:bg-white">
-                  <div className="text-xs text-stone-400">{getCompetitionDisplayName(lastGame.competition)}</div>
-                  <div className="mt-3 flex items-center justify-between">
-                    <span className="text-base font-black text-stone-900">{getTeamLabel(lastGame.homeTeam)}</span>
-                    <span className="rounded-xl bg-red-800 px-5 py-2 text-xl font-black tabular-nums text-white">{lastGame.homeScore ?? 0} - {lastGame.awayScore ?? 0}</span>
-                    <span className="text-base font-black text-stone-900">{getTeamLabel(lastGame.awayTeam)}</span>
+                  <div className="text-center text-xs text-stone-400">{getCompetitionDisplayName(lastGame.competition)}</div>
+                  <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                    <span className="text-center text-base font-black text-stone-900">{getTeamLabel(lastGame.homeTeam)}</span>
+                    <span className="shrink-0 rounded-xl bg-red-800 px-5 py-2 text-xl font-black tabular-nums text-white">{lastGame.homeScore ?? 0} - {lastGame.awayScore ?? 0}</span>
+                    <span className="text-center text-base font-black text-stone-900">{getTeamLabel(lastGame.awayTeam)}</span>
                   </div>
                   <div className="mt-2 text-center text-[11px] text-stone-400">{formatDate(lastGame.dateTime, true)}</div>
                 </Link>
@@ -441,6 +575,52 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                 </div>
               </Card>
             )}
+
+            {topScorers.length > 0 && (
+              <Card title="מלכי השערים" actionHref="/statistics" actionLabel="לסטטיסטיקות">
+                <div className="overflow-hidden rounded-xl border border-stone-200">
+                  <table className="w-full text-right text-sm">
+                    <thead><tr className="bg-stone-100 text-[11px] text-stone-500"><th className="px-3 py-2">#</th><th className="px-3 py-2">שחקן</th><th className="px-3 py-2">קבוצה</th><th className="px-3 py-2">שערים</th></tr></thead>
+                    <tbody>
+                      {topScorers.map((row, idx) => (
+                        <tr key={idx} className="border-t border-stone-100 hover:bg-stone-50">
+                          <td className="px-3 py-2.5 font-black text-stone-400">{idx + 1}</td>
+                          <td className="px-3 py-2.5 font-bold text-stone-900">{row.playerId ? <Link href={`/players/${row.playerId}`} className="hover:text-red-700">{row.playerNameHe}</Link> : row.playerNameHe}</td>
+                          <td className="px-3 py-2.5 text-stone-500">{row.teamNameHe}</td>
+                          <td className="px-3 py-2.5 font-black text-red-800">{row.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {topAssists.length > 0 && (
+              <Card title="מלכי הבישולים" actionHref="/statistics" actionLabel="לסטטיסטיקות">
+                <div className="overflow-hidden rounded-xl border border-stone-200">
+                  <table className="w-full text-right text-sm">
+                    <thead><tr className="bg-stone-100 text-[11px] text-stone-500"><th className="px-3 py-2">#</th><th className="px-3 py-2">שחקן</th><th className="px-3 py-2">קבוצה</th><th className="px-3 py-2">בישולים</th></tr></thead>
+                    <tbody>
+                      {topAssists.map((row, idx) => (
+                        <tr key={idx} className="border-t border-stone-100 hover:bg-stone-50">
+                          <td className="px-3 py-2.5 font-black text-stone-400">{idx + 1}</td>
+                          <td className="px-3 py-2.5 font-bold text-stone-900">{row.playerId ? <Link href={`/players/${row.playerId}`} className="hover:text-red-700">{row.playerNameHe}</Link> : row.playerNameHe}</td>
+                          <td className="px-3 py-2.5 text-stone-500">{row.teamNameHe}</td>
+                          <td className="px-3 py-2.5 font-black text-red-800">{row.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {goalMinutesData.length > 0 && (
+              <Card title="שערים לפי דקות" actionHref="/statistics" actionLabel="לסטטיסטיקות">
+                <GoalMinutesChart data={goalMinutesData} />
+              </Card>
+            )}
           </div>
 
           {/* ── COL 3: Telegram ── */}
@@ -451,6 +631,8 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                   <div className="relative h-44">
                     {featuredTelegramMessage.imageUrl ? (
                       <img src={featuredTelegramMessage.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                    ) : featuredTelegramMessage.channelPhotoUrl ? (
+                      <img src={featuredTelegramMessage.channelPhotoUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
                     ) : (
                       <div className="absolute inset-0 bg-gradient-to-br from-red-900 to-stone-900" />
                     )}
@@ -470,9 +652,9 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
               <div className="space-y-3">
                 {telegramFeedMessages.map((message) => (
                   <article key={message.id} className="rounded-xl border border-stone-100 bg-white p-3 transition hover:border-stone-300 hover:shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-sm font-bold leading-5 text-stone-900">{getTelegramPreviewTitle(message.text)}</div>
-                      {message.imageUrl && <img src={message.imageUrl} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />}
+                    <div className="grid grid-cols-[1fr_48px] items-start gap-3">
+                      <div className="min-w-0 text-sm font-bold leading-5 text-stone-900">{getTelegramPreviewTitle(message.text)}</div>
+                      <img src={message.imageUrl || message.channelPhotoUrl || ''} alt="" className="h-12 w-12 rounded-lg object-cover" />
                     </div>
                     <TelegramMessageBody message={message} />
                     <div className="mt-2 flex items-center justify-between">

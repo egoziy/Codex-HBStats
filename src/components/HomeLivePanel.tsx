@@ -12,22 +12,16 @@ type LiveGroup = {
   isIsraeliPriority: boolean;
 };
 
-const israeliCompetitionKeywords = ['israel', 'ligat ha', 'toto cup', 'state cup', 'winner cup'];
+const israeliCompetitionKeywords = [
+  'israel', 'ligat ha', 'toto cup', 'state cup', 'winner cup',
+  'ישראל', 'ליגת העל', 'ליגה לאומית', 'גביע המדינה', 'גביע הטוטו',
+];
 
 const israeliTeamKeywords = [
-  'hapoel',
-  'maccabi',
-  'beitar',
-  'bnei',
-  'ironi',
-  'ashdod',
-  'sakhnin',
-  'beer sheva',
-  'jerusalem',
-  'tel aviv',
-  'haifa',
-  'netanya',
-  'petah tikva',
+  'hapoel', 'maccabi', 'beitar', 'bnei', 'ironi',
+  'ashdod', 'sakhnin', 'beer sheva', 'jerusalem', 'tel aviv',
+  'haifa', 'netanya', 'petah tikva',
+  'הפועל', 'מכבי', 'בית"ר', 'ביתר', 'בני', 'עירוני', 'מ.ס.', 'סקציה',
 ];
 
 function normalizeText(value: string | null | undefined) {
@@ -57,7 +51,7 @@ function isIsraeliPriorityItem(item: HomepageLiveSnapshot) {
   const league = normalizeText(item.leagueLabel);
   const teams = normalizeText(`${item.homeTeamName} ${item.awayTeamName}`);
 
-  if (country.includes('israel')) {
+  if (country.includes('israel') || country.includes('ישראל')) {
     return true;
   }
 

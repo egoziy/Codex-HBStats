@@ -186,6 +186,47 @@ const LIVE_TRANSLATIONS: Record<string, string> = {
   'FIFA Club World Cup': 'גביע העולם למועדונים',
   'International Champions Cup': 'גביע הבינלאומי',
 
+  // ── Israeli teams (API-Football names → Hebrew) ───────────────────────────
+  'Hapoel Beer Sheva': 'הפועל באר שבע',
+  'Hapoel Tel Aviv': 'הפועל תל אביב',
+  'Hapoel Haifa': 'הפועל חיפה',
+  'Hapoel Jerusalem': 'הפועל ירושלים',
+  'Hapoel Petah Tikva': 'הפועל פתח תקווה',
+  'Hapoel Petach Tikva': 'הפועל פתח תקווה',
+  'Hapoel Kfar Saba': 'הפועל כפר סבא',
+  'Hapoel Hadera': 'הפועל חדרה',
+  'Hapoel Acre': 'הפועל עכו',
+  'Hapoel Raanana': 'הפועל רעננה',
+  'Hapoel Rishon LeZion': 'הפועל ראשון לציון',
+  'Hapoel Ramat Gan': 'הפועל רמת גן',
+  'Hapoel Nof HaGalil': 'הפועל נוף הגליל',
+  'Hapoel Afula': 'הפועל עפולה',
+  'Hapoel Kfar Shalem': 'הפועל כפר שלם',
+  'Hapoel Nir Ramat HaSharon': 'הפועל ניר רמת השרון',
+  'Hapoel Umm al-Fahm': 'הפועל אום אל פאחם',
+  'Maccabi Tel Aviv': 'מכבי תל אביב',
+  'Maccabi Haifa': 'מכבי חיפה',
+  'Maccabi Netanya': 'מכבי נתניה',
+  'Maccabi Petach Tikva': 'מכבי פתח תקווה',
+  'Maccabi Petah Tikva': 'מכבי פתח תקווה',
+  'Maccabi Herzliya': 'מכבי הרצליה',
+  'Maccabi Bnei Raina': 'מכבי בני ריינה',
+  'Maccabi Bnei Reineh': 'מכבי בני ריינה',
+  'Beitar Jerusalem': 'בית"ר ירושלים',
+  'Beitar Tel Aviv': 'בית"ר תל אביב',
+  'Bnei Sakhnin': 'בני סכנין',
+  'Bnei Yehuda': 'בני יהודה',
+  'Ironi Kiryat Shmona': 'עירוני קריית שמונה',
+  'Ironi Tiberias': 'עירוני טבריה',
+  'MS Ashdod': 'מ.ס. אשדוד',
+  'Ashdod': 'מ.ס. אשדוד',
+  'FC Ashdod': 'מ.ס. אשדוד',
+  'MS Kafr Qasim': 'מ.ס. כפר קאסם',
+  'Kafr Qasim': 'מ.ס. כפר קאסם',
+  'Sektzia Nes Tziona': 'סקציה נס ציונה',
+  'AS Ashdod': 'א.ס. אשדוד',
+  'Ihud Bnei Shefaram': 'איחוד בני שפרעם',
+
   // ── Israeli competitions ──────────────────────────────────────────────────
   "Ligat Ha'al": 'ליגת העל',
   "Lןigat Ha'al": 'ליגת העל',
@@ -411,6 +452,21 @@ export async function refreshGlobalHomepageLiveSnapshots() {
     }
   }
 
+  // Build EN→HE team name map from DB for Israeli teams (fallback when no apiFootballId match)
+  const teamNameEnToHe = new Map<string, string>();
+  if (localTeamMap.size === 0) {
+    const dbTeams = await prisma.team.findMany({
+      where: { nameHe: { not: '' }, season: { year: { gte: 2020 } } },
+      select: { nameEn: true, nameHe: true },
+      distinct: ['nameEn'],
+    });
+    for (const t of dbTeams) {
+      if (t.nameHe && t.nameEn && t.nameHe !== t.nameEn) {
+        teamNameEnToHe.set(t.nameEn.toLowerCase(), t.nameHe);
+      }
+    }
+  }
+
   if (fixtureIds.length) {
     await prisma.liveGameSnapshot.deleteMany({
       where: {
@@ -435,12 +491,18 @@ export async function refreshGlobalHomepageLiveSnapshots() {
     const localGame = localGameMap.get(fixtureId);
     const localHomeTeam = localGame?.homeTeam || localTeamMap.get(row?.teams?.home?.id);
     const localAwayTeam = localGame?.awayTeam || localTeamMap.get(row?.teams?.away?.id);
+    const homeNameApi = row?.teams?.home?.name || null;
+    const awayNameApi = row?.teams?.away?.name || null;
     const resolvedHomeTeamNameHe =
-      localHomeTeam?.nameHe || translateLiveText(row?.teams?.home?.name) || row?.teams?.home?.name || null;
-    const resolvedHomeTeamNameEn = localHomeTeam?.nameEn || row?.teams?.home?.name || null;
+      localHomeTeam?.nameHe ||
+      (homeNameApi && teamNameEnToHe.get(homeNameApi.toLowerCase())) ||
+      translateLiveText(homeNameApi) || homeNameApi || null;
+    const resolvedHomeTeamNameEn = localHomeTeam?.nameEn || homeNameApi || null;
     const resolvedAwayTeamNameHe =
-      localAwayTeam?.nameHe || translateLiveText(row?.teams?.away?.name) || row?.teams?.away?.name || null;
-    const resolvedAwayTeamNameEn = localAwayTeam?.nameEn || row?.teams?.away?.name || null;
+      localAwayTeam?.nameHe ||
+      (awayNameApi && teamNameEnToHe.get(awayNameApi.toLowerCase())) ||
+      translateLiveText(awayNameApi) || awayNameApi || null;
+    const resolvedAwayTeamNameEn = localAwayTeam?.nameEn || awayNameApi || null;
 
     await prisma.liveGameSnapshot.upsert({
       where: {
@@ -536,6 +598,7 @@ function mapSnapshotToHomepage(snapshot: any): HomepageLiveSnapshot {
 const ISRAELI_LEAGUE_IDS = new Set([383, 385, 1114, 1115]);
 const ISRAELI_TEAM_IDS = new Set([563, 604, 657, 2253, 4195, 4481, 4492, 4495, 4499, 4500, 4507, 4510, 8670, 8681]);
 const ISRAELI_KEYWORDS = [
+  // English
   'israel',
   'ligat ha',
   'toto cup',
@@ -558,6 +621,20 @@ const ISRAELI_KEYWORDS = [
   'katamon',
   'kfar saba',
   'nazareth',
+  // Hebrew
+  'ישראל',
+  'ליגת העל',
+  'ליגה לאומית',
+  'גביע המדינה',
+  'גביע הטוטו',
+  'הפועל',
+  'מכבי',
+  'בית"ר',
+  'ביתר',
+  'בני',
+  'עירוני',
+  'מ.ס.',
+  'סקציה',
 ];
 
 function normalizeLiveSortText(value: string | null | undefined) {
@@ -593,7 +670,7 @@ function isIsraeliLiveSnapshot(snapshot: {
   const league = normalizeLiveSortText(snapshot.leagueLabel);
   const teams = normalizeLiveSortText(`${snapshot.homeTeamName} ${snapshot.awayTeamName}`);
 
-  if (country.includes('israel')) {
+  if (country.includes('israel') || country.includes('ישראל')) {
     return true;
   }
 

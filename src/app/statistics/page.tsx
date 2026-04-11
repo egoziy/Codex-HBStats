@@ -82,7 +82,7 @@ export default async function StatisticsPage({
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
   const displayZeroStatPlayers = await getDisplayZeroStatPlayersSetting();
 
-  const teams = selectedSeason
+  const allSeasonTeams = selectedSeason
     ? await prisma.team.findMany({
         where: { seasonId: selectedSeason.id },
         orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
@@ -109,11 +109,25 @@ export default async function StatisticsPage({
       })
     : [];
 
-  const selectedTeamId = searchParams?.teamId || 'all';
-  const selectedTeam = teams.find((team) => team.id === selectedTeamId) || null;
   const defaultCompetition = getDefaultCompetition(competitions);
   const selectedCompetitionId = searchParams?.competitionId || defaultCompetition?.id || 'all';
   const selectedCompetition = competitions.find((competition) => competition.id === selectedCompetitionId) || defaultCompetition || null;
+
+  // Filter teams to only those participating in the selected competition
+  const competitionTeamIds = selectedCompetition && selectedSeason
+    ? new Set(
+        (await prisma.game.findMany({
+          where: { seasonId: selectedSeason.id, competitionId: selectedCompetition.id },
+          select: { homeTeamId: true, awayTeamId: true },
+        })).flatMap((g) => [g.homeTeamId, g.awayTeamId])
+      )
+    : null;
+  const teams = competitionTeamIds
+    ? allSeasonTeams.filter((t) => competitionTeamIds.has(t.id))
+    : allSeasonTeams;
+
+  const selectedTeamId = searchParams?.teamId || 'all';
+  const selectedTeam = teams.find((team) => team.id === selectedTeamId) || null;
 
   const [rawStandings, games, players, leaderPlayers, leaderGames] = await Promise.all([
     selectedSeason
@@ -325,16 +339,16 @@ export default async function StatisticsPage({
     leaderGames,
   });
 
-  // Fallback: if no player data (old seasons), use CompetitionLeaderboardEntry
-  const hasPlayerData = goalsLeaders.length > 0 || assistsLeaders.length > 0;
-  if (!hasPlayerData && selectedSeason) {
+  // Prefer CompetitionLeaderboardEntry (authoritative from Walla/IFA) when available.
+  // Fall back to PlayerStatistics-derived leaders only when no leaderboard entries exist.
+  if (selectedSeason) {
     const dbLeaderboards = await prisma.competitionLeaderboardEntry.findMany({
       where: {
         seasonId: selectedSeason.id,
         ...(selectedCompetition ? { competitionId: selectedCompetition.id } : {}),
       },
       orderBy: [{ category: 'asc' }, { rank: 'asc' }],
-      take: 200,
+      take: 2000,
     });
 
     const categoryMap: Record<string, { title: string; valueLabel: string }> = {
@@ -353,21 +367,23 @@ export default async function StatisticsPage({
       grouped.set(entry.category, list);
     }
 
-    leaderboardCards = Array.from(grouped.entries()).map(([category, entries]) => {
-      const meta = categoryMap[category] || { title: category, valueLabel: 'ערך' };
-      return {
-        title: meta.title,
-        valueLabel: meta.valueLabel,
-        rows: entries.slice(0, 20).map((e) => ({
-          playerId: e.playerId || e.id,
-          playerName: e.playerNameHe || e.playerNameEn || '?',
-          teamName: e.teamNameHe || e.teamNameEn || '-',
-          value: e.value,
-          details: [],
-          emptyMessage: '',
-        })),
-      };
-    });
+    if (dbLeaderboards.length > 0) {
+      leaderboardCards = Array.from(grouped.entries()).map(([category, entries]) => {
+        const meta = categoryMap[category] || { title: category, valueLabel: 'ערך' };
+        return {
+          title: meta.title,
+          valueLabel: meta.valueLabel,
+          rows: entries.slice(0, 20).map((e) => ({
+            playerId: e.playerId || e.id,
+            playerName: e.playerNameHe || e.playerNameEn || '?',
+            teamName: e.teamNameHe || e.teamNameEn || '-',
+            value: e.value,
+            details: [],
+            emptyMessage: '',
+          })),
+        };
+      });
+    }
   }
 
   if (displayMode === 'premier') {

@@ -4,6 +4,7 @@ export type TelegramChannelMessage = {
   url: string;
   publishedAt: Date | null;
   imageUrl?: string | null;
+  channelPhotoUrl?: string | null;
   sourceSlug: string;
   sourceLabel: string;
   teamLabel: string;
@@ -141,6 +142,11 @@ export async function fetchTelegramChannelMessages(
   }
 
   const html = await response.text();
+
+  // Extract channel photo from page header
+  const channelPhotoMatch = html.match(/tgme_page_photo_image[^>]*><img src="([^"]+)"/i);
+  const channelPhotoUrl = channelPhotoMatch?.[1] || null;
+
   const chunks = html
     .split('<div class="tgme_widget_message_wrap')
     .slice(1)
@@ -159,6 +165,7 @@ export async function fetchTelegramChannelMessages(
       url,
       publishedAt: extractPublishedAt(chunk),
       imageUrl: extractImageUrl(chunk),
+      channelPhotoUrl,
       sourceSlug: normalizedSource.slug,
       sourceLabel: normalizedSource.label,
       teamLabel: normalizedSource.teamLabel,
