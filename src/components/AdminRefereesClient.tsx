@@ -63,8 +63,8 @@ export default function AdminRefereesClient({ initialReferees, countries }: { in
         if (countryFilter === 'none') { if (r.country) return false; }
         else if (r.country !== countryFilter) return false;
       }
-      if (filter === 'missing_he') return !r.nameHe || r.nameHe === r.nameEn;
-      if (filter === 'has_he') return r.nameHe && r.nameHe !== r.nameEn;
+      if (filter === 'missing_he') return !r.nameHe || !/[\u0590-\u05FF]/.test(r.nameHe);
+      if (filter === 'has_he') return r.nameHe && /[\u0590-\u05FF]/.test(r.nameHe);
       return true;
     })
     .sort((a, b) => {
@@ -133,7 +133,7 @@ export default function AdminRefereesClient({ initialReferees, countries }: { in
     }
   };
 
-  const missingCount = referees.filter((r) => !r.nameHe || r.nameHe === r.nameEn).length;
+  const missingCount = referees.filter((r) => !r.nameHe || !/[\u0590-\u05FF]/.test(r.nameHe)).length;
   const totalGames = referees.reduce((sum, r) => sum + r._count.games, 0);
 
   const sourceRef = mergeSource ? referees.find((r) => r.id === mergeSource) : null;
@@ -279,7 +279,7 @@ export default function AdminRefereesClient({ initialReferees, countries }: { in
                       onBlur={(e) => saveNameHe(ref.id, e.target.value.trim())}
                       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       className={`w-full rounded-lg border px-2 py-1 text-sm outline-none transition ${
-                        ref.nameHe && ref.nameHe !== ref.nameEn
+                        ref.nameHe && /[\u0590-\u05FF]/.test(ref.nameHe)
                           ? 'border-stone-200 bg-white text-stone-900'
                           : 'border-red-200 bg-red-50 text-stone-500 placeholder:text-red-300'
                       } focus:border-red-400 focus:bg-white focus:text-stone-900`}
