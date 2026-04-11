@@ -77,12 +77,12 @@ function namesMatch(a: string, b: string): boolean {
 // ──────────────────────────────────────────────
 
 function normalizeSeasonName(scraped: string): string {
-  // "2024/25" → "2024-2025", "2024/2025" → "2024-2025"
+  // "2024/25" → "2024/2025", "2024/2025" → "2024/2025"
   const m = scraped.match(/(\d{4})\/(\d{2,4})/);
   if (!m) return scraped;
   const startYear = m[1];
   const endYear = m[2].length === 2 ? `20${m[2]}` : m[2];
-  return `${startYear}-${endYear}`;
+  return `${startYear}/${endYear}`;
 }
 
 // ──────────────────────────────────────────────

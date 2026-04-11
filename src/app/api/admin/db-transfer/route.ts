@@ -21,9 +21,9 @@ function findPgTool(name: string): string {
 
 function parseDatabaseUrl(): { host: string; port: string; user: string; password: string; db: string } {
   const url = process.env.DATABASE_URL || '';
-  const m = url.match(/postgresql:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+  const m = url.match(/postgresql:\/\/([^:@]+)(?::([^@]*))?@([^:]+):(\d+)\/(.+)/);
   if (!m) throw new Error('Cannot parse DATABASE_URL');
-  return { user: m[1], password: m[2], host: m[3], port: m[4], db: m[5] };
+  return { user: m[1], password: m[2] ?? '', host: m[3], port: m[4], db: m[5] };
 }
 
 // GET — export (download) the entire database as SQL dump
