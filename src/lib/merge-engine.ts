@@ -542,13 +542,19 @@ export async function previewGamesMerge(
     const homeTeam = findTeam(match.homeTeamName);
     const awayTeam = findTeam(match.awayTeamName);
 
-    // Determine actual competition: if both teams are from same comp use it, otherwise it's a cup match
+    // Determine actual competition based on framework AND leagueNameHe
     let resolvedCompetitionId = matchCompetitionId;
-    if (homeTeam && awayTeam) {
+    const fw = match.framework || '';
+    const ln = match.leagueNameHe || '';
+    if (fw === 'state_cup' || ln.includes('גביע המדינה')) {
+      resolvedCompetitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 384 } }))?.id || matchCompetitionId;
+    } else if (fw === 'toto_cup' || ln.includes('טוטו')) {
+      resolvedCompetitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 385 } }))?.id || matchCompetitionId;
+    } else if (homeTeam && awayTeam) {
       const homeComp = (await prisma.standing.findFirst({ where: { teamId: homeTeam.id, seasonId }, select: { competitionId: true } }))?.competitionId;
       const awayComp = (await prisma.standing.findFirst({ where: { teamId: awayTeam.id, seasonId }, select: { competitionId: true } }))?.competitionId;
       if (homeComp && awayComp && homeComp !== awayComp) {
-        // Cross-competition match — likely a cup game
+        // Cross-competition league match — determine cup type from league name
         resolvedCompetitionId = (await prisma.competition.findFirst({ where: { apiFootballId: 384 } }))?.id || matchCompetitionId;
       }
     }
@@ -862,22 +868,33 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
           await prisma.game.update({ where: { id: change.matchedId }, data: updateData });
         }
 
-        // Add events if game had none
+        // Add events if game had none — with player linking
         if (change.fields._events && change.meta?.sourceId) {
+          const homePlayers = await prisma.player.findMany({ where: { teamId: change.meta.homeTeamId }, select: { id: true, nameHe: true } });
+          const awayPlayers = await prisma.player.findMany({ where: { teamId: change.meta.awayTeamId }, select: { id: true, nameHe: true } });
+          const findPlayer = (name: string, teamId: string) => {
+            if (!name) return null;
+            const players = teamId === change.meta.homeTeamId ? homePlayers : awayPlayers;
+            const n = name.trim().toLowerCase();
+            const reversed = n.split(' ').reverse().join(' ');
+            return players.find(p => { const ph = (p.nameHe || '').trim().toLowerCase(); return ph === n || ph === reversed; })?.id || null;
+          };
+
           const scrapedEvents = await prisma.scrapedMatchEvent.findMany({ where: { source: 'footballOrgIl', matchSourceId: change.meta.sourceId } });
           for (const ev of scrapedEvents) {
             const eventType = mapEventType(ev.type);
             if (!eventType) continue;
+            const teamId = ev.teamSide === 'home' ? change.meta.homeTeamId : ev.teamSide === 'away' ? change.meta.awayTeamId : null;
+            const playerId = teamId ? findPlayer(ev.playerName, teamId) : null;
+            const relatedPlayerId = (teamId && ev.secondPlayerName) ? findPlayer(ev.secondPlayerName, teamId) : null;
             await prisma.gameEvent.create({
               data: {
-                gameId: change.matchedId,
-                minute: ev.minute,
-                type: eventType,
-                team: ev.teamName || '',
-                teamId: ev.teamSide === 'home' ? change.meta.homeTeamId : ev.teamSide === 'away' ? change.meta.awayTeamId : null,
-                notesHe: ev.secondPlayerName ? `${ev.playerName} → ${ev.secondPlayerName}` : ev.playerName,
+                gameId: change.matchedId, minute: ev.minute, type: eventType,
+                team: ev.teamName || '', teamId,
                 participantName: ev.playerName,
                 relatedParticipantName: ev.secondPlayerName,
+                notesHe: ev.secondPlayerName ? `${ev.playerName} → ${ev.secondPlayerName}` : ev.playerName,
+                playerId, relatedPlayerId,
               },
             });
           }
@@ -926,20 +943,39 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
         });
         snapshots.push({ id: newGame.id, entity: 'game', original: {}, action: 'create' });
 
-        // Create events
+        // Create events — try to link players by name
         if (m.sourceId) {
+          // Build player lookup for both teams (name reversed for matching)
+          const homePlayers = await prisma.player.findMany({ where: { teamId: m.homeTeamId }, select: { id: true, nameHe: true } });
+          const awayPlayers = await prisma.player.findMany({ where: { teamId: m.awayTeamId }, select: { id: true, nameHe: true } });
+          const findPlayer = (name: string, teamId: string) => {
+            if (!name) return null;
+            const players = teamId === m.homeTeamId ? homePlayers : awayPlayers;
+            const n = name.trim().toLowerCase();
+            const reversed = n.split(' ').reverse().join(' ');
+            return players.find(p => {
+              const ph = (p.nameHe || '').trim().toLowerCase();
+              return ph === n || ph === reversed;
+            })?.id || null;
+          };
+
           const scrapedEvents = await prisma.scrapedMatchEvent.findMany({ where: { source: 'footballOrgIl', matchSourceId: m.sourceId } });
           for (const ev of scrapedEvents) {
             const eventType = mapEventType(ev.type);
             if (!eventType) continue;
+            const teamId = ev.teamSide === 'home' ? m.homeTeamId : ev.teamSide === 'away' ? m.awayTeamId : null;
+            const playerId = teamId ? findPlayer(ev.playerName, teamId) : null;
+            const relatedPlayerId = (teamId && ev.secondPlayerName) ? findPlayer(ev.secondPlayerName, teamId) : null;
             await prisma.gameEvent.create({
               data: {
                 gameId: newGame.id, minute: ev.minute, type: eventType,
                 team: ev.teamName || '',
-                teamId: ev.teamSide === 'home' ? m.homeTeamId : ev.teamSide === 'away' ? m.awayTeamId : null,
-                notesHe: ev.secondPlayerName ? `${ev.playerName} → ${ev.secondPlayerName}` : ev.playerName,
+                teamId,
                 participantName: ev.playerName,
                 relatedParticipantName: ev.secondPlayerName,
+                notesHe: ev.secondPlayerName ? `${ev.playerName} → ${ev.secondPlayerName}` : ev.playerName,
+                playerId,
+                relatedPlayerId,
               },
             }).catch(() => null);
           }

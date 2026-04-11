@@ -357,9 +357,20 @@ async function scrapeGameDetails(gameId, sid) {
   const halfText = $half.text().trim();
   const venueText = $('#gTimeHolder a.place').text().trim();
 
+  // Parse extra time / penalty scores from full holder text
+  const holderText = $('#gTimeHolder').text().replace(/\s+/g, ' ');
+  const etMatch = holderText.match(/הארכה\s*:\s*.*?(\d+)\s*:\s*.*?(\d+)/);
+  let extraTimeHome = null, extraTimeAway = null;
+  if (etMatch) { extraTimeHome = +etMatch[1]; extraTimeAway = +etMatch[2]; }
+  const penMatch = holderText.match(/פנדלים\s*:\s*.*?(\d+)\s*:\s*.*?(\d+)/);
+  let penaltyHome = null, penaltyAway = null;
+  if (penMatch) { penaltyHome = +penMatch[1]; penaltyAway = +penMatch[2]; }
+
   let homeScore = null, awayScore = null;
   const sm = totalText.match(/(\d+)\s*:\s*(\d+)/);
   if (sm) { homeScore = +sm[1]; awayScore = +sm[2]; }
+  // Use extra time as final score if available
+  if (extraTimeHome !== null) { homeScore = extraTimeHome; awayScore = extraTimeAway; }
 
   let homeHalf = null, awayHalf = null;
   const hm = halfText.match(/(\d+)\s*:\s*(\d+)/);

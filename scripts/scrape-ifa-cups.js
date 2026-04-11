@@ -231,13 +231,24 @@ async function scrapeGameDetails(gameId, sid) {
     return;
   }
 
-  // Score
+  // Score — check for extra time
   const $total = $('#gTimeHolder .total').clone(); $total.find('.sr-only').remove();
   const $half = $('#gTimeHolder .result-half').clone(); $half.find('.sr-only').remove();
   const dateText = $('#gTimeHolder .date').text().trim();
   const totalText = $total.text().trim();
   const halfText = $half.text().trim();
   const venueText = $('#gTimeHolder a.place').text().trim();
+
+  // Parse extra time score from full holder text
+  const holderText = $('#gTimeHolder').text().replace(/\s+/g, ' ');
+  const etMatch = holderText.match(/הארכה\s*:\s*.*?(\d+)\s*:\s*.*?(\d+)/);
+  let extraTimeHome = null, extraTimeAway = null;
+  if (etMatch) { extraTimeHome = +etMatch[1]; extraTimeAway = +etMatch[2]; }
+
+  // Parse penalty score
+  const penMatch = holderText.match(/פנדלים\s*:\s*.*?(\d+)\s*:\s*.*?(\d+)/);
+  let penaltyHome = null, penaltyAway = null;
+  if (penMatch) { penaltyHome = +penMatch[1]; penaltyAway = +penMatch[2]; }
 
   let homeScore = null, awayScore = null;
   const sm = totalText.match(/(\d+)\s*:\s*(\d+)/);
@@ -289,7 +300,11 @@ async function scrapeGameDetails(gameId, sid) {
     update: {
       homeTeamName: homeTeamName || undefined,
       awayTeamName: awayTeamName || undefined,
-      homeScore, awayScore, homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      // If extra time exists, use it as final score; regular time stays in homeScore/awayScore
+      homeScore: extraTimeHome ?? homeScore,
+      awayScore: extraTimeAway ?? awayScore,
+      homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText || undefined, dateTime: dateTime || undefined,
       venue: venueText || undefined,
       referee: referees.join(', ') || undefined,
@@ -309,7 +324,10 @@ async function scrapeGameDetails(gameId, sid) {
       source: SOURCE, sourceId: gameId, season: label,
       homeTeamName: homeTeamName || 'Unknown',
       awayTeamName: awayTeamName || 'Unknown',
-      homeScore, awayScore, homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      homeScore: extraTimeHome ?? homeScore,
+      awayScore: extraTimeAway ?? awayScore,
+      homeHalfScore: homeHalf, awayHalfScore: awayHalf,
+      homePenalty: penaltyHome, awayPenalty: penaltyAway,
       dateStr: dateText, dateTime,
       venue: venueText,
       referee: referees.join(', '),
