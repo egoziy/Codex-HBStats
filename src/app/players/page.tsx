@@ -199,10 +199,27 @@ export default async function PlayersPage({
 
   const visiblePlayers = players
     .map((player) => {
-      const stat = derivePlayerDeepStats(
+      const derivedStat = derivePlayerDeepStats(
         player.id,
         seasonGames.filter((game) => game.homeTeamId === player.teamId || game.awayTeamId === player.teamId)
       );
+      // Use derived stats from game events if available, otherwise fall back to playerStats from DB
+      const dbStat = player.playerStats[0] || null;
+      const stat = derivedStat.gamesPlayed > 0 || derivedStat.goals > 0
+        ? derivedStat
+        : dbStat
+          ? {
+              ...derivedStat,
+              gamesPlayed: dbStat.gamesPlayed || derivedStat.gamesPlayed,
+              goals: dbStat.goals || derivedStat.goals,
+              assists: dbStat.assists || derivedStat.assists,
+              yellowCards: dbStat.yellowCards || derivedStat.yellowCards,
+              redCards: dbStat.redCards || derivedStat.redCards,
+              minutesPlayed: dbStat.minutesPlayed || derivedStat.minutesPlayed,
+              starts: dbStat.starts || derivedStat.starts,
+              substituteAppearances: dbStat.substituteAppearances || derivedStat.substituteAppearances,
+            }
+          : derivedStat;
       const hasSeasonStats =
         player.playerStats.some((row) =>
           row.gamesPlayed > 0 || row.minutesPlayed > 0 || row.goals > 0 || row.assists > 0 ||

@@ -335,10 +335,31 @@ export default async function PlayerPage({
   // Career: all seasons across all linked player entries
   const careerStats = buildAggregatedStats(linkedPlayers);
   const selectedSeasonStats = aggregatedStats.filter((stat) => stat.key.startsWith(`${selectedSeasonId}-`));
+  const dbSeasonTotals = selectedSeasonStats.reduce(
+    (acc, stat) => ({
+      goals: acc.goals + stat.goals,
+      assists: acc.assists + stat.assists,
+      yellowCards: acc.yellowCards + stat.yellowCards,
+      redCards: acc.redCards + stat.redCards,
+      gamesPlayed: acc.gamesPlayed + stat.gamesPlayed,
+      minutesPlayed: acc.minutesPlayed + stat.minutesPlayed,
+      starts: acc.starts + stat.starts,
+      substituteAppearances: acc.substituteAppearances + stat.substituteAppearances,
+      timesSubbedOff: acc.timesSubbedOff + stat.timesSubbedOff,
+    }),
+    { goals: 0, assists: 0, yellowCards: 0, redCards: 0, gamesPlayed: 0, minutesPlayed: 0, starts: 0, substituteAppearances: 0, timesSubbedOff: 0 }
+  );
   const derivedTotals = {
     ...derivedTotalsBase,
-    goals: Math.max(derivedTotalsBase.goals, selectedSeasonStats.reduce((sum, stat) => sum + stat.goals, 0)),
-    assists: Math.max(derivedTotalsBase.assists, selectedSeasonStats.reduce((sum, stat) => sum + stat.assists, 0)),
+    goals: Math.max(derivedTotalsBase.goals, dbSeasonTotals.goals),
+    assists: Math.max(derivedTotalsBase.assists, dbSeasonTotals.assists),
+    yellowCards: Math.max(derivedTotalsBase.yellowCards, dbSeasonTotals.yellowCards),
+    redCards: Math.max(derivedTotalsBase.redCards, dbSeasonTotals.redCards),
+    gamesPlayed: Math.max(derivedTotalsBase.gamesPlayed, dbSeasonTotals.gamesPlayed),
+    minutesPlayed: Math.max(derivedTotalsBase.minutesPlayed, dbSeasonTotals.minutesPlayed),
+    starts: Math.max(derivedTotalsBase.starts, dbSeasonTotals.starts),
+    substituteAppearances: Math.max(derivedTotalsBase.substituteAppearances, dbSeasonTotals.substituteAppearances),
+    timesSubbedOff: Math.max(derivedTotalsBase.timesSubbedOff, dbSeasonTotals.timesSubbedOff),
   };
 
   const uploads = linkedPlayers
