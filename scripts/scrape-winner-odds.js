@@ -10,6 +10,8 @@
  */
 
 const puppeteer = require('puppeteer-core');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 const ISRAELI_LEAGUES = ['ליגת העל', 'ליגה לאומית', 'גביע המדינה', 'גביע טוטו', 'ליגת Winner'];
 
@@ -153,10 +155,73 @@ function printResults(matches, showAll, jsonOutput) {
   console.log(`\n\nסה"כ ${filtered.length} משחקים.`);
 }
 
+async function saveToDb(matches) {
+  // Keep only 1X2 Israeli matches
+  const toSave = matches.filter(m =>
+    m.mp && m.mp.includes('1X2') &&
+    ISRAELI_LEAGUES.some(l => m.league?.includes(l))
+  );
+
+  const fetchedAt = new Date();
+  let saved = 0;
+
+  for (const m of toSave) {
+    const odds = calcOdds(m.outcomes);
+    if (!odds) continue;
+
+    const dtStr = parseDate(m.e_date, m.m_hour);
+    const matchTime = new Date(dtStr.replace(' ', 'T') + ':00+03:00');
+
+    // Try to find matching game in DB by team names + date
+    let gameId = null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 2);
+
+    const game = await prisma.game.findFirst({
+      where: {
+        dateTime: { gte: today, lte: tomorrow },
+        OR: [
+          { homeTeam: { nameHe: { contains: odds.home.name } } },
+          { homeTeam: { nameEn: { contains: odds.home.name } } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (game) gameId = game.id;
+
+    await prisma.winnerOdds.upsert({
+      where: { winnerId_fetchedAt: { winnerId: m.mId, fetchedAt } },
+      create: {
+        winnerId: m.mId,
+        matchDesc: m.desc,
+        league: m.league || '',
+        matchTime,
+        odds1: odds.home.odds,
+        oddsX: odds.draw.odds,
+        odds2: odds.away.odds,
+        pct1: parseFloat(odds.home.pct),
+        pctX: parseFloat(odds.draw.pct),
+        pct2: parseFloat(odds.away.pct),
+        margin: parseFloat(odds.margin),
+        isLive: m.isLive || false,
+        gameId,
+        fetchedAt,
+      },
+      update: {},
+    });
+    saved++;
+  }
+
+  return saved;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const showAll = args.includes('--all');
   const jsonOutput = args.includes('--json');
+  const saveDb = args.includes('--save');
 
   console.error('פותח דפדפן ומושך נתונים מ-Winner...');
   const matches = await fetchOdds();
@@ -171,10 +236,17 @@ async function main() {
     return true;
   });
 
+  if (saveDb) {
+    const saved = await saveToDb(unique);
+    console.error(`נשמרו ${saved} משחקים ב-DB.`);
+  }
+
   printResults(unique, showAll, jsonOutput);
+  await prisma.$disconnect();
 }
 
-main().catch(err => {
+main().catch(async err => {
   console.error('שגיאה:', err.message);
+  await prisma.$disconnect();
   process.exit(1);
 });

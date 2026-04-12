@@ -346,6 +346,7 @@ model Game {
   oddsValues          GameOddsValue[]
   oddsSnapshots       GameOddsSnapshot[]
   liveSnapshots       LiveGameSnapshot[]
+  winnerOdds          WinnerOdds[]
   fetchJobs           FetchJob[]
   activityLogs        ActivityLog[]
 
@@ -1273,4 +1274,28 @@ model MergeOperation {
 
   @@index([status, createdAt])
   @@map("merge_operations")
+}
+
+model WinnerOdds {
+  id          String    @id @default(cuid())
+  winnerId    Int       // mId מ-Winner API
+  matchDesc   String    // "מכבי תל אביב - הפועל באר שבע"
+  league      String
+  matchTime   DateTime
+  odds1       Float     // יחס בית
+  oddsX       Float     // יחס תיקו
+  odds2       Float     // יחס אורח
+  pct1        Float     // אחוז בית (מנורמל)
+  pctX        Float     // אחוז תיקו (מנורמל)
+  pct2        Float     // אחוז אורח (מנורמל)
+  margin      Float     // שולי הימור
+  isLive      Boolean   @default(false)
+  gameId      String?   // קישור אופציונלי למשחק בDB
+  game        Game?     @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  fetchedAt   DateTime  @default(now())
+
+  @@unique([winnerId, fetchedAt])
+  @@index([matchTime])
+  @@index([gameId])
+  @@map("winner_odds")
 }

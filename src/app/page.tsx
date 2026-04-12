@@ -237,6 +237,23 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       getHomepageLiveSnapshots(null, { limit: homepageLiveLimit }),
     ]);
 
+  // Winner odds for today's matches
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
+  const winnerOddsRaw = await prisma.winnerOdds.findMany({
+    where: { matchTime: { gte: todayStart, lt: todayEnd } },
+    orderBy: { fetchedAt: 'desc' },
+  });
+  // Keep latest per winnerId, index by matchDesc for lookup
+  const seenWinner = new Set<number>();
+  const winnerOddsMap: Record<string, typeof winnerOddsRaw[0]> = {};
+  for (const o of winnerOddsRaw) {
+    if (seenWinner.has(o.winnerId)) continue;
+    seenWinner.add(o.winnerId);
+    winnerOddsMap[o.matchDesc] = o;
+    if (o.gameId) winnerOddsMap[o.gameId] = o;
+  }
+
   // ── Additional data: leaderboards, red cards, goal minutes ──
   const [topScorers, topAssists, recentRedCards, yellowCardCounts, goalMinutesRaw] = await Promise.all([
     prisma.competitionLeaderboardEntry.findMany({
@@ -522,6 +539,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                 {nextRoundGames.map((game) => {
                   const isFav = selectedTeamIds.includes(game.homeTeamId) || selectedTeamIds.includes(game.awayTeamId);
                   const completed = game.status === 'COMPLETED';
+                  const wo = winnerOddsMap[game.id] || winnerOddsMap[`${getTeamLabel(game.homeTeam)} - ${getTeamLabel(game.awayTeam)}`];
                   return (
                     <Link key={game.id} href={`/games/${game.id}`} className={`block rounded-xl border p-3 transition hover:bg-white ${isFav ? 'border-red-200 bg-red-50' : 'border-stone-100 bg-stone-50 hover:border-stone-300'}`}>
                       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -534,6 +552,25 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                         <span className={`text-center text-sm font-bold ${isFav ? 'text-red-900' : 'text-stone-900'}`}>{getTeamLabel(game.awayTeam)}</span>
                       </div>
                       <div className="mt-1 text-center text-[11px] text-stone-400">{formatDate(game.dateTime, true)}</div>
+                      {wo && !completed && (
+                        <div className="mt-2 grid grid-cols-3 gap-1 border-t border-stone-200 pt-2">
+                          <div className="rounded-md bg-white px-1 py-1 text-center">
+                            <div className="text-[10px] text-stone-400">1</div>
+                            <div className="text-xs font-bold text-stone-800">{wo.odds1}</div>
+                            <div className="text-[10px] text-emerald-600">{wo.pct1.toFixed(0)}%</div>
+                          </div>
+                          <div className="rounded-md bg-white px-1 py-1 text-center">
+                            <div className="text-[10px] text-stone-400">X</div>
+                            <div className="text-xs font-bold text-stone-800">{wo.oddsX}</div>
+                            <div className="text-[10px] text-emerald-600">{wo.pctX.toFixed(0)}%</div>
+                          </div>
+                          <div className="rounded-md bg-white px-1 py-1 text-center">
+                            <div className="text-[10px] text-stone-400">2</div>
+                            <div className="text-xs font-bold text-stone-800">{wo.odds2}</div>
+                            <div className="text-[10px] text-emerald-600">{wo.pct2.toFixed(0)}%</div>
+                          </div>
+                        </div>
+                      )}
                     </Link>
                   );
                 })}
