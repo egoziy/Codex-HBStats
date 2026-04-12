@@ -4,6 +4,7 @@ import AdminLiveCountriesClient from '@/components/AdminLiveCountriesClient';
 import AdminHomepageLiveSettingsClient from '@/components/AdminHomepageLiveSettingsClient';
 import AdminPlayerDisplaySettingsClient from '@/components/AdminPlayerDisplaySettingsClient';
 import AdminTelegramSourcesClient from '@/components/AdminTelegramSourcesClient';
+import AdminAiSettingsClient from '@/components/AdminAiSettingsClient';
 import AdminManagerClient from '@/components/AdminManagerClient';
 import { buildAdminCoverageRows } from '@/lib/admin-data-coverage';
 import { getCurrentUser } from '@/lib/auth';
@@ -512,6 +513,7 @@ export default async function AdminPage({
             <AdminHomepageLiveSettingsClient initialHomepageLiveLimit={homepageLiveLimit} />
             <AdminPlayerDisplaySettingsClient initialDisplayZeroStatPlayers={displayZeroStatPlayers} />
             <AdminTelegramSourcesClient initialSources={telegramSources.length ? telegramSources : DEFAULT_TELEGRAM_SOURCES} />
+            <AdminAiSettingsClient />
           </div>
         ) : null}
 

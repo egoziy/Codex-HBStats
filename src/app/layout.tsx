@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Navbar from '@/components/Navbar';
+import AiChat from '@/components/AiChat';
 
 export const metadata: Metadata = {
   title: 'ליגת הסטטיסטיקות',
@@ -16,6 +17,7 @@ export default async function RootLayout({
     <html lang="he" dir="rtl">
       <body className="bg-[#f4f6fb] text-slate-950">
         <Navbar />
+        <AiChat />
         <div className="border-b border-stone-200 bg-black">
           <div className="mx-auto max-w-7xl px-4 py-4">
             <img
