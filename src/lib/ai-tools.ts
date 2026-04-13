@@ -17,11 +17,12 @@ export const toolDefinitions = [
   },
   {
     name: 'getPlayerEvents',
-    description: 'Get match events for a player — goals, yellow cards, red cards, substitutions. Returns event type, minute, and match details.',
+    description: 'Get match events for a player — goals, yellow cards, red cards, substitutions. Can search by player name (recommended) or player ID. Searching by name finds events across all seasons and teams automatically.',
     parameters: {
       type: 'object' as const,
       properties: {
-        playerId: { type: 'string', description: 'Player ID' },
+        playerName: { type: 'string', description: 'Player name (Hebrew or English) — recommended, searches across all seasons' },
+        playerId: { type: 'string', description: 'Specific player ID (use playerName instead when possible)' },
         seasonYear: { type: 'number', description: 'Optional season year filter' },
         eventType: {
           type: 'string',
@@ -29,7 +30,6 @@ export const toolDefinitions = [
           enum: ['GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION_IN', 'SUBSTITUTION_OUT', 'OWN_GOAL', 'PENALTY_GOAL'],
         },
       },
-      required: ['playerId'],
     },
   },
   {
@@ -93,14 +93,15 @@ export async function searchPlayers(args: { name: string; seasonYear?: number })
   const players = await prisma.player.findMany({
     where,
     include: {
-      team: { select: { nameHe: true, nameEn: true } },
+      team: { select: { nameHe: true, nameEn: true, season: { select: { year: true } } } },
       playerStats: {
         select: { goals: true, assists: true, yellowCards: true, redCards: true, gamesPlayed: true, minutesPlayed: true },
         take: 1,
         orderBy: { season: { year: 'desc' } },
       },
     },
-    take: 10,
+    orderBy: { team: { season: { year: 'desc' } } },
+    take: 15,
   });
 
   return players.map((p) => ({
@@ -109,12 +110,35 @@ export async function searchPlayers(args: { name: string; seasonYear?: number })
     nameEn: p.nameEn,
     position: p.position,
     team: p.team?.nameHe || p.team?.nameEn,
+    seasonYear: p.team?.season?.year,
     stats: p.playerStats[0] || null,
   }));
 }
 
-export async function getPlayerEvents(args: { playerId: string; seasonYear?: number; eventType?: string }) {
-  const where: any = { playerId: args.playerId };
+export async function getPlayerEvents(args: { playerName?: string; playerId?: string; seasonYear?: number; eventType?: string }) {
+  // Resolve player IDs — by name (across all seasons) or by single ID
+  let playerIds: string[] = [];
+
+  if (args.playerName) {
+    const players = await prisma.player.findMany({
+      where: {
+        OR: [
+          { nameHe: { contains: args.playerName, mode: 'insensitive' } },
+          { nameEn: { contains: args.playerName, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    playerIds = players.map((p) => p.id);
+  } else if (args.playerId) {
+    playerIds = [args.playerId];
+  }
+
+  if (playerIds.length === 0) {
+    return [];
+  }
+
+  const where: any = { playerId: { in: playerIds } };
   if (args.eventType) {
     where.type = args.eventType;
   }
@@ -130,11 +154,14 @@ export async function getPlayerEvents(args: { playerId: string; seasonYear?: num
           dateTime: true,
           homeScore: true,
           awayScore: true,
+          roundNameHe: true,
           homeTeam: { select: { nameHe: true } },
           awayTeam: { select: { nameHe: true } },
           competition: { select: { nameHe: true } },
+          season: { select: { year: true } },
         },
       },
+      player: { select: { nameHe: true, team: { select: { nameHe: true } } } },
     },
     orderBy: { game: { dateTime: 'desc' } },
     take: 50,
@@ -146,7 +173,10 @@ export async function getPlayerEvents(args: { playerId: string; seasonYear?: num
     extraMinute: e.extraMinute,
     date: e.game.dateTime.toISOString().split('T')[0],
     match: `${e.game.homeTeam.nameHe} ${e.game.homeScore ?? '?'}-${e.game.awayScore ?? '?'} ${e.game.awayTeam.nameHe}`,
+    round: e.game.roundNameHe || '',
     competition: e.game.competition?.nameHe || '',
+    season: e.game.season?.year,
+    playerTeam: e.player?.team?.nameHe || '',
   }));
 }
 
