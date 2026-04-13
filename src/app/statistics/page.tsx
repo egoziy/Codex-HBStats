@@ -368,19 +368,32 @@ export default async function StatisticsPage({
     }
 
     if (dbLeaderboards.length > 0) {
+      // Resolve Hebrew names from Player table
+      const lbPlayerIds = dbLeaderboards.map((e) => e.playerId).filter(Boolean) as string[];
+      const lbPlayers = lbPlayerIds.length
+        ? await prisma.player.findMany({
+            where: { id: { in: lbPlayerIds } },
+            select: { id: true, nameHe: true, team: { select: { nameHe: true } } },
+          })
+        : [];
+      const lbPlayerMap = new Map(lbPlayers.map((p) => [p.id, p]));
+
       leaderboardCards = Array.from(grouped.entries()).map(([category, entries]) => {
         const meta = categoryMap[category] || { title: category, valueLabel: 'ערך' };
         return {
           title: meta.title,
           valueLabel: meta.valueLabel,
-          rows: entries.slice(0, 20).map((e) => ({
-            playerId: e.playerId || e.id,
-            playerName: e.playerNameHe || e.playerNameEn || '?',
-            teamName: e.teamNameHe || e.teamNameEn || '-',
-            value: e.value,
-            details: [],
-            emptyMessage: '',
-          })),
+          rows: entries.slice(0, 20).map((e) => {
+            const pl = e.playerId ? lbPlayerMap.get(e.playerId) : null;
+            return {
+              playerId: e.playerId || e.id,
+              playerName: pl?.nameHe || e.playerNameHe || e.playerNameEn || '?',
+              teamName: pl?.team?.nameHe || e.teamNameHe || e.teamNameEn || '-',
+              value: e.value,
+              details: [],
+              emptyMessage: '',
+            };
+          }),
         };
       });
     }

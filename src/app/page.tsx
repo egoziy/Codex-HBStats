@@ -238,7 +238,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     ]);
 
   // ── Additional data: top scorers/assists from events, red cards, goal minutes ──
-  const [topScorerCounts, topAssistCounts, recentRedCards, yellowCardCounts, goalMinutesRaw] = await Promise.all([
+  const [topScorerCounts, topAssistLeaderboard, recentRedCards, yellowCardCounts, goalMinutesRaw] = await Promise.all([
     prisma.gameEvent.groupBy({
       by: ['playerId'],
       where: {
@@ -250,16 +250,11 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       orderBy: { _count: { playerId: 'desc' } },
       take: 5,
     }),
-    prisma.gameEvent.groupBy({
-      by: ['playerId'],
-      where: {
-        type: 'ASSIST',
-        playerId: { not: null },
-        game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', status: 'COMPLETED' },
-      },
-      _count: { playerId: true },
-      orderBy: { _count: { playerId: 'desc' } },
+    prisma.competitionLeaderboardEntry.findMany({
+      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_ASSISTS' },
+      orderBy: { value: 'desc' },
       take: 5,
+      select: { playerNameHe: true, playerNameEn: true, teamNameHe: true, value: true, playerId: true },
     }),
     prisma.gameEvent.findMany({
       where: {
@@ -313,7 +308,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   // Resolve player names for top scorers/assists
   const allLeaderboardPlayerIds = [
     ...topScorerCounts.map((r) => r.playerId!),
-    ...topAssistCounts.map((r) => r.playerId!),
+    ...topAssistLeaderboard.map((r) => r.playerId!),
   ].filter(Boolean);
   const leaderboardPlayers = allLeaderboardPlayerIds.length
     ? await prisma.player.findMany({
@@ -326,9 +321,9 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     const pl = playerMap.get(r.playerId!);
     return { playerId: r.playerId, playerNameHe: pl?.nameHe || '', teamNameHe: pl?.team?.nameHe || '', value: r._count.playerId };
   });
-  const topAssists = topAssistCounts.map((r) => {
-    const pl = playerMap.get(r.playerId!);
-    return { playerId: r.playerId, playerNameHe: pl?.nameHe || '', teamNameHe: pl?.team?.nameHe || '', value: r._count.playerId };
+  const topAssists = topAssistLeaderboard.map((r) => {
+    const pl = r.playerId ? playerMap.get(r.playerId) : null;
+    return { playerId: r.playerId, playerNameHe: pl?.nameHe || r.playerNameHe || r.playerNameEn || '', teamNameHe: pl?.team?.nameHe || r.teamNameHe || '', value: r.value };
   });
 
   // Find suspended players: red card in current or previous round, OR 5th/9th yellow
