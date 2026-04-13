@@ -421,12 +421,12 @@ function PremierGameView({
               </PremierPanel>
 
               <PremierPanel title="אירועים מרכזיים">
-                <div className="space-y-3">
-                  {game.events.slice(0, 8).map((event: any) => (
-                    <PremierEventCard key={event.id} event={event} />
-                  ))}
-                  {game.events.length === 0 ? <PremierEmptyState text="אין אירועים שמורים למשחק הזה." /> : null}
-                </div>
+                <MatchEventTimeline
+                  events={game.events.slice(0, 8)}
+                  homeTeam={{ id: game.homeTeamId, name: homeTeamName }}
+                  awayTeam={{ id: game.awayTeamId, name: awayTeamName }}
+                  variant="premier"
+                />
               </PremierPanel>
             </div>
 
@@ -605,31 +605,98 @@ function MatchEventTimeline({
     );
   }
 
-  return (
-    <div className="space-y-3">
-      <div className="hidden grid-cols-2 gap-4 px-2 text-xs font-black text-stone-500 md:grid">
-        <div className="text-right">{homeTeam.name}</div>
-        <div className="text-left">{awayTeam.name}</div>
-      </div>
-      <div className="space-y-3">
-        {events.map((event) => {
-          const column = resolveEventColumn(event, homeTeam, awayTeam);
-          const card = variant === 'premier' ? <PremierEventCard event={event} /> : <ClassicEventCard event={event} />;
+  // Group events by half
+  const firstHalfEvents = events.filter((e) => e.minute <= 45 || (e.minute === 45 && (e.extraMinute || 0) >= 0));
+  const secondHalfEvents = events.filter((e) => e.minute > 45);
+  // If all events <= 45 (no second half data), show all in one group
+  const hasSecondHalf = secondHalfEvents.length > 0;
 
-          return (
-            <div
-              key={event.id}
-              className={
-                column === 'unknown'
-                  ? 'md:grid md:grid-cols-1'
-                  : `md:grid md:grid-cols-2 md:gap-4 ${column === 'home' ? 'md:[&>div]:col-start-1' : 'md:[&>div]:col-start-2'}`
-              }
-            >
-              <div>{card}</div>
+  const renderTimelineEvent = (event: any) => {
+    const column = resolveEventColumn(event, homeTeam, awayTeam);
+    const isHome = column === 'home';
+    const playerInfo = getEventParticipantRows(event);
+    const primaryName = playerInfo[0]?.value || '';
+    const secondaryName = playerInfo[1] ? `${playerInfo[1].label} ${playerInfo[1].value}` : '';
+    const minuteStr = `${event.minute}${event.extraMinute ? `+${event.extraMinute}` : ''}'`;
+
+    return (
+      <div key={event.id} className="relative flex items-center gap-0 py-2">
+        {/* Home side (right in RTL) */}
+        <div className={`flex-1 ${isHome ? 'text-left' : ''}`}>
+          {isHome && (
+            <div className="flex flex-col items-end pl-3">
+              <span className="text-sm font-bold text-slate-800">{primaryName}</span>
+              {secondaryName && <span className="text-xs text-slate-400">{secondaryName}</span>}
             </div>
-          );
-        })}
+          )}
+        </div>
+
+        {/* Center icon + minute */}
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-slate-200 bg-white shadow-sm">
+            {getEventIconPath(event.type) ? (
+              <img
+                src={getEventIconPath(event.type) || ''}
+                alt={getEventDisplayLabel(event.type)}
+                className="h-6 w-6 object-contain"
+              />
+            ) : (
+              <span className="text-xs font-bold text-slate-400">{getEventDisplayLabel(event.type).charAt(0)}</span>
+            )}
+          </div>
+          <span className="mt-0.5 text-[11px] font-semibold text-slate-400">{minuteStr}</span>
+        </div>
+
+        {/* Away side (left in RTL) */}
+        <div className={`flex-1 ${!isHome ? 'text-right' : ''}`}>
+          {!isHome && column !== 'unknown' && (
+            <div className="flex flex-col items-start pr-3">
+              <span className="text-sm font-bold text-slate-800">{primaryName}</span>
+              {secondaryName && <span className="text-xs text-slate-400">{secondaryName}</span>}
+            </div>
+          )}
+          {column === 'unknown' && (
+            <div className="flex flex-col items-start pr-3">
+              <span className="text-sm font-bold text-slate-800">{primaryName}</span>
+              {secondaryName && <span className="text-xs text-slate-400">{secondaryName}</span>}
+            </div>
+          )}
+        </div>
       </div>
+    );
+  };
+
+  const halfSeparator = (label: string) => (
+    <div className="flex items-center justify-center py-3">
+      <div className="rounded-full bg-slate-100 px-5 py-1.5 text-xs font-bold text-slate-400">{label}</div>
+    </div>
+  );
+
+  return (
+    <div className="relative">
+      {/* Vertical center line */}
+      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-slate-200" />
+
+      {/* Team headers */}
+      <div className="relative z-10 mb-2 flex items-center">
+        <div className="flex-1 text-left">
+          <span className="text-xs font-black tracking-wide text-slate-400">{homeTeam.name}</span>
+        </div>
+        <div className="w-10" />
+        <div className="flex-1 text-right">
+          <span className="text-xs font-black tracking-wide text-slate-400">{awayTeam.name}</span>
+        </div>
+      </div>
+
+      {halfSeparator('מחצית ראשונה')}
+      {(hasSecondHalf ? firstHalfEvents : events).map(renderTimelineEvent)}
+
+      {hasSecondHalf && (
+        <>
+          {halfSeparator('מחצית שנייה')}
+          {secondHalfEvents.map(renderTimelineEvent)}
+        </>
+      )}
     </div>
   );
 }
