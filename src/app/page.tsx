@@ -264,15 +264,18 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     prisma.gameEvent.findMany({
       where: {
         type: 'RED_CARD',
-        playerId: { not: null },
+        OR: [{ playerId: { not: null } }, { participantName: { not: '' } }],
         game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', status: 'COMPLETED' },
       },
       select: {
+        playerId: true,
+        participantName: true,
         player: { select: { id: true, nameHe: true, team: { select: { nameHe: true } } } },
         game: { select: { roundNameHe: true, dateTime: true } },
+        eventTeam: { select: { nameHe: true } },
       },
       orderBy: { game: { dateTime: 'desc' } },
-      take: 5,
+      take: 10,
     }),
     // Yellow card counts per player this season (for 5th/9th yellow detection)
     prisma.gameEvent.groupBy({
@@ -367,8 +370,14 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
 
   // Red card suspensions: only players whose red card was in the most recent completed round
   const redCardSuspended = recentRedCards
-    .filter((e) => e.player && e.game.roundNameHe === lastCompletedRound)
-    .map((e) => ({ id: e.player!.id, name: e.player!.nameHe, team: e.player!.team?.nameHe || '', reason: `כרטיס אדום ב${e.game.roundNameHe}` }));
+    .filter((e) => (e.player || e.participantName) && e.game.roundNameHe === lastCompletedRound)
+    .map((e) => ({
+      id: e.player?.id || `unlinked-${e.participantName}`,
+      name: e.player?.nameHe || e.participantName || '',
+      team: e.player?.team?.nameHe || e.eventTeam?.nameHe || '',
+      reason: `כרטיס אדום ב${e.game.roundNameHe}`,
+      playerId: e.playerId,
+    }));
 
   // Yellow card suspensions: players with exactly 5 or 9 yellows where their last yellow was in the last round
   const yellowSuspensionPlayerIds = yellowCardCounts
@@ -407,9 +416,10 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       name: ev.player!.nameHe,
       team: ev.player!.team?.nameHe || '',
       reason: `צהוב ${yellowCardCounts.find((r) => r.playerId === ev.playerId)?._count.playerId || 5} — הרחקה`,
+      playerId: ev.playerId,
     }));
 
-  const suspendedMap = new Map<string, { id: string; name: string; team: string; reason: string }>();
+  const suspendedMap = new Map<string, { id: string; name: string; team: string; reason: string; playerId?: string | null }>();
   for (const s of [...redCardSuspended, ...yellowSuspended]) {
     if (!suspendedMap.has(s.id)) suspendedMap.set(s.id, s);
   }
@@ -552,15 +562,27 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
             {suspendedPlayers.length > 0 && (
               <Card title="מורחקים" actionHref="/statistics" actionLabel="לסטטיסטיקות">
                 <div className="space-y-2">
-                  {suspendedPlayers.map((player) => (
-                    <Link key={player.id} href={`/players/${player.id}`} className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50 p-3 transition hover:border-red-300">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-800 text-xs font-black text-white">X</span>
-                      <div>
-                        <div className="text-sm font-black text-red-900">{player.name}</div>
-                        <div className="text-[11px] text-red-700">{player.team} · {player.reason}</div>
+                  {suspendedPlayers.map((player) => {
+                    const hasLink = player.playerId;
+                    const inner = (
+                      <>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-800 text-xs font-black text-white">X</span>
+                        <div>
+                          <div className="text-sm font-black text-red-900">{player.name}</div>
+                          <div className="text-[11px] text-red-700">{player.team} · {player.reason}</div>
+                        </div>
+                      </>
+                    );
+                    return hasLink ? (
+                      <Link key={player.id} href={`/players/${player.playerId}`} className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50 p-3 transition hover:border-red-300">
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div key={player.id} className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50 p-3">
+                        {inner}
                       </div>
-                    </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               </Card>
             )}
