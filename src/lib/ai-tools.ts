@@ -73,6 +73,53 @@ export const toolDefinitions = [
       required: ['category'],
     },
   },
+  {
+    name: 'getPlayerCareerStats',
+    description: 'Get a player career statistics across all seasons — goals, assists, yellow/red cards, games played, minutes per season. Use this for questions about overall career stats or season-by-season breakdown.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        playerName: { type: 'string', description: 'Player name (Hebrew or English)' },
+        playerId: { type: 'string', description: 'Specific player ID' },
+      },
+    },
+  },
+  {
+    name: 'getTeamInfo',
+    description: 'Get team information — squad, coach, stadium, season stats, recent form. Use for questions about a specific team.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        teamName: { type: 'string', description: 'Team name (Hebrew or English)' },
+        seasonYear: { type: 'number', description: 'Season year (defaults to latest)' },
+      },
+      required: ['teamName'],
+    },
+  },
+  {
+    name: 'getHeadToHead',
+    description: 'Get head-to-head history between two teams — past results, wins, draws, losses.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        team1: { type: 'string', description: 'First team name (Hebrew or English)' },
+        team2: { type: 'string', description: 'Second team name (Hebrew or English)' },
+        seasonYear: { type: 'number', description: 'Optional season year filter' },
+      },
+      required: ['team1', 'team2'],
+    },
+  },
+  {
+    name: 'getGameDetails',
+    description: 'Get full details of a specific game — lineups, all events (goals, cards, substitutions), statistics, referee. Use when a user asks about a specific match.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        gameId: { type: 'string', description: 'Game ID from searchGames results' },
+      },
+      required: ['gameId'],
+    },
+  },
 ];
 
 // ─── Tool Implementations ───
@@ -274,6 +321,208 @@ export async function getLeaderboard(args: { category: string; seasonYear?: numb
   }));
 }
 
+// ─── New Tool Implementations ───
+
+export async function getPlayerCareerStats(args: { playerName?: string; playerId?: string }) {
+  let playerIds: string[] = [];
+
+  if (args.playerName) {
+    const players = await prisma.player.findMany({
+      where: {
+        OR: [
+          { nameHe: { contains: args.playerName, mode: 'insensitive' } },
+          { nameEn: { contains: args.playerName, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true },
+    });
+    playerIds = players.map((p) => p.id);
+  } else if (args.playerId) {
+    playerIds = [args.playerId];
+  }
+
+  if (!playerIds.length) return [];
+
+  const stats = await prisma.playerStatistics.findMany({
+    where: { playerId: { in: playerIds } },
+    include: {
+      player: { select: { nameHe: true, nameEn: true, position: true, birthDate: true } },
+      season: { select: { year: true, name: true } },
+      competition: { select: { nameHe: true } },
+    },
+    orderBy: { season: { year: 'desc' } },
+  });
+
+  const playerInfo = stats[0]?.player;
+  return {
+    nameHe: playerInfo?.nameHe,
+    nameEn: playerInfo?.nameEn,
+    position: playerInfo?.position,
+    birthDate: playerInfo?.birthDate?.toISOString().split('T')[0],
+    seasons: stats.map((s) => ({
+      season: s.season?.year,
+      seasonName: s.season?.name,
+      competition: s.competition?.nameHe,
+      goals: s.goals,
+      assists: s.assists,
+      yellowCards: s.yellowCards,
+      redCards: s.redCards,
+      gamesPlayed: s.gamesPlayed,
+      minutesPlayed: s.minutesPlayed,
+      starts: s.starts,
+    })),
+    totals: {
+      goals: stats.reduce((sum, s) => sum + s.goals, 0),
+      assists: stats.reduce((sum, s) => sum + s.assists, 0),
+      yellowCards: stats.reduce((sum, s) => sum + s.yellowCards, 0),
+      redCards: stats.reduce((sum, s) => sum + s.redCards, 0),
+      gamesPlayed: stats.reduce((sum, s) => sum + s.gamesPlayed, 0),
+      minutesPlayed: stats.reduce((sum, s) => sum + s.minutesPlayed, 0),
+    },
+  };
+}
+
+export async function getTeamInfo(args: { teamName: string; seasonYear?: number }) {
+  const seasonFilter = args.seasonYear
+    ? { season: { year: args.seasonYear } }
+    : {};
+
+  const teams = await prisma.team.findMany({
+    where: {
+      OR: [
+        { nameHe: { contains: args.teamName, mode: 'insensitive' } },
+        { nameEn: { contains: args.teamName, mode: 'insensitive' } },
+      ],
+      ...seasonFilter,
+    },
+    include: {
+      season: { select: { year: true } },
+      standings: { select: { position: true, played: true, wins: true, draws: true, losses: true, goalsFor: true, goalsAgainst: true, points: true }, take: 1 },
+      players: { select: { nameHe: true, position: true }, take: 30, orderBy: { nameHe: 'asc' } },
+    },
+    orderBy: { season: { year: 'desc' } },
+    take: 1,
+  });
+
+  if (!teams.length) return { error: 'קבוצה לא נמצאה' };
+  const t = teams[0];
+  const standing = t.standings[0];
+
+  return {
+    nameHe: t.nameHe,
+    nameEn: t.nameEn,
+    season: t.season.year,
+    coach: t.coachHe || t.coach,
+    stadium: t.stadiumHe || t.stadiumEn,
+    city: t.cityHe || t.cityEn,
+    standing: standing ? {
+      position: standing.position,
+      played: standing.played,
+      wins: standing.wins,
+      draws: standing.draws,
+      losses: standing.losses,
+      goalsFor: standing.goalsFor,
+      goalsAgainst: standing.goalsAgainst,
+      points: standing.points,
+    } : null,
+    squad: t.players.map((p) => ({ name: p.nameHe, position: p.position })),
+  };
+}
+
+export async function getHeadToHead(args: { team1: string; team2: string; seasonYear?: number }) {
+  const where: any = {
+    OR: [
+      {
+        homeTeam: { OR: [{ nameHe: { contains: args.team1, mode: 'insensitive' } }, { nameEn: { contains: args.team1, mode: 'insensitive' } }] },
+        awayTeam: { OR: [{ nameHe: { contains: args.team2, mode: 'insensitive' } }, { nameEn: { contains: args.team2, mode: 'insensitive' } }] },
+      },
+      {
+        homeTeam: { OR: [{ nameHe: { contains: args.team2, mode: 'insensitive' } }, { nameEn: { contains: args.team2, mode: 'insensitive' } }] },
+        awayTeam: { OR: [{ nameHe: { contains: args.team1, mode: 'insensitive' } }, { nameEn: { contains: args.team1, mode: 'insensitive' } }] },
+      },
+    ],
+    status: 'COMPLETED',
+  };
+  if (args.seasonYear) {
+    where.season = { year: args.seasonYear };
+  }
+
+  const games = await prisma.game.findMany({
+    where,
+    include: {
+      homeTeam: { select: { nameHe: true } },
+      awayTeam: { select: { nameHe: true } },
+      season: { select: { year: true } },
+      competition: { select: { nameHe: true } },
+    },
+    orderBy: { dateTime: 'desc' },
+    take: 20,
+  });
+
+  return {
+    totalGames: games.length,
+    games: games.map((g) => ({
+      date: g.dateTime.toISOString().split('T')[0],
+      homeTeam: g.homeTeam.nameHe,
+      awayTeam: g.awayTeam.nameHe,
+      homeScore: g.homeScore,
+      awayScore: g.awayScore,
+      season: g.season.year,
+      competition: g.competition?.nameHe || '',
+    })),
+  };
+}
+
+export async function getGameDetails(args: { gameId: string }) {
+  const game = await prisma.game.findUnique({
+    where: { id: args.gameId },
+    include: {
+      homeTeam: { select: { nameHe: true } },
+      awayTeam: { select: { nameHe: true } },
+      season: { select: { year: true } },
+      competition: { select: { nameHe: true } },
+      referee: { select: { nameHe: true, nameEn: true } },
+      events: {
+        include: { player: { select: { nameHe: true } }, relatedPlayer: { select: { nameHe: true } } },
+        orderBy: [{ minute: 'asc' }, { sortOrder: 'asc' }],
+      },
+      lineupEntries: {
+        select: { playerName: true, role: true, shirtNumber: true, position: true, team: { select: { nameHe: true } } },
+        orderBy: [{ role: 'asc' }],
+      },
+      gameStats: true,
+    },
+  });
+
+  if (!game) return { error: 'משחק לא נמצא' };
+
+  return {
+    date: game.dateTime.toISOString().split('T')[0],
+    homeTeam: game.homeTeam.nameHe,
+    awayTeam: game.awayTeam.nameHe,
+    homeScore: game.homeScore,
+    awayScore: game.awayScore,
+    season: game.season.year,
+    competition: game.competition?.nameHe,
+    round: game.roundNameHe,
+    referee: game.referee?.nameHe || game.refereeHe || game.refereeEn,
+    venue: game.venueNameHe || game.venueNameEn,
+    events: game.events.map((e) => ({
+      type: e.type,
+      minute: e.minute,
+      extraMinute: e.extraMinute,
+      player: e.player?.nameHe || e.participantName,
+      relatedPlayer: e.relatedPlayer?.nameHe || e.relatedParticipantName,
+    })),
+    stats: game.gameStats ? {
+      possession: `${game.gameStats.homePossession ?? '?'}% - ${game.gameStats.awayPossession ?? '?'}%`,
+      shots: `${game.gameStats.homeShotsTotal ?? '?'} - ${game.gameStats.awayShotsTotal ?? '?'}`,
+      corners: `${game.gameStats.homeCorners ?? '?'} - ${game.gameStats.awayCorners ?? '?'}`,
+      fouls: `${game.gameStats.homeFouls ?? '?'} - ${game.gameStats.awayFouls ?? '?'}`,
+    } : null,
+  };
+}
+
 // ─── Tool Dispatcher ───
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -288,6 +537,14 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       return getStandings(args as any);
     case 'getLeaderboard':
       return getLeaderboard(args as any);
+    case 'getPlayerCareerStats':
+      return getPlayerCareerStats(args as any);
+    case 'getTeamInfo':
+      return getTeamInfo(args as any);
+    case 'getHeadToHead':
+      return getHeadToHead(args as any);
+    case 'getGameDetails':
+      return getGameDetails(args as any);
     default:
       return { error: `Unknown tool: ${name}` };
   }
