@@ -399,6 +399,7 @@ enum EventType {
   OWN_GOAL
   PENALTY_GOAL
   PENALTY_MISSED
+  GOAL_DISALLOWED
 }
 
 model GameLineupEntry {

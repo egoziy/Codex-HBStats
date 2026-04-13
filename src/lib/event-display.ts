@@ -8,6 +8,7 @@ const EVENT_TRANSLATIONS: Record<string, string> = {
   OWN_GOAL: 'שער עצמי',
   PENALTY_GOAL: 'שער בפנדל',
   PENALTY_MISSED: 'פנדל מוחמץ',
+  GOAL_DISALLOWED: 'גול נפסל',
   INJURY: 'פציעה',
 };
 
@@ -21,6 +22,7 @@ const EVENT_ICON_PATHS: Record<string, string> = {
   OWN_GOAL: '/Icons/event-own-goal.svg',
   PENALTY_GOAL: '/Icons/event-penalty-goal.svg',
   PENALTY_MISSED: '/Icons/event-penalty-missed.svg',
+  GOAL_DISALLOWED: '/Icons/event-goal-disallowed.svg',
   INJURY: '/Icons/event-injury.svg',
 };
 

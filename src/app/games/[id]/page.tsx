@@ -830,6 +830,12 @@ function getEventParticipantRows(event: any) {
     ];
   }
 
+  if (event.type === 'GOAL_DISALLOWED') {
+    return [
+      { label: 'שחקן', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
+    ];
+  }
+
   return [
     { label: 'שחקן', value: primaryPlayer || 'שחקן לא משויך', emphasis: true },
     ...(relatedPlayer ? [{ label: 'שחקן נוסף', value: relatedPlayer, emphasis: false }] : []),
