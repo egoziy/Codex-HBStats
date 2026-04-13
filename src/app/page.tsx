@@ -237,19 +237,29 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       getHomepageLiveSnapshots(null, { limit: homepageLiveLimit }),
     ]);
 
-  // ── Additional data: leaderboards, red cards, goal minutes ──
-  const [topScorers, topAssists, recentRedCards, yellowCardCounts, goalMinutesRaw] = await Promise.all([
-    prisma.competitionLeaderboardEntry.findMany({
-      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_SCORERS' },
-      orderBy: { value: 'desc' },
+  // ── Additional data: top scorers/assists from events, red cards, goal minutes ──
+  const [topScorerCounts, topAssistCounts, recentRedCards, yellowCardCounts, goalMinutesRaw] = await Promise.all([
+    prisma.gameEvent.groupBy({
+      by: ['playerId'],
+      where: {
+        type: { in: ['GOAL', 'PENALTY_GOAL'] },
+        playerId: { not: null },
+        game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', status: 'COMPLETED' },
+      },
+      _count: { playerId: true },
+      orderBy: { _count: { playerId: 'desc' } },
       take: 5,
-      select: { playerNameHe: true, teamNameHe: true, value: true, playerId: true },
     }),
-    prisma.competitionLeaderboardEntry.findMany({
-      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_ASSISTS' },
-      orderBy: { value: 'desc' },
+    prisma.gameEvent.groupBy({
+      by: ['playerId'],
+      where: {
+        type: 'ASSIST',
+        playerId: { not: null },
+        game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', status: 'COMPLETED' },
+      },
+      _count: { playerId: true },
+      orderBy: { _count: { playerId: 'desc' } },
       take: 5,
-      select: { playerNameHe: true, teamNameHe: true, value: true, playerId: true },
     }),
     prisma.gameEvent.findMany({
       where: {
@@ -297,6 +307,27 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     `,
   ]);
 
+  // Resolve player names for top scorers/assists
+  const allLeaderboardPlayerIds = [
+    ...topScorerCounts.map((r) => r.playerId!),
+    ...topAssistCounts.map((r) => r.playerId!),
+  ].filter(Boolean);
+  const leaderboardPlayers = allLeaderboardPlayerIds.length
+    ? await prisma.player.findMany({
+        where: { id: { in: allLeaderboardPlayerIds } },
+        select: { id: true, nameHe: true, team: { select: { nameHe: true } } },
+      })
+    : [];
+  const playerMap = new Map(leaderboardPlayers.map((p) => [p.id, p]));
+  const topScorers = topScorerCounts.map((r) => {
+    const pl = playerMap.get(r.playerId!);
+    return { playerId: r.playerId, playerNameHe: pl?.nameHe || '', teamNameHe: pl?.team?.nameHe || '', value: r._count.playerId };
+  });
+  const topAssists = topAssistCounts.map((r) => {
+    const pl = playerMap.get(r.playerId!);
+    return { playerId: r.playerId, playerNameHe: pl?.nameHe || '', teamNameHe: pl?.team?.nameHe || '', value: r._count.playerId };
+  });
+
   // Find suspended players: red card in current or previous round, OR 5th/9th yellow
   const goalMinutesData = goalMinutesRaw.map((row) => ({ name: row.bucket, goals: Number(row.goals) }));
 
@@ -330,33 +361,53 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     return +new Date(a.dateTime || 0) - +new Date(b.dateTime || 0);
   });
 
-  // Suspended players: red card in last 2 rounds + 5th/9th yellow
-  const currentRoundLabel = nextRoundLabel || recentRedCards[0]?.game?.roundNameHe || null;
-  const currentRoundNum = currentRoundLabel ? parseInt(currentRoundLabel.replace(/\D/g, '')) || 0 : 0;
-  const relevantRounds = [currentRoundNum, currentRoundNum - 1].filter(Boolean).map((n) => `מחזור ${n}`);
+  // Suspended players: red card OR 5th/9th yellow — only if it happened in their LAST game
+  // Get the last completed round
+  const lastCompletedRound = lastGamesRaw[0]?.roundNameHe || null;
 
+  // Red card suspensions: only players whose red card was in the most recent completed round
   const redCardSuspended = recentRedCards
-    .filter((e) => relevantRounds.includes(e.game.roundNameHe || '') && e.player)
+    .filter((e) => e.player && e.game.roundNameHe === lastCompletedRound)
     .map((e) => ({ id: e.player!.id, name: e.player!.nameHe, team: e.player!.team?.nameHe || '', reason: `כרטיס אדום ב${e.game.roundNameHe}` }));
 
+  // Yellow card suspensions: players with exactly 5 or 9 yellows where their last yellow was in the last round
   const yellowSuspensionPlayerIds = yellowCardCounts
     .filter((row) => row._count.playerId === 5 || row._count.playerId === 9)
     .map((row) => row.playerId!)
     .filter(Boolean);
 
-  const yellowSuspendedPlayers = yellowSuspensionPlayerIds.length
-    ? await prisma.player.findMany({
-        where: { id: { in: yellowSuspensionPlayerIds } },
-        select: { id: true, nameHe: true, team: { select: { nameHe: true } } },
+  // For each candidate, check if their last yellow was in the last completed round
+  const yellowLastEvents = yellowSuspensionPlayerIds.length
+    ? await prisma.gameEvent.findMany({
+        where: {
+          type: 'YELLOW_CARD',
+          playerId: { in: yellowSuspensionPlayerIds },
+          game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', status: 'COMPLETED' },
+        },
+        select: {
+          playerId: true,
+          player: { select: { id: true, nameHe: true, team: { select: { nameHe: true } } } },
+          game: { select: { roundNameHe: true, dateTime: true } },
+        },
+        orderBy: { game: { dateTime: 'desc' } },
       })
     : [];
 
-  const yellowSuspended = yellowSuspendedPlayers.map((pl) => ({
-    id: pl.id,
-    name: pl.nameHe,
-    team: pl.team?.nameHe || '',
-    reason: `צהוב ${yellowCardCounts.find((r) => r.playerId === pl.id)?._count.playerId || 5} — הרחקה`,
-  }));
+  // Group by player — keep only those whose LAST yellow was in the last completed round
+  const yellowLastByPlayer = new Map<string, typeof yellowLastEvents[0]>();
+  for (const ev of yellowLastEvents) {
+    if (ev.playerId && !yellowLastByPlayer.has(ev.playerId)) {
+      yellowLastByPlayer.set(ev.playerId, ev);
+    }
+  }
+  const yellowSuspended = Array.from(yellowLastByPlayer.values())
+    .filter((ev) => ev.game.roundNameHe === lastCompletedRound)
+    .map((ev) => ({
+      id: ev.player!.id,
+      name: ev.player!.nameHe,
+      team: ev.player!.team?.nameHe || '',
+      reason: `צהוב ${yellowCardCounts.find((r) => r.playerId === ev.playerId)?._count.playerId || 5} — הרחקה`,
+    }));
 
   const suspendedMap = new Map<string, { id: string; name: string; team: string; reason: string }>();
   for (const s of [...redCardSuspended, ...yellowSuspended]) {

@@ -111,7 +111,7 @@ export default function HomeLivePanel({
   limit?: number;
 }) {
   const [items, setItems] = useState(initialItems);
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(initialItems[0]?.id || null);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,31 +232,64 @@ function LiveEventsPanel({ item }: { item: HomepageLiveSnapshot }) {
   }
 
   return (
-    <div className="grid gap-2 md:grid-cols-2">
-      {item.events.map((event) => (
-        <div key={event.id} className="rounded-2xl border border-stone-200 bg-white px-3 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              {event.iconPath ? (
-                <img src={event.iconPath} alt={event.typeLabel} className="h-10 w-10 rounded-2xl object-contain shadow-sm" />
-              ) : (
-                <span
-                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-black ${event.iconClassName}`}
-                >
-                  {event.iconLabel}
-                </span>
-              )}
-              <div>
-                <div className="text-xs font-black text-stone-900">{event.typeLabel}</div>
-                <div className="text-[11px] text-stone-500">{event.teamName}</div>
-              </div>
-            </div>
-            <span className="text-[11px] font-bold text-stone-500">{event.minuteLabel}</span>
-          </div>
-          <div className="mt-2 text-sm font-semibold text-stone-800">{event.primaryText}</div>
-          {event.secondaryText ? <div className="mt-1 text-[11px] text-stone-500">{event.secondaryText}</div> : null}
+    <div className="relative">
+      {/* Vertical center line */}
+      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-stone-200" />
+
+      {/* Team headers */}
+      <div className="relative z-10 mb-1 flex items-center">
+        <div className="flex-1 text-left">
+          <span className="text-[11px] font-black text-stone-400">{item.homeTeamName}</span>
         </div>
-      ))}
+        <div className="w-12" />
+        <div className="flex-1 text-right">
+          <span className="text-[11px] font-black text-stone-400">{item.awayTeamName}</span>
+        </div>
+      </div>
+
+      {item.events.map((event) => {
+        const isHome = normalizeText(event.teamName).includes(normalizeText(item.homeTeamName))
+          || normalizeText(item.homeTeamName).includes(normalizeText(event.teamName));
+
+        return (
+          <div key={event.id} className="relative flex items-center py-1.5">
+            {/* Home side */}
+            <div className="flex-1">
+              {isHome && (
+                <div className="flex flex-col items-end pl-2">
+                  <span className="text-sm font-bold text-stone-800">{event.primaryText}</span>
+                  {event.secondaryText && <span className="text-[11px] text-stone-400">{event.secondaryText}</span>}
+                </div>
+              )}
+            </div>
+
+            {/* Center icon */}
+            <div className="relative z-10 flex flex-col items-center mx-1 min-w-[48px]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-stone-200 bg-white shadow-sm">
+                {event.iconPath ? (
+                  <img src={event.iconPath} alt={event.typeLabel} className="h-6 w-6 object-contain" />
+                ) : (
+                  <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-black ${event.iconClassName}`}>
+                    {event.iconLabel}
+                  </span>
+                )}
+              </div>
+              <span className="text-[9px] font-bold text-stone-500">{event.typeLabel}</span>
+              <span className="text-[10px] font-semibold text-stone-400">{event.minuteLabel}</span>
+            </div>
+
+            {/* Away side */}
+            <div className="flex-1">
+              {!isHome && (
+                <div className="flex flex-col items-start pr-2">
+                  <span className="text-sm font-bold text-stone-800">{event.primaryText}</span>
+                  {event.secondaryText && <span className="text-[11px] text-stone-400">{event.secondaryText}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
