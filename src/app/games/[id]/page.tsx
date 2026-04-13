@@ -633,12 +633,12 @@ function MatchEventTimeline({
 
         {/* Center icon + label + minute */}
         <div className="relative z-10 flex flex-col items-center mx-2 min-w-[56px]">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-slate-200 bg-white shadow-sm">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-slate-200 bg-white shadow-sm">
             {getEventIconPath(event.type) ? (
               <img
                 src={getEventIconPath(event.type) || ''}
                 alt={getEventDisplayLabel(event.type)}
-                className="h-7 w-7 object-contain"
+                className="h-9 w-9 object-contain"
               />
             ) : (
               <span className="text-xs font-bold text-slate-400">{getEventDisplayLabel(event.type).charAt(0)}</span>
