@@ -275,13 +275,13 @@ export default async function GamesPage({
     : [];
 
   return (
-    <div className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#edf2ff_100%)]' : 'bg-stone-100'}`}>
+    <div dir="rtl" className="min-h-screen px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className={`rounded-[28px] border p-6 shadow-sm ${displayMode === 'premier' ? 'border-white/70 bg-[linear-gradient(140deg,#12002f,#4a006f_48%,#05a3d6)] text-white' : 'border-stone-200 bg-white'}`}>
-          <p className={`text-sm font-semibold tracking-[0.25em] ${displayMode === 'premier' ? 'text-cyan-100' : 'text-amber-700'}`}>משחקים</p>
-          <h1 className={`mt-2 text-3xl font-black ${displayMode === 'premier' ? 'text-white' : 'text-stone-900'}`}>מרכז המשחקים</h1>
-          <p className={`mt-3 max-w-3xl ${displayMode === 'premier' ? 'text-white/80' : 'text-stone-600'}`}>
-            בחרו עונה, ליגה או גביע, מחזור וקבוצה כדי לראות את רשימת המשחקים ואת האירועים המרכזיים בכל משחק.
+        <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm md:p-8">
+          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">משחקים</p>
+          <h1 className="mt-2 text-3xl font-black text-stone-900 md:text-4xl">מרכז המשחקים</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
+            בחרו עונה, ליגה או גביע, מחזור וקבוצה כדי לראות את רשימת המשחקים.
           </p>
 
           <SmartFilterForm
@@ -294,120 +294,121 @@ export default async function GamesPage({
               round: selectedRound,
               teamId: selectedTeamId,
             }}
-            formClassName="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]"
-            buttonClassName="rounded-full bg-stone-900 px-5 py-3 font-bold text-white"
-            submitLabel="סנן משחקים"
+            formClassName="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]"
+            buttonClassName="rounded-xl bg-[var(--accent)] px-5 py-2.5 font-bold text-white transition hover:opacity-90"
+            submitLabel="סנן"
           />
-
         </section>
 
-        <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-black text-stone-900">רשימת משחקים</h2>
-              <p className="mt-2 text-sm text-stone-600">נמצאו {games.length} משחקים לפי הסינון הנוכחי.</p>
-            </div>
+        <section className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-stone-100 px-6 py-5">
+            <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">
+              רשימת משחקים
+            </h2>
+            <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs font-bold text-stone-500">
+              {games.length} משחקים
+            </span>
           </div>
 
-          <div className="space-y-4">
+          <div className="divide-y divide-stone-100">
             {games.map((game) => {
               const statusBadge = game.status === 'COMPLETED'
                 ? { label: 'הסתיים', cls: 'bg-emerald-100 text-emerald-700' }
                 : game.status === 'ONGOING'
-                  ? { label: 'שידור חי', cls: 'bg-red-100 text-red-700 animate-pulse' }
+                  ? { label: '● חי', cls: 'bg-red-100 text-red-600 animate-pulse' }
                   : game.status === 'CANCELLED'
                     ? { label: 'בוטל', cls: 'bg-stone-200 text-stone-500' }
-                    : { label: 'מתוכנן', cls: 'bg-blue-100 text-blue-700' };
+                    : { label: 'מתוכנן', cls: 'bg-[var(--accent-glow)] text-[var(--accent-text)]' };
 
               return (
-              <article key={game.id} className="overflow-hidden rounded-[24px] border border-stone-200 bg-stone-50">
-                <div className="grid gap-4 p-5 md:grid-cols-[1fr_auto_1fr] md:items-center">
+              <article key={game.id} className="transition hover:bg-stone-50/60">
+                <div className="grid gap-4 px-5 py-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
                   <div className="flex items-center gap-3 md:justify-start justify-center">
                     {game.homeTeam.logoUrl ? (
-                      <img src={game.homeTeam.logoUrl} alt="" className="h-10 w-10 rounded-full border border-stone-200 bg-white object-contain p-1" />
-                    ) : null}
-                    <div className="text-center md:text-left">
-                      <div className="text-lg font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
-                      <div className="text-sm text-stone-500">{game.homeTeam.nameEn}</div>
+                      <img src={game.homeTeam.logoUrl} alt="" className="h-9 w-9 object-contain" />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-[10px] font-black text-stone-400">
+                        {(game.homeTeam.nameHe || game.homeTeam.nameEn || '?').slice(0, 2)}
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-black text-stone-900">{game.homeTeam.nameHe || game.homeTeam.nameEn}</div>
                     </div>
                   </div>
-                  <div className="text-center">
-                    <span className={`mb-2 inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold ${statusBadge.cls}`}>{statusBadge.label}</span>
-                    <div className="inline-flex rounded-full bg-stone-900 px-5 py-3 text-xl font-black text-white">
+
+                  <div className="flex flex-col items-center gap-1.5 text-center">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadge.cls}`}>{statusBadge.label}</span>
+                    <div className="min-w-[90px] rounded-xl bg-stone-900 px-4 py-2 text-lg font-black text-white">
                       {getGameScoreDisplay(game)}
                     </div>
-                    <div className="mt-3 text-sm font-semibold text-stone-700">
-                      {getCompetitionDisplayName(game.competition)}
+                    <div className="text-[11px] font-semibold text-stone-500">
+                      {getCompetitionDisplayName(game.competition)} · {getRoundDisplayName(game.roundNameHe, game.roundNameEn)}
                     </div>
-                    <div className="mt-1 text-xs text-stone-500">{getRoundDisplayName(game.roundNameHe, game.roundNameEn)}</div>
-                    <div className="mt-1 text-xs text-stone-500">
-                      {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(game.dateTime)}
+                    <div className="text-[11px] text-stone-400">
+                      {new Intl.DateTimeFormat('he-IL', { dateStyle: 'short', timeStyle: 'short' }).format(game.dateTime)}
                     </div>
                   </div>
+
                   <div className="flex items-center gap-3 md:justify-end justify-center">
-                    <div className="text-center md:text-right">
-                      <div className="text-lg font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
-                      <div className="text-sm text-stone-500">{game.awayTeam.nameEn}</div>
+                    <div className="text-left">
+                      <div className="font-black text-stone-900">{game.awayTeam.nameHe || game.awayTeam.nameEn}</div>
                     </div>
                     {game.awayTeam.logoUrl ? (
-                      <img src={game.awayTeam.logoUrl} alt="" className="h-10 w-10 rounded-full border border-stone-200 bg-white object-contain p-1" />
-                    ) : null}
+                      <img src={game.awayTeam.logoUrl} alt="" className="h-9 w-9 object-contain" />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-100 text-[10px] font-black text-stone-400">
+                        {(game.awayTeam.nameHe || game.awayTeam.nameEn || '?').slice(0, 2)}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="border-t border-stone-200 bg-white px-5 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <Link href={`/games/${game.id}?view=${displayMode}`} className="rounded-full bg-red-800 px-4 py-2 text-sm font-bold text-white">
-                      לעמוד המשחק המלא
+                <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 bg-stone-50/50 px-5 py-3">
+                  <Link href={`/games/${game.id}?view=${displayMode}`} className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-bold text-white transition hover:opacity-90">
+                    לעמוד המשחק
+                  </Link>
+                  {currentUser?.role === 'ADMIN' ? (
+                    <Link
+                      href={`/games/${game.id}?view=${displayMode}#admin-editor`}
+                      className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-900"
+                    >
+                      עריכה
                     </Link>
-                    {currentUser?.role === 'ADMIN' ? (
-                      <Link
-                        href={`/games/${game.id}?view=${displayMode}${displayMode === 'premier' ? '&tab=events' : ''}#admin-editor`}
-                        className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900"
-                      >
-                        עריכת אדמין
-                      </Link>
-                    ) : null}
-                    <details className="group w-full md:w-auto">
-                      <summary className="cursor-pointer list-none rounded-full border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 transition hover:border-red-300 hover:text-red-800">
-                        פתח אירועים מרכזיים
-                      </summary>
-                      <div className="mt-4 grid gap-3 md:min-w-[460px]">
-                        {game.events.length > 0 ? (
-                          game.events.map((event) => (
-                            <div key={event.id} className="rounded-2xl border border-stone-200 bg-stone-50 p-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="font-bold text-stone-900">{eventLabels[event.type] || event.type}</div>
-                                <div className="text-sm font-semibold text-stone-600">
-                                  {event.minute}
-                                  {event.extraMinute ? `+${event.extraMinute}` : ''}
-                                  &apos;
-                                </div>
-                              </div>
-                              <div className="mt-2 text-sm text-stone-600">
-                                {event.player ? formatPlayerName(event.player) : 'שחקן לא משויך'}
-                                {event.relatedPlayer
-                                  ? ` | ${formatPlayerName(event.relatedPlayer)}`
-                                  : ''}
-                              </div>
-                              {event.notesHe ? <div className="mt-1 text-xs text-stone-500">{event.notesHe}</div> : null}
+                  ) : null}
+                  <details className="group">
+                    <summary className="cursor-pointer list-none rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-bold text-stone-600 transition hover:border-[var(--accent)]/30 hover:text-[var(--accent)]">
+                      אירועים ▾
+                    </summary>
+                    <div className="mt-3 grid gap-2 md:min-w-[460px]">
+                      {game.events.length > 0 ? (
+                        game.events.map((event) => (
+                          <div key={event.id} className="rounded-xl border border-stone-100 bg-white p-3 text-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-bold text-stone-900">{eventLabels[event.type] || event.type}</span>
+                              <span className="text-xs font-semibold text-stone-500">
+                                {event.minute}{event.extraMinute ? `+${event.extraMinute}` : ''}&apos;
+                              </span>
                             </div>
-                          ))
-                        ) : (
-                          <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-4 text-sm text-stone-500">
-                            אין אירועים שמורים למשחק הזה.
+                            <div className="mt-1 text-xs text-stone-500">
+                              {event.player ? formatPlayerName(event.player) : 'שחקן לא משויך'}
+                              {event.relatedPlayer ? ` · ${formatPlayerName(event.relatedPlayer)}` : ''}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    </details>
-                  </div>
+                        ))
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-stone-200 p-4 text-center text-xs text-stone-400">
+                          אין אירועים שמורים
+                        </div>
+                      )}
+                    </div>
+                  </details>
                 </div>
               </article>
               );
             })}
 
             {games.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center text-sm text-stone-500">
+              <div className="p-12 text-center text-sm text-stone-400">
                 לא נמצאו משחקים לפי הסינון שבחרת.
               </div>
             ) : null}

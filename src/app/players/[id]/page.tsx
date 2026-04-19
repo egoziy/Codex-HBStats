@@ -417,9 +417,9 @@ export default async function PlayerPage({
   }
 
   return (
-    <div className="min-h-screen bg-stone-100 px-4 py-8">
+    <div dir="rtl" className="min-h-screen px-4 py-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
+        <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-5">
               {displayPhoto ? (
@@ -441,7 +441,7 @@ export default async function PlayerPage({
                 <select
                   name="season"
                   defaultValue={selectedSeasonId}
-                  className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+                  className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
                 >
                   {availableSeasons.map((season) => (
                     <option key={season.id} value={season.id}>
@@ -449,9 +449,9 @@ export default async function PlayerPage({
                     </option>
                   ))}
                 </select>
-                <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">הצג עונה</button>
+                <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white">הצג עונה</button>
               </form>
-              <Link href={`/players/${canonicalPlayerId}/charts`} className="rounded-full border border-stone-300 bg-white px-5 py-3 font-bold text-stone-900">
+              <Link href={`/players/${canonicalPlayerId}/charts`} className="rounded-xl border border-stone-200 bg-white px-5 py-2.5 text-sm font-bold text-stone-900">
                 גרפים עונתיים
               </Link>
             </div>
@@ -472,8 +472,8 @@ export default async function PlayerPage({
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-          <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-black text-stone-900">פרטי שחקן</h2>
+          <div className="modern-card rounded-xl border border-stone-200/80 bg-white p-6 shadow-sm">
+            <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">פרטי שחקן</h2>
             <div className="mt-4 space-y-3 text-sm">
               <StatRow label="עמדה נוכחית" value={displayPlayerEntry.position || 'לא צוין'} />
               <StatRow label="לאום" value={canonicalPlayer.nationalityHe || canonicalPlayer.nationalityEn || 'לא צוין'} />
@@ -483,8 +483,8 @@ export default async function PlayerPage({
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-black text-stone-900">רשומות עונה וקבוצה</h2>
+          <div className="modern-card rounded-xl border border-stone-200/80 bg-white p-6 shadow-sm">
+            <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">רשומות עונה וקבוצה</h2>
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full text-right text-sm">
                 <thead>
@@ -512,8 +512,8 @@ export default async function PlayerPage({
           </div>
         </section>
 
-        <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-          <h2 className="text-2xl font-black text-stone-900">סטטיסטיקות שמורות לפי עונה ומסגרת</h2>
+        <section className="modern-card rounded-xl border border-stone-200/80 bg-white p-6 shadow-sm">
+          <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">סטטיסטיקות שמורות לפי עונה ומסגרת</h2>
           {aggregatedStats.length > 0 ? (
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full text-right">
@@ -561,8 +561,8 @@ export default async function PlayerPage({
           ) : null}
         </section>
 
-        <section id="games" className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-          <h2 className="text-2xl font-black text-stone-900">טבלת משחקים</h2>
+        <section id="games" className="modern-card rounded-xl border border-stone-200/80 bg-white p-6 shadow-sm">
+          <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">טבלת משחקים</h2>
           <div className="mt-4 flex flex-wrap gap-2">
             <FilterChip href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}#games`} active={activeGameFilter === 'all'} label={`הכל (${playerGameRows.length})`} />
             <FilterChip href={`/players/${canonicalPlayerId}?season=${selectedSeasonId}&filter=starts#games`} active={activeGameFilter === 'starts'} label={`פתח (${playerGameRows.filter((row) => row.isStarter).length})`} />
@@ -597,7 +597,7 @@ export default async function PlayerPage({
                       <td className="px-3 py-3 whitespace-nowrap">{row.seasonName}</td>
                       <td className="px-3 py-3">{row.competitionName}</td>
                       <td className="px-3 py-3">
-                        <Link href={`/games/${row.gameId}`} className="font-semibold text-red-700 hover:text-red-800 hover:underline">
+                        <Link href={`/games/${row.gameId}`} className="font-semibold text-[var(--accent)] hover:underline">
                           {row.matchLabel}
                         </Link>
                       </td>
@@ -623,8 +623,8 @@ export default async function PlayerPage({
         </section>
 
         {uploads.length > 0 ? (
-          <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-black text-stone-900">גלריית שחקן</h2>
+          <section className="modern-card rounded-xl border border-stone-200/80 bg-white p-6 shadow-sm">
+            <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">גלריית שחקן</h2>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               {uploads.map((upload) => (
                 <div key={upload.id} className="overflow-hidden rounded-2xl border border-stone-200 bg-stone-50">
@@ -645,7 +645,7 @@ export default async function PlayerPage({
 
 function StatCard({ label, value, href }: { label: string; value: string; href?: string }) {
   const content = (
-    <article className={`rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm transition ${href ? 'hover:border-red-200 hover:shadow-md' : ''}`}>
+    <article className={`modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm transition ${href ? 'hover:border-[var(--accent)]/30 hover:shadow-md' : ''}`}>
       <div className="text-sm font-semibold text-stone-500">{label}</div>
       <div className="mt-3 text-3xl font-black text-stone-900">{value}</div>
     </article>
@@ -784,18 +784,17 @@ function PremierPlayerView({
   ];
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef3ff_100%)] px-4 py-8">
+    <div dir="rtl" className="min-h-screen px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <section className="grid gap-6 lg:grid-cols-[0.95fr_1.55fr]">
           <div className="space-y-4">
-            <div className="overflow-hidden rounded-[30px] bg-[linear-gradient(135deg,#8c001a,#c70039_42%,#ff4b55)] shadow-[0_20px_50px_rgba(199,0,57,0.28)]">
-              <div className="relative p-6">
-                <div className="absolute inset-y-0 left-0 w-40 bg-[linear-gradient(135deg,rgba(255,255,255,0.14),transparent)]" />
-                <div className="relative flex items-end gap-5">
+            <div className="hero-featured-match overflow-hidden rounded-2xl">
+              <div className="p-6">
+                <div className="flex items-end gap-5">
                   {displayPhoto ? (
                     <img src={displayPhoto} alt={playerDisplayName} className="h-36 w-28 object-cover drop-shadow-[0_14px_30px_rgba(15,23,42,0.18)]" />
                   ) : (
-                    <div className="flex h-32 w-24 items-center justify-center rounded-[24px] bg-white/35 text-xs font-black text-slate-700">ללא תמונה</div>
+                    <div className="flex h-32 w-24 items-center justify-center rounded-2xl bg-white/20 text-xs font-black text-white/70">ללא תמונה</div>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="text-lg font-medium text-white/90">{displayFirstHe}</div>
@@ -819,12 +818,12 @@ function PremierPlayerView({
             </div>
 
             {activeTab === 'overview' ? (
-              <section id="overview" className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+              <section id="overview" className="modern-card rounded-2xl border border-stone-200/80 bg-white p-5 shadow-sm">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {overviewFacts.map((fact) => (
                   <div key={fact.label}>
-                    <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">{fact.label}</div>
-                    <div className="mt-2 text-base font-black text-[#2d0052]">{fact.value}</div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-stone-400">{fact.label}</div>
+                    <div className="mt-2 text-base font-black text-stone-900">{fact.value}</div>
                   </div>
                 ))}
               </div>
@@ -834,25 +833,24 @@ function PremierPlayerView({
                 <MiniSummary label="תמונות" value={String(uploadsCount)} />
               </div>
 
-              {/* Transfers in overview */}
               {transfers.length > 0 ? (
-                <div className="mt-5 border-t border-slate-100 pt-4">
-                  <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">העברות</div>
+                <div className="mt-5 border-t border-stone-100 pt-4">
+                  <div className="text-xs font-bold uppercase tracking-wider text-stone-400">העברות</div>
                   <div className="mt-2 space-y-2">
                     {transfers.slice(0, 5).map((t) => (
                       <div key={t.id} className="flex flex-wrap items-center gap-2 text-sm">
-                        <span className="text-xs text-slate-400">{t.transferDate ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(t.transferDate) : '—'}</span>
+                        <span className="text-xs text-stone-400">{t.transferDate ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(t.transferDate) : '—'}</span>
                         <div className="flex items-center gap-1">
                           {t.sourceTeamLogoUrl ? <img src={t.sourceTeamLogoUrl} alt="" className="h-4 w-4 object-contain" /> : null}
-                          <span className="font-semibold text-slate-700">{t.sourceTeamNameHe || t.sourceTeamNameEn || '?'}</span>
+                          <span className="font-semibold text-stone-700">{t.sourceTeamNameHe || t.sourceTeamNameEn || '?'}</span>
                         </div>
-                        <span className="text-slate-300">←</span>
+                        <span className="text-stone-300">←</span>
                         <div className="flex items-center gap-1">
                           {t.destinationTeamLogoUrl ? <img src={t.destinationTeamLogoUrl} alt="" className="h-4 w-4 object-contain" /> : null}
-                          <span className="font-semibold text-slate-700">{t.destinationTeamNameHe || t.destinationTeamNameEn || '?'}</span>
+                          <span className="font-semibold text-stone-700">{t.destinationTeamNameHe || t.destinationTeamNameEn || '?'}</span>
                         </div>
                         {t.transferTypeHe || t.transferTypeEn ? (
-                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">{t.transferTypeHe || t.transferTypeEn}</span>
+                          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">{t.transferTypeHe || t.transferTypeEn}</span>
                         ) : null}
                       </div>
                     ))}
@@ -860,18 +858,17 @@ function PremierPlayerView({
                 </div>
               ) : null}
 
-              {/* Sidelined / Injury History in overview */}
               {sidelinedEntries.length > 0 ? (
-                <div className="mt-5 border-t border-slate-100 pt-4">
-                  <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">פציעות והשעיות</div>
+                <div className="mt-5 border-t border-stone-100 pt-4">
+                  <div className="text-xs font-bold uppercase tracking-wider text-stone-400">פציעות והשעיות</div>
                   <div className="mt-2 space-y-1.5">
                     {sidelinedEntries.slice(0, 6).map((s) => {
                       const isActive = !s.endDate || s.endDate > new Date();
                       return (
-                        <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${isActive ? 'bg-red-50' : 'bg-slate-50'}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-red-500' : 'bg-slate-300'}`} />
-                          <span className="font-semibold text-slate-700">{s.typeHe || s.typeEn}</span>
-                          <span className="text-xs text-slate-400">
+                        <div key={s.id} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ${isActive ? 'bg-red-50' : 'bg-stone-50'}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-red-500' : 'bg-stone-300'}`} />
+                          <span className="font-semibold text-stone-700">{s.typeHe || s.typeEn}</span>
+                          <span className="text-xs text-stone-400">
                             {s.startDate ? new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(s.startDate) : ''}
                             {s.endDate ? ` — ${new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium' }).format(s.endDate)}` : ' — טרם חזר'}
                           </span>
@@ -896,20 +893,20 @@ function PremierPlayerView({
                 <a href="#career" className="transition hover:text-[#4f0086]">קריירה</a>
                 </nav>
               ) : (
-                <nav className="flex flex-wrap items-center gap-5 text-sm font-medium text-slate-500">
-                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'overview')} className={`border-b-4 pb-2 transition ${activeTab === 'overview' ? 'border-[#3d0067] font-black text-[#23003d]' : 'border-transparent hover:text-[#4f0086]'}`}>
+                <nav className="flex flex-wrap items-center gap-5 text-sm font-medium text-stone-500">
+                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'overview')} className={`border-b-4 pb-2 transition ${activeTab === 'overview' ? 'border-[var(--accent)] font-black text-stone-900' : 'border-transparent hover:text-[var(--accent)]'}`}>
                     סקירה
                   </Link>
-                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'stats')} className={`border-b-4 pb-2 transition ${activeTab === 'stats' ? 'border-[#3d0067] font-black text-[#23003d]' : 'border-transparent hover:text-[#4f0086]'}`}>
+                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'stats')} className={`border-b-4 pb-2 transition ${activeTab === 'stats' ? 'border-[var(--accent)] font-black text-stone-900' : 'border-transparent hover:text-[var(--accent)]'}`}>
                     סטטיסטיקה
                   </Link>
-                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'games', activeGameFilter)} className={`border-b-4 pb-2 transition ${activeTab === 'games' ? 'border-[#3d0067] font-black text-[#23003d]' : 'border-transparent hover:text-[#4f0086]'}`}>
+                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'games', activeGameFilter)} className={`border-b-4 pb-2 transition ${activeTab === 'games' ? 'border-[var(--accent)] font-black text-stone-900' : 'border-transparent hover:text-[var(--accent)]'}`}>
                     משחקים
                   </Link>
-                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'career')} className={`border-b-4 pb-2 transition ${activeTab === 'career' ? 'border-[#3d0067] font-black text-[#23003d]' : 'border-transparent hover:text-[#4f0086]'}`}>
+                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'career')} className={`border-b-4 pb-2 transition ${activeTab === 'career' ? 'border-[var(--accent)] font-black text-stone-900' : 'border-transparent hover:text-[var(--accent)]'}`}>
                     קריירה
                   </Link>
-                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'achievements')} className={`border-b-4 pb-2 transition ${activeTab === 'achievements' ? 'border-[#3d0067] font-black text-[#23003d]' : 'border-transparent hover:text-[#4f0086]'}`}>
+                  <Link href={buildPremierPlayerHref(canonicalPlayerId, selectedSeasonId, 'achievements')} className={`border-b-4 pb-2 transition ${activeTab === 'achievements' ? 'border-[var(--accent)] font-black text-stone-900' : 'border-transparent hover:text-[var(--accent)]'}`}>
                     הישגים
                   </Link>
                 </nav>
@@ -922,7 +919,7 @@ function PremierPlayerView({
                 <select
                   name="season"
                   defaultValue={selectedSeasonId}
-                  className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-[#2d0052]"
+                  className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
                 >
                   {availableSeasons.map((season) => (
                     <option key={season.id} value={season.id}>
@@ -930,17 +927,17 @@ function PremierPlayerView({
                     </option>
                   ))}
                 </select>
-                <button className="rounded-2xl bg-[#3d0067] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#4f0086]">הצג עונה</button>
+                <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90">הצג עונה</button>
               </form>
             </div>
 
             {activeTab === 'stats' ? (
               <div className="grid gap-4 md:grid-cols-3">
               {overviewCards.map((card) => (
-                <section key={card.label} className="rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-                  <div className="text-sm font-bold text-[#3d0067]">{card.label}</div>
-                  <div className="mt-3 text-5xl font-black leading-none text-[#2a003f]">{card.value}</div>
-                  {card.subvalue ? <div className="mt-2 text-sm text-slate-500">{card.subvalue}</div> : null}
+                <section key={card.label} className="modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm">
+                  <div className="text-xs font-bold uppercase tracking-wider text-stone-400">{card.label}</div>
+                  <div className="mt-3 text-5xl font-black leading-none text-stone-900">{card.value}</div>
+                  {card.subvalue ? <div className="mt-2 text-sm text-stone-500">{card.subvalue}</div> : null}
                 </section>
               ))}
               </div>
@@ -960,20 +957,20 @@ function PremierPlayerView({
         </section>
 
         {activeTab === 'career' ? (
-          <section id="career" className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+          <section id="career" className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black text-[#23003d]">רשומות עונה וקבוצה</h2>
-              <p className="mt-1 text-sm text-slate-500">מעקב עונתי אחר הקבוצות, המסגרות והנתונים שנשמרו לשחקן.</p>
+              <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">רשומות עונה וקבוצה</h2>
+              <p className="mt-1 text-sm text-stone-500">מעקב עונתי אחר הקבוצות, המסגרות והנתונים שנשמרו לשחקן.</p>
             </div>
-            <Link href={`/players/${canonicalPlayerId}/charts`} className="rounded-full border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-700">
+            <Link href={`/players/${canonicalPlayerId}/charts`} className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-bold text-stone-700">
               גרפים עונתיים
             </Link>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-right text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-slate-500">
+                <tr className="border-b border-stone-100 text-stone-500">
                   <th className="px-3 py-3">עונה</th>
                   <th className="px-3 py-3">קבוצה</th>
                   <th className="px-3 py-3">מסגרת</th>
@@ -985,14 +982,14 @@ function PremierPlayerView({
               </thead>
               <tbody>
                 {careerStats.map((stat) => (
-                  <tr key={stat.key} className="border-b border-slate-100">
-                    <td className="px-3 py-3 font-semibold text-slate-800">{stat.seasonName}</td>
-                    <td className="px-3 py-3 text-slate-700">{stat.teamName}</td>
-                    <td className="px-3 py-3 text-slate-700">{stat.competitionName}</td>
-                    <td className="px-3 py-3 font-bold text-slate-900">{stat.gamesPlayed}</td>
-                    <td className="px-3 py-3 font-bold text-[#5f00ad]">{stat.goals}</td>
-                    <td className="px-3 py-3 font-bold text-cyan-700">{stat.assists}</td>
-                    <td className="px-3 py-3 font-bold text-slate-900">{stat.minutesPlayed}</td>
+                  <tr key={stat.key} className="border-b border-stone-100">
+                    <td className="px-3 py-3 font-semibold text-stone-800">{stat.seasonName}</td>
+                    <td className="px-3 py-3 text-stone-700">{stat.teamName}</td>
+                    <td className="px-3 py-3 text-stone-700">{stat.competitionName}</td>
+                    <td className="px-3 py-3 font-bold text-stone-900">{stat.gamesPlayed}</td>
+                    <td className="px-3 py-3 font-black text-[var(--accent)]">{stat.goals}</td>
+                    <td className="px-3 py-3 font-bold text-stone-700">{stat.assists}</td>
+                    <td className="px-3 py-3 font-bold text-stone-900">{stat.minutesPlayed}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1003,10 +1000,10 @@ function PremierPlayerView({
         ) : null}
 
         {activeTab === 'achievements' ? (
-          <section id="achievements" className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+          <section id="achievements" className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm">
             <div className="mb-4">
-              <h2 className="text-2xl font-black text-[#23003d]">גביעים והישגים</h2>
-              <p className="mt-1 text-sm text-slate-500">תארים, גביעים והישגים שנשמרו לשחקן לאורך הקריירה.</p>
+              <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">גביעים והישגים</h2>
+              <p className="mt-1 text-sm text-stone-500">תארים, גביעים והישגים שנשמרו לשחקן לאורך הקריירה.</p>
             </div>
             {(() => {
               const unique = Array.from(
@@ -1019,16 +1016,16 @@ function PremierPlayerView({
               return unique.length > 0 ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {unique.map((t, i) => (
-                    <div key={`${t.id}-${i}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 text-sm">
+                    <div key={`${t.id}-${i}`} className="rounded-xl border border-stone-100 bg-stone-50 p-4 text-sm">
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">{t.placeEn === 'Winner' ? '🏆' : t.placeEn === 'Runner-up' || t.placeEn === '2nd Place' ? '🥈' : '🏅'}</span>
                         <div>
-                          <div className="font-bold text-slate-800">{t.leagueNameHe || t.leagueNameEn}</div>
-                          <div className="mt-0.5 text-xs text-slate-500">
+                          <div className="font-bold text-stone-800">{t.leagueNameHe || t.leagueNameEn}</div>
+                          <div className="mt-0.5 text-xs text-stone-500">
                             {t.seasonLabel || ''} · {t.placeHe || t.placeEn || ''}
                           </div>
                           {t.countryHe || t.countryEn ? (
-                            <div className="mt-0.5 text-[10px] text-slate-400">{t.countryHe || t.countryEn}</div>
+                            <div className="mt-0.5 text-[10px] text-stone-400">{t.countryHe || t.countryEn}</div>
                           ) : null}
                         </div>
                       </div>
@@ -1036,7 +1033,7 @@ function PremierPlayerView({
                   ))}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-sm text-stone-500">
                   אין הישגים שמורים לשחקן הזה.
                 </div>
               );
@@ -1045,10 +1042,10 @@ function PremierPlayerView({
         ) : null}
 
         {activeTab === 'games' ? (
-          <section id="games" className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+          <section id="games" className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm">
           <div className="mb-4">
-            <h2 className="text-2xl font-black text-[#23003d]">משחקים</h2>
-            <p className="mt-1 text-sm text-slate-500">רשימת הופעות של השחקן בעונה שנבחרה, עם אפשרות סינון לפי תפקיד במשחק.</p>
+            <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">משחקים</h2>
+            <p className="mt-1 text-sm text-stone-500">רשימת הופעות של השחקן בעונה שנבחרה, עם אפשרות סינון לפי תפקיד במשחק.</p>
           </div>
           {false ? (
             <div className="mb-4 flex flex-wrap gap-2">
@@ -1071,7 +1068,7 @@ function PremierPlayerView({
             <div className="overflow-x-auto">
               <table className="min-w-full text-right text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 text-slate-500">
+                  <tr className="border-b border-stone-100 text-stone-500">
                     <th className="px-3 py-3">תאריך</th>
                     <th className="px-3 py-3">מסגרת</th>
                     <th className="px-3 py-3">משחק</th>
@@ -1084,26 +1081,26 @@ function PremierPlayerView({
                 </thead>
                 <tbody>
                   {filteredPlayerGameRows.map((row) => (
-                    <tr key={`${row.playerId}-${row.gameId}`} className="border-b border-slate-100">
-                      <td className="px-3 py-3 whitespace-nowrap text-slate-700">{row.displayDate}</td>
-                      <td className="px-3 py-3 text-slate-700">{row.competitionName}</td>
+                    <tr key={`${row.playerId}-${row.gameId}`} className="border-b border-stone-100">
+                      <td className="px-3 py-3 whitespace-nowrap text-stone-700">{row.displayDate}</td>
+                      <td className="px-3 py-3 text-stone-700">{row.competitionName}</td>
                       <td className="px-3 py-3">
-                        <Link href={`/games/${row.gameId}`} className="font-bold text-[#5f00ad] hover:underline">
+                        <Link href={`/games/${row.gameId}`} className="font-bold text-[var(--accent)] hover:underline">
                           {row.matchLabel}
                         </Link>
                       </td>
-                      <td className="px-3 py-3 font-bold text-slate-900">{row.scoreLabel}</td>
-                      <td className="px-3 py-3 text-slate-700">{row.squadRoleLabel}</td>
-                      <td className="px-3 py-3 text-slate-700">{row.minutesLabel}</td>
-                      <td className="px-3 py-3 font-bold text-[#5f00ad]">{row.goals}</td>
-                      <td className="px-3 py-3 font-bold text-cyan-700">{row.assists}</td>
+                      <td className="px-3 py-3 font-bold text-stone-900">{row.scoreLabel}</td>
+                      <td className="px-3 py-3 text-stone-700">{row.squadRoleLabel}</td>
+                      <td className="px-3 py-3 text-stone-700">{row.minutesLabel}</td>
+                      <td className="px-3 py-3 font-black text-[var(--accent)]">{row.goals}</td>
+                      <td className="px-3 py-3 font-bold text-stone-700">{row.assists}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+            <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6 text-center text-sm text-stone-500">
               לא נמצאו משחקים לחתך שנבחר.
             </div>
           )}
@@ -1116,9 +1113,9 @@ function PremierPlayerView({
 
 function MiniSummary({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[22px] bg-[#f6f7fb] px-4 py-3">
-      <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">{label}</div>
-      <div className="mt-2 text-xl font-black text-[#260041]">{value}</div>
+    <div className="rounded-xl bg-stone-50 px-4 py-3">
+      <div className="text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
+      <div className="mt-2 text-xl font-black text-stone-900">{value}</div>
     </div>
   );
 }
@@ -1135,13 +1132,13 @@ function StatCategoryCard({
   const visibleRows = rows.filter((row) => row.value !== '0' && row.value !== '0/0' && row.value !== '0 (0%)');
 
   return (
-    <section className={`rounded-[26px] border border-slate-200/80 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.05)] ${className}`}>
-      <h3 className="text-2xl font-black text-[#2b0043]">{title}</h3>
-      <div className="mt-4 space-y-4">
+    <section className={`modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm ${className}`}>
+      <h3 className="border-r-[3px] border-[var(--accent)] pr-3 text-base font-black text-stone-900">{title}</h3>
+      <div className="mt-4 space-y-3">
         {(visibleRows.length ? visibleRows : rows).map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-4">
-            <div className="text-lg text-[#3d0067]">{row.label}</div>
-            <div className="text-lg font-black text-[#2b0043]">{row.value}</div>
+            <div className="text-sm text-stone-600">{row.label}</div>
+            <div className="text-sm font-black text-stone-900">{row.value}</div>
           </div>
         ))}
       </div>
@@ -1339,7 +1336,7 @@ function FilterChip({ href, active, label }: { href: string; active: boolean; la
     <Link
       href={href}
       className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-        active ? 'bg-stone-900 text-white' : 'border border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
+        active ? 'bg-[var(--accent)] text-white' : 'border border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300'
       }`}
     >
       {label}

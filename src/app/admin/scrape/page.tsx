@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-import AdminScrapeClient from '@/components/AdminScrapeClient';
+import AdminScrapeClient, { AdminRsssfClient } from '@/components/AdminScrapeClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +26,10 @@ export default async function AdminScrapePage() {
     sport5SeasonBreakdown,
     ifaSeasonBreakdown,
     recentJobs,
+    rsssfStandings,
+    rsssfTopScorers,
+    rsssfMatches,
+    rsssfSeasonBreakdown,
   ] = await Promise.all([
     prisma.scrapedTeam.count({ where: { source: 'sport5' } }),
     prisma.scrapedPlayer.count({ where: { source: 'sport5' } }),
@@ -34,6 +38,10 @@ export default async function AdminScrapePage() {
     prisma.scrapedPlayerSeason.groupBy({ by: ['season'], where: { source: 'sport5' }, _count: true, orderBy: { season: 'desc' } }),
     prisma.scrapedStanding.groupBy({ by: ['season'], where: { source: 'footballOrgIl' }, _count: true, orderBy: { season: 'desc' } }),
     prisma.scrapeJob.findMany({ orderBy: { createdAt: 'desc' }, take: 10 }),
+    prisma.scrapedStanding.count({ where: { source: 'rsssf' } }),
+    prisma.scrapedLeaderboard.count({ where: { source: 'rsssf' } }),
+    prisma.scrapedMatch.count({ where: { source: 'rsssf' } }),
+    prisma.scrapedStanding.groupBy({ by: ['season'], where: { source: 'rsssf' }, _count: true, orderBy: { season: 'asc' } }),
   ]);
 
   // Sample players for preview
@@ -76,6 +84,13 @@ export default async function AdminScrapePage() {
           <SummaryCard label="טבלאות IFA" value={String(ifaStandings)} />
         </section>
 
+        {/* RSSSF summary cards */}
+        <section className="grid gap-4 sm:grid-cols-3">
+          <SummaryCard label="RSSSF — טבלאות" value={String(rsssfStandings)} />
+          <SummaryCard label="RSSSF — מלכי שערים" value={String(rsssfTopScorers)} />
+          <SummaryCard label="RSSSF — משחקים/גמרים" value={String(rsssfMatches)} />
+        </section>
+
         {/* Season breakdown */}
         <section className="grid gap-6 xl:grid-cols-2">
           <div className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
@@ -105,8 +120,26 @@ export default async function AdminScrapePage() {
           </div>
         </section>
 
+        {/* RSSSF season breakdown */}
+        {rsssfSeasonBreakdown.length > 0 ? (
+          <section className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-black text-stone-900">RSSSF — טבלאות לפי עונה</h2>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {rsssfSeasonBreakdown.map((s) => (
+                <div key={s.season} className="flex items-center justify-between rounded-xl bg-stone-50 px-4 py-2">
+                  <span className="font-bold text-stone-800">{s.season}</span>
+                  <span className="rounded-full bg-indigo-100 px-3 py-0.5 text-sm font-bold text-indigo-800">{s._count} קבוצות</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         {/* Scrape controls */}
         <AdminScrapeClient />
+
+        {/* RSSSF controls */}
+        <AdminRsssfClient />
 
         {/* Sample data preview */}
         {samplePlayers.length > 0 ? (

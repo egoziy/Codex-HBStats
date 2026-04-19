@@ -368,19 +368,38 @@ export default async function StatisticsPage({
     }
 
     if (dbLeaderboards.length > 0) {
+      const playerById = new Map<string, (typeof leaderPlayers)[0]>(leaderPlayers.map((p) => [p.id, p] as [string, (typeof leaderPlayers)[0]]));
+      const resolvePlayerName = (e: (typeof dbLeaderboards)[0]) => {
+        if (e.playerId) {
+          const p = playerById.get(e.playerId);
+          if (p) return formatPlayerName(p);
+        }
+        return e.playerNameHe || e.playerNameEn || '?';
+      };
+      const resolveValue = (e: (typeof dbLeaderboards)[0], category: string) => {
+        if (!e.playerId) return e.value;
+        if (category === 'TOP_SCORERS') return Math.max(e.value, countScoringEventsForPlayer(leaderGames, e.playerId));
+        if (category === 'TOP_ASSISTS') return Math.max(e.value, countAssistEventsForPlayer(leaderGames, e.playerId));
+        return e.value;
+      };
+
       leaderboardCards = Array.from(grouped.entries()).map(([category, entries]) => {
         const meta = categoryMap[category] || { title: category, valueLabel: 'ערך' };
         return {
           title: meta.title,
           valueLabel: meta.valueLabel,
-          rows: entries.slice(0, 20).map((e) => ({
-            playerId: e.playerId || e.id,
-            playerName: e.playerNameHe || e.playerNameEn || '?',
-            teamName: e.teamNameHe || e.teamNameEn || '-',
-            value: e.value,
-            details: [],
-            emptyMessage: '',
-          })),
+          rows: entries
+            .slice(0, 50)
+            .map((e) => ({
+              playerId: e.playerId || e.id,
+              playerName: resolvePlayerName(e),
+              teamName: e.teamNameHe || e.teamNameEn || '-',
+              value: resolveValue(e, category),
+              details: [],
+              emptyMessage: '',
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 20),
         };
       });
     }
@@ -416,20 +435,20 @@ export default async function StatisticsPage({
   }
 
   return (
-    <div className="min-h-screen bg-stone-100 px-4 py-8">
+    <div dir="rtl" className="min-h-screen px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold tracking-[0.25em] text-amber-700">סטטיסטיקה</p>
-          <h1 className="mt-2 text-3xl font-black text-stone-900">מרכז סטטיסטיקות</h1>
-          <p className="mt-3 max-w-3xl text-stone-600">
+        <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm md:p-8">
+          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">סטטיסטיקה</p>
+          <h1 className="mt-2 text-3xl font-black text-stone-900 md:text-4xl">מרכז סטטיסטיקות</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
             בחרו עונה, ואם תרצו גם קבוצה ספציפית, כדי לראות תמונת מצב סטטיסטית מלאה.
           </p>
 
-          <form className="mt-6 grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto]" action="/statistics">
+          <form className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" action="/statistics">
             <select
               name="season"
               defaultValue={selectedSeason?.id || ''}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+              className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
             >
               {seasons.map((season) => (
                 <option key={season.id} value={season.id}>
@@ -441,7 +460,7 @@ export default async function StatisticsPage({
             <select
               name="competitionId"
               defaultValue={selectedCompetitionId}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+              className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
             >
               {competitions.map((competition) => (
                 <option key={competition.id} value={competition.id}>
@@ -453,7 +472,7 @@ export default async function StatisticsPage({
             <select
               name="teamId"
               defaultValue={selectedTeamId}
-              className="rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 font-semibold"
+              className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
             >
               <option value="all">כל הקבוצות</option>
               {teams.map((team) => (
@@ -463,7 +482,7 @@ export default async function StatisticsPage({
               ))}
             </select>
 
-            <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">הצג נתונים</button>
+            <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90">הצג</button>
           </form>
         </section>
 
@@ -479,61 +498,62 @@ export default async function StatisticsPage({
         </section>
 
         {selectedTeam ? (
-          <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-            <div className="mb-4">
-              <h2 className="text-2xl font-black text-stone-900">סטטיסטיקה לקבוצה: {selectedTeam.nameHe || selectedTeam.nameEn}</h2>
-              <p className="mt-2 text-sm text-stone-600">סגל הקבוצה בעונה הנבחרת ומאפייני הביצועים שלה.</p>
+          <section className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+            <div className="border-b border-stone-100 px-6 py-5">
+              <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">
+                {selectedTeam.nameHe || selectedTeam.nameEn}
+              </h2>
+              <p className="mt-1 text-sm text-stone-500">סגל הקבוצה בעונה הנבחרת ומאפייני הביצועים שלה.</p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 p-6 md:grid-cols-4">
               <StatsCard title="שחקנים בסגל" value={String(totalPlayers)} subtitle="לפי הנתונים שמוצגים כרגע" />
               <StatsCard title="ניצחונות" value={String(standings[0]?.wins ?? 0)} subtitle="בטבלת העונה הנבחרת" />
               <StatsCard title="שערי זכות" value={String(standings[0]?.goalsFor ?? 0)} subtitle="במסגרת הסינון" />
               <StatsCard
-                title="נקודות אחרי תיקון"
+                title="נקודות"
                 value={String(standings[0]?.adjustedPoints ?? 0)}
                 subtitle={
                   standings[0]?.pointsAdjustmentNoteHe ||
                   (standings[0]?.pointsAdjustment
                     ? `תיקון: ${standings[0].pointsAdjustment > 0 ? `+${standings[0].pointsAdjustment}` : standings[0].pointsAdjustment}`
-                    : 'ללא תיקון נקודות')
+                    : 'ללא תיקון')
                 }
               />
             </div>
 
-            <div className="mt-6 overflow-x-auto">
+            <div className="overflow-x-auto px-6 pb-6">
               <table className="min-w-full text-right">
                 <thead>
-                  <tr className="border-b border-stone-200 text-sm text-stone-500">
+                  <tr className="bg-stone-50/80 text-[11px] font-black uppercase tracking-[0.15em] text-stone-400">
                     <th className="px-3 py-3">שחקן</th>
-                    <th className="px-3 py-3">מספר</th>
-                    <th className="px-3 py-3">עמדה</th>
-                    <th className="px-3 py-3">הופעות</th>
-                    <th className="px-3 py-3">שערים</th>
-                    <th className="px-3 py-3">בישולים</th>
-                    <th className="px-3 py-3">צהובים</th>
-                    <th className="px-3 py-3">אדומים</th>
+                    <th className="px-3 py-3 text-center">מס׳</th>
+                    <th className="px-3 py-3 text-center">עמדה</th>
+                    <th className="px-3 py-3 text-center">הופעות</th>
+                    <th className="px-3 py-3 text-center">שערים</th>
+                    <th className="px-3 py-3 text-center">בישולים</th>
+                    <th className="px-3 py-3 text-center">צהובים</th>
+                    <th className="px-3 py-3 text-center">אדומים</th>
                   </tr>
                 </thead>
                 <tbody>
                   {playerRows.map(({ player, totals, isZeroStatPlayer }) => (
-                    <tr key={player.id} className={`border-b border-stone-100 text-sm ${isZeroStatPlayer ? 'bg-stone-50 text-stone-500' : ''}`}>
+                    <tr key={player.id} className={`border-b border-stone-100 text-sm transition hover:bg-stone-50/60 ${isZeroStatPlayer ? 'text-stone-400' : ''}`}>
                       <td className="px-3 py-3 font-semibold">
                         <Link
                           href={`/players/${player.canonicalPlayerId || player.id}?season=${selectedSeasonId}`}
-                          className={`font-semibold transition hover:text-amber-700 ${isZeroStatPlayer ? 'text-stone-600' : 'text-stone-900'}`}
+                          className={`font-semibold transition hover:text-[var(--accent)] ${isZeroStatPlayer ? 'text-stone-500' : 'text-stone-900'}`}
                         >
                           {formatPlayerName(player)}
                         </Link>
-                        {isZeroStatPlayer ? <div className="mt-1 text-xs font-bold text-stone-400">0 סטטיסטיקות</div> : null}
                       </td>
-                      <td className="px-3 py-3">{player.jerseyNumber ?? '-'}</td>
-                      <td className="px-3 py-3">{formatPlayerPosition(player.position)}</td>
-                      <td className="px-3 py-3">{totals.gamesPlayed}</td>
-                      <td className="px-3 py-3">{totals.goals}</td>
-                      <td className="px-3 py-3">{totals.assists}</td>
-                      <td className="px-3 py-3">{totals.yellowCards}</td>
-                      <td className="px-3 py-3">{totals.redCards}</td>
+                      <td className="px-3 py-3 text-center">{player.jerseyNumber ?? '-'}</td>
+                      <td className="px-3 py-3 text-center">{formatPlayerPosition(player.position)}</td>
+                      <td className="px-3 py-3 text-center font-semibold">{totals.gamesPlayed}</td>
+                      <td className="px-3 py-3 text-center font-bold text-stone-900">{totals.goals || '-'}</td>
+                      <td className="px-3 py-3 text-center font-bold text-stone-900">{totals.assists || '-'}</td>
+                      <td className="px-3 py-3 text-center">{totals.yellowCards || '-'}</td>
+                      <td className="px-3 py-3 text-center">{totals.redCards || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -541,39 +561,40 @@ export default async function StatisticsPage({
             </div>
           </section>
         ) : (
-          <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-black text-stone-900">תמונת מצב לכל הקבוצות</h2>
-            <p className="mt-2 text-sm text-stone-600">כאן מוצגים נתוני הטבלה עבור כל הקבוצות בעונה שבחרת.</p>
-
-            <div className="mt-6 overflow-x-auto">
+          <section className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+            <div className="border-b border-stone-100 px-6 py-5">
+              <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">תמונת מצב לכל הקבוצות</h2>
+              <p className="mt-1 text-sm text-stone-500">נתוני הטבלה עבור כל הקבוצות בעונה שבחרת.</p>
+            </div>
+            <div className="overflow-x-auto">
               <table className="min-w-full text-right">
                 <thead>
-                  <tr className="border-b border-stone-200 text-sm text-stone-500">
-                    <th className="px-3 py-3">קבוצה</th>
-                    <th className="px-3 py-3">מיקום</th>
-                    <th className="px-3 py-3">נקודות</th>
-                    <th className="px-3 py-3">תיקון</th>
-                    <th className="px-3 py-3">ניצחונות</th>
-                    <th className="px-3 py-3">הפרש שערים</th>
+                  <tr className="bg-stone-50/80 text-[11px] font-black uppercase tracking-[0.15em] text-stone-400">
+                    <th className="px-4 py-3">קבוצה</th>
+                    <th className="px-4 py-3 text-center">מיקום</th>
+                    <th className="px-4 py-3 text-center">נקודות</th>
+                    <th className="px-4 py-3 text-center">תיקון</th>
+                    <th className="px-4 py-3 text-center">ניצחונות</th>
+                    <th className="px-4 py-3 text-center">הפרש</th>
                   </tr>
                 </thead>
                 <tbody>
                   {standings.map((row) => (
-                    <tr key={row.id} className="border-b border-stone-100 text-sm">
-                      <td className="px-3 py-3 font-semibold">{row.team.nameHe || row.team.nameEn}</td>
-                      <td className="px-3 py-3">{row.displayPosition}</td>
-                      <td className="px-3 py-3">{row.adjustedPoints}</td>
-                      <td className="px-3 py-3">
+                    <tr key={row.id} className="border-b border-stone-100 text-sm transition hover:bg-stone-50/60">
+                      <td className="px-4 py-3 font-semibold text-stone-900">{row.team.nameHe || row.team.nameEn}</td>
+                      <td className="px-4 py-3 text-center font-bold">{row.displayPosition}</td>
+                      <td className="px-4 py-3 text-center text-base font-black text-stone-900">{row.adjustedPoints}</td>
+                      <td className="px-4 py-3 text-center">
                         {row.pointsAdjustment !== 0 ? (
-                          <span className={row.pointsAdjustment < 0 ? 'font-bold text-red-700' : 'font-bold text-emerald-700'}>
+                          <span className={row.pointsAdjustment < 0 ? 'font-bold text-red-600' : 'font-bold text-emerald-600'}>
                             {row.pointsAdjustment > 0 ? `+${row.pointsAdjustment}` : row.pointsAdjustment}
                           </span>
-                        ) : (
-                          '-'
-                        )}
+                        ) : '-'}
                       </td>
-                      <td className="px-3 py-3">{row.wins}</td>
-                      <td className="px-3 py-3">{row.goalDifference}</td>
+                      <td className="px-4 py-3 text-center">{row.wins}</td>
+                      <td className={`px-4 py-3 text-center font-bold ${row.goalDifference > 0 ? 'text-emerald-600' : row.goalDifference < 0 ? 'text-red-500' : ''}`}>
+                        {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -640,65 +661,57 @@ function PremierStatisticsView({
   const topScorers = [...playerRows].sort((a, b) => b.totals.goals - a.totals.goals || b.totals.assists - a.totals.assists).slice(0, 8);
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f6f8ff_0%,#eef2ff_100%)] px-4 py-8">
+    <div dir="rtl" className="min-h-screen px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(140deg,#12002f,#4a006f_48%,#05a3d6)] p-6 text-white shadow-[0_30px_80px_rgba(18,0,47,0.28)] md:p-8">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl space-y-3">
-              <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-1 text-xs font-bold uppercase tracking-[0.34em] text-cyan-100">
-                מרכז נתונים
-              </div>
-              <h1 className="text-4xl font-black tracking-tight md:text-5xl">מרכז הסטטיסטיקות</h1>
-              <p className="text-sm leading-6 text-white/78 md:text-base">
-                גרסת תצוגה חדשה שמסדרת את הנתונים כמו מרכז סטטיסטיקות רשמי: פילטרים מהירים, נתוני עונה בולטים, וטבלאות דירוג ברורות יותר לשחקנים ולקבוצות.
+        <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm md:p-8">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">סטטיסטיקה</p>
+              <h1 className="text-3xl font-black text-stone-900 md:text-4xl">מרכז הסטטיסטיקות</h1>
+              <p className="text-sm leading-6 text-stone-600">
+                פילטרים מהירים, נתוני עונה בולטים, וטבלאות דירוג ברורות לשחקנים ולקבוצות.
               </p>
             </div>
 
-            <form className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" action="/statistics">
+            <form className="flex flex-col gap-3 sm:flex-row sm:items-center" action="/statistics">
               <input type="hidden" name="view" value="premier" />
               <select
                 name="season"
                 defaultValue={selectedSeason?.id || ''}
-                className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
+                className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
               >
                 {seasons.map((season) => (
-                  <option key={season.id} value={season.id} className="text-slate-950">
-                    {season.name}
-                  </option>
-                  ))}
-                </select>
-                <select
-                  name="competitionId"
-                  defaultValue={selectedCompetitionId}
-                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
-                >
-                  {competitions.map((competition) => (
-                    <option key={competition.id} value={competition.id} className="text-slate-950">
-                      {getCompetitionLabel(competition)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="teamId"
-                  defaultValue={selectedTeamId}
-                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
-                >
-                <option value="all" className="text-slate-950">כל הקבוצות</option>
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id} className="text-slate-950">
-                    {team.nameHe || team.nameEn}
-                  </option>
+                  <option key={season.id} value={season.id}>{season.name}</option>
                 ))}
               </select>
-              <button className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-[#320061]">הצג נתונים</button>
+              <select
+                name="competitionId"
+                defaultValue={selectedCompetitionId}
+                className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
+              >
+                {competitions.map((competition) => (
+                  <option key={competition.id} value={competition.id}>{getCompetitionLabel(competition)}</option>
+                ))}
+              </select>
+              <select
+                name="teamId"
+                defaultValue={selectedTeamId}
+                className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
+              >
+                <option value="all">כל הקבוצות</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>{team.nameHe || team.nameEn}</option>
+                ))}
+              </select>
+              <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90">הצג</button>
             </form>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <PremierStatsCard title="עונה" value={selectedSeason?.name || '-'} subtitle="הסינון הפעיל" />
-            <PremierStatsCard title="משחקים" value={String(completedGames)} subtitle="במסגרת הסינון" />
-            <PremierStatsCard title="שערים" value={String(totalGoals)} subtitle={`ממוצע למשחק: ${averageGoals}`} />
-            <PremierStatsCard
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatsCard title="עונה" value={selectedSeason?.name || '-'} subtitle="הסינון הפעיל" />
+            <StatsCard title="משחקים" value={String(completedGames)} subtitle="במסגרת הסינון" />
+            <StatsCard title="שערים" value={String(totalGoals)} subtitle={`ממוצע: ${averageGoals}`} />
+            <StatsCard
               title="מובילה בנקודות"
               value={pointsLeader ? pointsLeader.team.nameHe || pointsLeader.team.nameEn : '-'}
               subtitle={pointsLeader ? `${pointsLeader.adjustedPoints} נקודות` : 'אין נתונים'}
@@ -717,24 +730,24 @@ function PremierStatisticsView({
             </div>
           </>
 
-          <div className="overflow-hidden rounded-[30px] border border-slate-200/70 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
-            <div className="border-b border-slate-100 px-6 py-5">
-              <h2 className="text-2xl font-black text-slate-950">
+          <div className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+            <div className="border-b border-stone-100 px-6 py-5">
+              <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">
                 {selectedTeam ? `שחקני ${selectedTeam.nameHe || selectedTeam.nameEn}` : 'דירוג שחקנים'}
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {selectedTeam ? 'טבלת ביצועים עונתית של הסגל הנבחר.' : 'השחקנים המובילים על פי הנתונים הזמינים במסנן הנוכחי.'}
+              <p className="mt-1 text-sm text-stone-500">
+                {selectedTeam ? 'טבלת ביצועים עונתית של הסגל הנבחר.' : 'השחקנים המובילים על פי הנתונים הזמינים.'}
               </p>
             </div>
 
             <div className="overflow-x-auto">
               <table className="min-w-full text-right">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-[#f7f8ff] text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                    <th className="px-4 py-4">שחקן</th>
-                    <th className="px-4 py-4">עמדה</th>
-                    <th className="px-4 py-4 text-center">הופעות</th>
-                    <th className="px-4 py-4 text-center">שערים</th>
+                  <tr className="bg-stone-50/80 text-[11px] font-black uppercase tracking-[0.15em] text-stone-400">
+                    <th className="px-4 py-3">שחקן</th>
+                    <th className="px-4 py-3">עמדה</th>
+                    <th className="px-4 py-3 text-center">הופעות</th>
+                    <th className="px-4 py-3 text-center">שערים</th>
                     <th className="px-4 py-4 text-center">בישולים</th>
                     <th className="px-4 py-4 text-center">YC</th>
                     <th className="px-4 py-4 text-center">RC</th>
@@ -746,7 +759,7 @@ function PremierStatisticsView({
                       <td className="px-4 py-4">
                         <Link
                           href={`/players/${player.canonicalPlayerId || player.id}?season=${selectedSeasonId}&view=premier`}
-                          className={`font-black transition hover:text-[#7000bd] ${isZeroStatPlayer ? 'text-slate-500' : 'text-slate-950'}`}
+                          className={`font-black transition hover:text-[var(--accent)] ${isZeroStatPlayer ? 'text-slate-500' : 'text-slate-950'}`}
                         >
                           {formatPlayerName(player)}
                         </Link>
@@ -770,7 +783,7 @@ function PremierStatisticsView({
 
           <div className="space-y-6">
             <section className="rounded-[30px] border border-slate-200/70 bg-white p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
-              <h3 className="text-xl font-black text-slate-950">תמונת מצב</h3>
+              <h3 className="text-xl font-black text-stone-900">תמונת מצב</h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <QuickMetric label="שחקנים מוצגים" value={String(totalPlayers)} accent="text-[#6d00b7]" />
                 <QuickMetric label="מובילת העונה" value={pointsLeader ? pointsLeader.team.nameHe || pointsLeader.team.nameEn : '-'} accent="text-cyan-700" />
@@ -779,9 +792,9 @@ function PremierStatisticsView({
               </div>
             </section>
 
-            <section className="overflow-hidden rounded-[30px] border border-slate-200/70 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+            <section className="overflow-hidden modern-card rounded-2xl border border-stone-200/80 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-6 py-5">
-                <h3 className="text-xl font-black text-slate-950">דירוג קבוצות</h3>
+                <h3 className="text-xl font-black text-stone-900">דירוג קבוצות</h3>
               </div>
               <div className="divide-y divide-slate-100">
                 {standings.slice(0, 8).map((row, index) => (
@@ -791,11 +804,11 @@ function PremierStatisticsView({
                         {row.displayPosition}
                       </div>
                       <div>
-                        <div className="font-black text-slate-950">{row.team.nameHe || row.team.nameEn}</div>
+                        <div className="font-black text-stone-900">{row.team.nameHe || row.team.nameEn}</div>
                         <div className="text-xs text-slate-500">{row.wins} ניצחונות | {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference} GD</div>
                       </div>
                     </div>
-                    <div className="text-lg font-black text-slate-950">{row.adjustedPoints}</div>
+                    <div className="text-lg font-black text-stone-900">{row.adjustedPoints}</div>
                   </div>
                 ))}
               </div>
@@ -844,9 +857,9 @@ function LeaderboardCard({
   valueForRow: (row: any) => number;
 }) {
   return (
-    <section className="overflow-hidden rounded-[30px] border border-slate-200/70 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+    <section className="overflow-hidden modern-card rounded-2xl border border-stone-200/80 bg-white shadow-sm">
       <div className="border-b border-slate-100 px-6 py-5">
-        <h3 className="text-xl font-black text-slate-950">{title}</h3>
+        <h3 className="text-xl font-black text-stone-900">{title}</h3>
       </div>
       <div className="divide-y divide-slate-100">
         {rows.slice(0, 10).map((row: any, index: number) => (
@@ -854,7 +867,7 @@ function LeaderboardCard({
             <div className="flex items-center gap-3">
               <div className="w-5 text-sm font-black text-slate-500">{index + 1}</div>
               <div>
-                <div className="font-black text-slate-950">{formatPlayerName(row.player)}</div>
+                <div className="font-black text-stone-900">{formatPlayerName(row.player)}</div>
                 <div className="text-xs text-slate-500">{row.player.team?.nameHe || row.player.team?.nameEn || '-'}</div>
               </div>
             </div>
@@ -1082,10 +1095,10 @@ function StatsCard({
   subtitle: string;
 }) {
   return (
-    <article className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
-      <div className="text-sm font-semibold text-stone-500">{title}</div>
-      <div className="mt-3 text-3xl font-black text-stone-900">{value}</div>
-      <div className="mt-2 text-sm text-stone-600">{subtitle}</div>
+    <article className="modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm">
+      <div className="text-xs font-bold uppercase tracking-wider text-stone-400">{title}</div>
+      <div className="mt-2 text-3xl font-black text-stone-900">{value}</div>
+      <div className="mt-1 text-xs text-stone-500">{subtitle}</div>
     </article>
   );
 }

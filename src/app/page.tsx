@@ -260,13 +260,13 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_SCORERS' },
       orderBy: { value: 'desc' },
       take: 5,
-      select: { playerNameHe: true, teamNameHe: true, value: true, playerId: true },
+      select: { playerNameHe: true, playerNameEn: true, teamNameHe: true, teamNameEn: true, value: true, playerId: true, player: { select: { nameHe: true, nameEn: true } } },
     }),
     prisma.competitionLeaderboardEntry.findMany({
       where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_ASSISTS' },
       orderBy: { value: 'desc' },
       take: 5,
-      select: { playerNameHe: true, teamNameHe: true, value: true, playerId: true },
+      select: { playerNameHe: true, playerNameEn: true, teamNameHe: true, teamNameEn: true, value: true, playerId: true, player: { select: { nameHe: true, nameEn: true } } },
     }),
     prisma.gameEvent.findMany({
       where: {
@@ -411,50 +411,49 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   const heroCompleted = heroGame?.status === 'COMPLETED';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-stone-50 to-stone-100">
+    <div className="min-h-screen">
       {/* ── HERO: Featured Match ── */}
       {heroGame ? (
-        <section className="relative overflow-hidden bg-gradient-to-br from-[#8b1a1a] via-[#b91c1c] to-[#991b1b]">
-          <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'40\' height=\'40\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h40v40H0z\' fill=\'none\'/%3E%3Cpath d=\'M20 0v40M0 20h40\' stroke=\'white\' stroke-width=\'.5\'/%3E%3C/svg%3E")' }} />
-          <div className="relative mx-auto max-w-7xl px-4 pb-7 pt-6">
+        <section className="hero-featured-match relative overflow-hidden">
+          <div className="relative mx-auto max-w-7xl px-4 pb-8 pt-6">
             <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`h-2 w-2 rounded-full ${heroGame.status === 'ONGOING' ? 'animate-pulse bg-yellow-300' : heroCompleted ? 'bg-emerald-300' : 'bg-white/60'}`} />
-                <span className="text-xs font-bold uppercase tracking-[0.3em] text-white/70">
+              <div className="flex items-center gap-2">
+                <div className={`h-2 w-2 rounded-full ${heroGame.status === 'ONGOING' ? 'animate-pulse bg-yellow-300' : heroCompleted ? 'bg-emerald-300' : 'bg-white/50'}`} />
+                <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/60">
                   {heroGame.status === 'ONGOING' ? 'משחק חי' : heroCompleted ? 'משחק אחרון' : 'המשחק הבא'}
                 </span>
               </div>
-              <span className="rounded-full bg-white/10 px-4 py-1.5 text-[11px] font-bold text-white/70">{latestSeason.name}</span>
+              <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/60">{latestSeason.name}</span>
             </div>
-            <Link href={`/games/${heroGame.id}`} className="group block">
+            <Link href={`/games/${heroGame.id}`} className="block">
               <div className="text-center">
-                <div className="text-xs font-semibold text-white/50">{getCompetitionDisplayName(heroGame.competition)}</div>
-                <div className="mt-4 flex items-center justify-center gap-6 md:gap-14">
-                  <div className="min-w-[100px] text-center md:min-w-[140px]">
-                    <div className="text-xl font-black text-white md:text-3xl">{getTeamLabel(heroGame.homeTeam)}</div>
-                    <div className="mt-1 text-[11px] text-white/40">בית</div>
+                <div className="text-[11px] font-medium text-white/40">{getCompetitionDisplayName(heroGame.competition)}</div>
+                <div className="mt-5 flex items-center justify-center gap-8 md:gap-16">
+                  <div className="min-w-[110px] text-center">
+                    <div className="text-2xl font-black text-white md:text-4xl leading-tight">{getTeamLabel(heroGame.homeTeam)}</div>
+                    <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">בית</div>
                   </div>
                   <div className="flex flex-col items-center">
                     {heroCompleted ? (
-                      <div className="rounded-2xl bg-white/10 px-7 py-4 backdrop-blur-sm">
-                        <div className="text-5xl font-black tabular-nums tracking-wider text-white md:text-6xl">
-                          {heroGame.homeScore ?? 0} <span className="text-white/30">:</span> {heroGame.awayScore ?? 0}
+                      <div className="rounded-2xl bg-white/10 px-8 py-4 backdrop-blur-sm ring-1 ring-white/10">
+                        <div className="text-5xl font-black tabular-nums text-white md:text-6xl">
+                          {heroGame.homeScore ?? 0}<span className="mx-2 text-white/25">–</span>{heroGame.awayScore ?? 0}
                         </div>
-                        <div className="mt-1 text-center text-[11px] font-bold text-emerald-300">הסתיים</div>
+                        <div className="mt-1 text-center text-[10px] font-bold tracking-widest text-emerald-300">סיום</div>
                       </div>
                     ) : (
-                      <div className="rounded-2xl bg-white/10 px-7 py-4 backdrop-blur-sm">
-                        <div className="text-3xl font-black text-white md:text-4xl">VS</div>
-                        <div className="mt-1 text-center text-[11px] font-bold text-white/60">{formatDate(heroGame.dateTime, true)}</div>
+                      <div className="rounded-2xl bg-white/10 px-8 py-4 backdrop-blur-sm ring-1 ring-white/10">
+                        <div className="text-4xl font-black text-white md:text-5xl">VS</div>
+                        <div className="mt-1 text-center text-[11px] text-white/50">{formatDate(heroGame.dateTime, true)}</div>
                       </div>
                     )}
                   </div>
-                  <div className="min-w-[100px] text-center md:min-w-[140px]">
-                    <div className="text-xl font-black text-white md:text-3xl">{getTeamLabel(heroGame.awayTeam)}</div>
-                    <div className="mt-1 text-[11px] text-white/40">חוץ</div>
+                  <div className="min-w-[110px] text-center">
+                    <div className="text-2xl font-black text-white md:text-4xl leading-tight">{getTeamLabel(heroGame.awayTeam)}</div>
+                    <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">חוץ</div>
                   </div>
                 </div>
-                {!heroCompleted && <div className="mt-5 text-xs text-white/40">{formatDate(heroGame.dateTime, true)}</div>}
+                {!heroCompleted && <div className="mt-4 text-[11px] text-white/35">{formatDate(heroGame.dateTime, true)}</div>}
               </div>
             </Link>
           </div>
@@ -472,23 +471,28 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
           <div className="space-y-5">
             <Card title="טבלת ליגת העל" actionHref="/standings" actionLabel="טבלה מלאה">
               {compactStandings.length ? (
-                <div className="overflow-hidden rounded-xl border border-stone-200">
-                  <table className="w-full text-right text-sm">
-                    <thead><tr className="bg-stone-100 text-[11px] text-stone-500"><th className="px-3 py-2">#</th><th className="px-3 py-2">קבוצה</th><th className="px-3 py-2">מש׳</th><th className="px-3 py-2">נק׳</th></tr></thead>
-                    <tbody>
-                      {compactStandings.map((row) => {
-                        const highlighted = selectedTeam?.id === row.teamId;
-                        return (
-                          <tr key={row.id} className={`border-t border-stone-100 transition ${highlighted ? 'bg-red-50' : 'hover:bg-stone-50'}`}>
-                            <td className="px-3 py-2.5 font-black text-stone-400">{row.displayPosition}</td>
-                            <td className="px-3 py-2.5"><Link href={`/teams/${row.teamId}`} className={`font-bold transition hover:text-red-700 ${highlighted ? 'text-red-800' : 'text-stone-900'}`}>{row.team.nameHe || row.team.nameEn}</Link></td>
-                            <td className="px-3 py-2.5 text-stone-500">{(row as any).played ?? ''}</td>
-                            <td className="px-3 py-2.5 font-black text-red-800">{row.adjustedPoints}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="space-y-1">
+                  {compactStandings.map((row, idx) => {
+                    const highlighted = selectedTeam?.id === row.teamId;
+                    const pos = row.displayPosition ?? idx + 1;
+                    const posColor = pos === 1
+                      ? 'bg-[var(--accent)] text-white'
+                      : pos <= 4
+                      ? 'bg-[var(--accent-glow)] text-[var(--accent-text)]'
+                      : pos >= 13
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-stone-100 text-stone-500';
+                    return (
+                      <div key={row.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 transition ${highlighted ? 'bg-[var(--accent-glow)] ring-1 ring-[var(--accent)]/20' : 'hover:bg-stone-50'}`}>
+                        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${posColor}`}>{pos}</span>
+                        <Link href={`/teams/${row.teamId}`} className={`flex-1 text-sm font-bold transition hover:text-[var(--accent)] ${highlighted ? 'text-[var(--accent-text)]' : 'text-stone-800'}`}>
+                          {row.team.nameHe || row.team.nameEn}
+                        </Link>
+                        <span className="text-xs text-stone-400">{(row as any).played ?? ''}</span>
+                        <span className={`min-w-[28px] text-right text-sm font-black ${highlighted ? 'text-[var(--accent)]' : 'text-stone-900'}`}>{row.adjustedPoints}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : <EmptyState text="אין טבלה זמינה." />}
             </Card>
@@ -541,15 +545,15 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                   const completed = game.status === 'COMPLETED';
                   const wo = winnerOddsMap[game.id] || winnerOddsMap[`${getTeamLabel(game.homeTeam)} - ${getTeamLabel(game.awayTeam)}`];
                   return (
-                    <Link key={game.id} href={`/games/${game.id}`} className={`block rounded-xl border p-3 transition hover:bg-white ${isFav ? 'border-red-200 bg-red-50' : 'border-stone-100 bg-stone-50 hover:border-stone-300'}`}>
+                    <Link key={game.id} href={`/games/${game.id}`} className={`block rounded-xl border p-3 transition hover:shadow-sm ${isFav ? 'border-[var(--accent)]/20 bg-[var(--accent-glow)]' : 'border-stone-100 bg-stone-50/60 hover:bg-white hover:border-stone-200'}`}>
                       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                        <span className={`text-center text-sm font-bold ${isFav ? 'text-red-900' : 'text-stone-900'}`}>{getTeamLabel(game.homeTeam)}</span>
+                        <span className={`text-center text-sm font-bold ${isFav ? 'text-[var(--accent-text)]' : 'text-stone-800'}`}>{getTeamLabel(game.homeTeam)}</span>
                         {completed ? (
-                          <span className="shrink-0 rounded-lg bg-stone-900 px-3 py-1 text-sm font-black tabular-nums text-white">{game.homeScore ?? 0} - {game.awayScore ?? 0}</span>
+                          <span className="shrink-0 rounded-lg bg-stone-800 px-3 py-1 text-sm font-black tabular-nums text-white">{game.homeScore ?? 0}–{game.awayScore ?? 0}</span>
                         ) : (
-                          <span className="shrink-0 rounded-lg bg-red-100 px-3 py-1 text-[11px] font-bold text-red-800">{getStatusLabel(game.status)}</span>
+                          <span className="shrink-0 rounded-lg bg-[var(--accent-glow)] px-3 py-1 text-[11px] font-bold text-[var(--accent-text)]">{getStatusLabel(game.status)}</span>
                         )}
-                        <span className={`text-center text-sm font-bold ${isFav ? 'text-red-900' : 'text-stone-900'}`}>{getTeamLabel(game.awayTeam)}</span>
+                        <span className={`text-center text-sm font-bold ${isFav ? 'text-[var(--accent-text)]' : 'text-stone-800'}`}>{getTeamLabel(game.awayTeam)}</span>
                       </div>
                       <div className="mt-1 text-center text-[11px] text-stone-400">{formatDate(game.dateTime, true)}</div>
                       {wo && !completed && (
@@ -615,41 +619,13 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
 
             {topScorers.length > 0 && (
               <Card title="מלכי השערים" actionHref="/statistics" actionLabel="לסטטיסטיקות">
-                <div className="overflow-hidden rounded-xl border border-stone-200">
-                  <table className="w-full text-right text-sm">
-                    <thead><tr className="bg-stone-100 text-[11px] text-stone-500"><th className="px-3 py-2">#</th><th className="px-3 py-2">שחקן</th><th className="px-3 py-2">קבוצה</th><th className="px-3 py-2">שערים</th></tr></thead>
-                    <tbody>
-                      {topScorers.map((row, idx) => (
-                        <tr key={idx} className="border-t border-stone-100 hover:bg-stone-50">
-                          <td className="px-3 py-2.5 font-black text-stone-400">{idx + 1}</td>
-                          <td className="px-3 py-2.5 font-bold text-stone-900">{row.playerId ? <Link href={`/players/${row.playerId}`} className="hover:text-red-700">{row.playerNameHe}</Link> : row.playerNameHe}</td>
-                          <td className="px-3 py-2.5 text-stone-500">{row.teamNameHe}</td>
-                          <td className="px-3 py-2.5 font-black text-red-800">{row.value}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <LeaderboardBars rows={topScorers} />
               </Card>
             )}
 
             {topAssists.length > 0 && (
               <Card title="מלכי הבישולים" actionHref="/statistics" actionLabel="לסטטיסטיקות">
-                <div className="overflow-hidden rounded-xl border border-stone-200">
-                  <table className="w-full text-right text-sm">
-                    <thead><tr className="bg-stone-100 text-[11px] text-stone-500"><th className="px-3 py-2">#</th><th className="px-3 py-2">שחקן</th><th className="px-3 py-2">קבוצה</th><th className="px-3 py-2">בישולים</th></tr></thead>
-                    <tbody>
-                      {topAssists.map((row, idx) => (
-                        <tr key={idx} className="border-t border-stone-100 hover:bg-stone-50">
-                          <td className="px-3 py-2.5 font-black text-stone-400">{idx + 1}</td>
-                          <td className="px-3 py-2.5 font-bold text-stone-900">{row.playerId ? <Link href={`/players/${row.playerId}`} className="hover:text-red-700">{row.playerNameHe}</Link> : row.playerNameHe}</td>
-                          <td className="px-3 py-2.5 text-stone-500">{row.teamNameHe}</td>
-                          <td className="px-3 py-2.5 font-black text-red-800">{row.value}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <LeaderboardBars rows={topAssists} />
               </Card>
             )}
 
@@ -710,15 +686,47 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   );
 }
 
+function LeaderboardBars({ rows }: { rows: Array<{ player?: { nameHe: string | null; nameEn: string | null } | null; playerNameHe: string | null; playerNameEn: string | null; teamNameHe: string | null; teamNameEn: string | null; value: number; playerId: string | null }> }) {
+  const max = rows[0]?.value || 1;
+  return (
+    <div className="space-y-2.5">
+      {rows.map((row, idx) => {
+        const name = row.player?.nameHe || row.playerNameHe || row.player?.nameEn || row.playerNameEn || '';
+        const team = row.teamNameHe || row.teamNameEn || '';
+        const pct = Math.round((row.value / max) * 100);
+        return (
+          <div key={idx} className="flex items-center gap-3">
+            <span className="w-4 shrink-0 text-[11px] font-black text-stone-400">#{idx + 1}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-stone-900 truncate">
+                  {row.playerId ? <Link href={`/players/${row.playerId}`} className="hover:text-[var(--accent)]">{name}</Link> : name}
+                </span>
+                <span className="shrink-0 mr-2 text-sm font-black text-[var(--accent)]">{row.value}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full bg-stone-100">
+                  <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
+                </div>
+                <span className="shrink-0 text-[10px] text-stone-400 w-16 text-left truncate">{team}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Card({ title, actionHref, actionLabel, children }: { title: string; actionHref: string; actionLabel: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+    <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-black text-stone-900">{title}</h2>
+        <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-base font-black text-stone-900">{title}</h2>
         {actionHref.startsWith('http') ? (
-          <a href={actionHref} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-red-700 transition hover:text-red-600">{actionLabel} →</a>
+          <a href={actionHref} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-[var(--accent)] transition hover:opacity-75">{actionLabel} →</a>
         ) : (
-          <Link href={actionHref} className="text-[11px] font-bold text-red-700 transition hover:text-red-600">{actionLabel} →</Link>
+          <Link href={actionHref} className="text-[11px] font-semibold text-[var(--accent)] transition hover:opacity-75">{actionLabel} →</Link>
         )}
       </div>
       {children}

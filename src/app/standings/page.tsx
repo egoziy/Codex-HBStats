@@ -321,13 +321,15 @@ export default async function StandingsPage({
     );
   }
 
+  const totalTeams = standings.length;
+
   return (
-    <div dir="rtl" className="min-h-screen bg-stone-100 px-4 py-8 text-stone-900">
+    <div dir="rtl" className="min-h-screen px-4 py-8 text-stone-900">
       <div className="mx-auto max-w-6xl space-y-6">
-        <section className="rounded-[32px] border border-stone-200 bg-white p-6 shadow-sm md:p-8">
+        <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm md:p-8">
           <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
             <div className="max-w-3xl space-y-2">
-              <p className="text-sm font-semibold tracking-[0.25em] text-amber-700">טבלה</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">טבלה</p>
               <h1 className="text-3xl font-black text-stone-900 md:text-4xl">טבלת הליגה</h1>
               <p className="text-sm leading-6 text-stone-600 md:text-base">
                 בחרו עונה או מחזור כדי לראות את טבלת הליגה על פי הנתונים שנשמרו במערכת.
@@ -339,7 +341,7 @@ export default async function StandingsPage({
               <select
                 name="season"
                 defaultValue={selectedSeason?.id || ''}
-                className="min-w-[180px] rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-900"
+                className="min-w-[180px] rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
               >
                 {seasons.map((season) => (
                   <option key={season.id} value={season.id}>
@@ -350,7 +352,7 @@ export default async function StandingsPage({
               <select
                 name="competition"
                 defaultValue={selectedCompetition?.id || ''}
-                className="min-w-[200px] rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-900"
+                className="min-w-[200px] rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
               >
                 {competitionOptions.map((competition) => (
                   <option key={competition.id} value={competition.id}>
@@ -361,7 +363,7 @@ export default async function StandingsPage({
               <select
                 name="round"
                 defaultValue={selectedRound}
-                className="min-w-[220px] rounded-2xl border border-stone-300 bg-stone-50 px-4 py-3 text-sm font-semibold text-stone-900"
+                className="min-w-[200px] rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
               >
                 <option value="current">טבלה נוכחית</option>
                 {roundOptions.map((round) => (
@@ -370,93 +372,148 @@ export default async function StandingsPage({
                   </option>
                 ))}
               </select>
-              <button className="rounded-full bg-stone-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-stone-800">
-                הצג עונה
+              <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90">
+                הצג
               </button>
             </form>
           </div>
 
           {selectedSeason ? (
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <div className="rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900">
-                עונה נבחרת: {selectedSeason.name}
-              </div>
-              <div className="rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-semibold text-stone-700">
-                קבוצות בעונה: {teams.length}
-              </div>
-              <div className="rounded-full border border-stone-200 bg-stone-50 px-4 py-2 text-sm font-semibold text-stone-700">
-                משחקי ליגה שהושלמו: {snapshotGames.length}
-              </div>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-[var(--accent)]/20 bg-[var(--accent-glow)] px-3 py-1.5 text-xs font-bold text-[var(--accent-text)]">
+                {selectedSeason.name}
+              </span>
+              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">
+                {teams.length} קבוצות
+              </span>
+              <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">
+                {snapshotGames.length} משחקים
+              </span>
             </div>
           ) : null}
         </section>
 
         {isFallbackTable ? (
-          <section className="rounded-[24px] border border-sky-200 bg-sky-50 px-5 py-4 text-sm font-semibold leading-6 text-sky-900">
-            מוצגת טבלה מחושבת מתוך {snapshotGames.length} משחקי ליגה שהסתיימו ונשמרו במערכת.
-          </section>
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm font-semibold text-sky-900">
+            מוצגת טבלה מחושבת מתוך {snapshotGames.length} משחקי ליגה שהסתיימו.
+          </div>
         ) : null}
 
-        <section className="rounded-[32px] border border-stone-200 bg-white shadow-sm">
-          <div className="border-b border-stone-100 px-6 py-5">
-            <h2 className="text-xl font-black text-stone-900">דירוג הקבוצות</h2>
+        <section className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-stone-100 px-6 py-5">
+            <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">דירוג הקבוצות</h2>
+            <div className="flex items-center gap-3 text-xs font-bold">
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[var(--accent)]" />אירופה</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-[var(--accent-glow)] border border-[var(--accent)]/30" />פלייאוף</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-400" />הורדה</span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[920px] w-full text-right">
+            <table className="min-w-[800px] w-full text-right">
               <thead>
-                <tr className="bg-stone-50 text-sm font-bold text-stone-600">
-                  <th className="px-4 py-4">מיקום</th>
-                  <th className="min-w-[240px] px-4 py-4">קבוצה</th>
-                  <th className="px-4 py-4 text-center">משחקים</th>
-                  <th className="px-4 py-4 text-center">ניצחונות</th>
-                  <th className="px-4 py-4 text-center">תיקו</th>
-                  <th className="px-4 py-4 text-center">הפסדים</th>
-                  <th className="px-4 py-4 text-center">שערים</th>
-                  <th className="px-4 py-4 text-center">הפרש</th>
-                  <th className="px-4 py-4 text-center">תיקון</th>
-                  <th className="px-4 py-4 text-center">נקודות</th>
+                <tr className="bg-stone-50/80 text-[11px] font-black uppercase tracking-[0.15em] text-stone-400">
+                  <th className="w-14 px-4 py-3 text-center">#</th>
+                  <th className="min-w-[220px] px-4 py-3">קבוצה</th>
+                  <th className="px-3 py-3 text-center">מש׳</th>
+                  <th className="px-3 py-3 text-center">נ׳</th>
+                  <th className="px-3 py-3 text-center">ת׳</th>
+                  <th className="px-3 py-3 text-center">ה׳</th>
+                  <th className="px-3 py-3 text-center">שערים</th>
+                  <th className="px-3 py-3 text-center">הפרש</th>
+                  <th className="px-3 py-3 text-center">כושר</th>
+                  <th className="px-3 py-3 text-center">נק׳</th>
                 </tr>
               </thead>
               <tbody>
-                {standings.map((row, index) => (
-                  <tr key={row.id} className={index % 2 === 0 ? 'bg-white text-sm' : 'bg-stone-50/60 text-sm'}>
-                    <td className="px-4 py-4 font-black text-stone-900">{row.displayPosition}</td>
-                    <td className="px-4 py-4">
-                      <Link href={`/teams/${row.teamId}`} className="block font-bold text-stone-900 transition hover:text-red-800">
-                        {getDisplayTeamName(row.team)}
-                      </Link>
-                      {row.pointsAdjustment < 0 ? (
-                        <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                          <span>▼</span>
-                          <span>{Math.abs(row.pointsAdjustment)} נק׳</span>
+                {standings.map((row) => {
+                  const pos = row.displayPosition;
+                  const form = getTeamForm(row.teamId, typedGames);
+                  const isTop = pos === 1;
+                  const isEurope = pos <= 4;
+                  const isRelegation = pos >= totalTeams - 1 && totalTeams > 4;
+                  const bandColor = isTop ? 'bg-[var(--accent)]'
+                    : isEurope ? 'bg-[var(--accent-soft)]'
+                    : isRelegation ? 'bg-red-400'
+                    : 'bg-transparent';
+                  const posColor = isTop
+                    ? 'bg-[var(--accent)] text-white'
+                    : isEurope
+                    ? 'bg-[var(--accent-glow)] text-[var(--accent-text)]'
+                    : isRelegation
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-stone-100 text-stone-500';
+
+                  return (
+                    <tr key={row.id} className="border-b border-stone-100 text-sm transition hover:bg-stone-50/70">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className={`h-8 w-0.5 rounded-full ${bandColor}`} />
+                          <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${posColor}`}>
+                            {pos}
+                          </span>
                         </div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-4 text-center font-medium">{row.played}</td>
-                    <td className="px-4 py-4 text-center font-medium">{row.wins}</td>
-                    <td className="px-4 py-4 text-center font-medium">{row.draws}</td>
-                    <td className="px-4 py-4 text-center font-medium">{row.losses}</td>
-                    <td className="px-4 py-4 text-center font-medium">
-                      {row.goalsFor}-{row.goalsAgainst}
-                    </td>
-                    <td className="px-4 py-4 text-center font-bold">{row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}</td>
-                    <td className="px-4 py-4 text-center font-bold">{row.pointsAdjustment === 0 ? '-' : row.pointsAdjustment}</td>
-                    <td className="px-4 py-4 text-center text-lg font-black text-stone-900">{row.adjustedPoints}</td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link href={`/teams/${row.teamId}`} className="flex items-center gap-3 transition hover:text-[var(--accent)]">
+                          <TeamLogo
+                            src={row.team.logoUrl}
+                            alt={getDisplayTeamName(row.team)}
+                            className="h-8 w-8 object-contain"
+                            fallbackClassName="flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-[10px] font-black text-stone-500"
+                          />
+                          <div>
+                            <div className="font-bold text-stone-900">{getDisplayTeamName(row.team)}</div>
+                            {row.pointsAdjustment < 0 ? (
+                              <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                                ▼ {Math.abs(row.pointsAdjustment)} נק׳
+                              </div>
+                            ) : null}
+                          </div>
+                        </Link>
+                      </td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.played}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.wins}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.draws}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.losses}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-500">
+                        {row.goalsFor}:{row.goalsAgainst}
+                      </td>
+                      <td className={`px-3 py-3 text-center font-black ${row.goalDifference > 0 ? 'text-emerald-600' : row.goalDifference < 0 ? 'text-red-500' : 'text-stone-400'}`}>
+                        {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          {form.length
+                            ? form.map((f, i) => (
+                                <span
+                                  key={i}
+                                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-black ${
+                                    f === 'W' ? 'bg-emerald-500 text-white' : f === 'L' ? 'bg-red-400 text-white' : 'bg-stone-200 text-stone-600'
+                                  }`}
+                                >
+                                  {f === 'W' ? 'נ' : f === 'D' ? 'ת' : 'ה'}
+                                </span>
+                              ))
+                            : <span className="text-xs text-stone-300">—</span>}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-center text-base font-black text-stone-900">{row.adjustedPoints}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {!hasStoredStandings && !canDeriveTable ? (
-            <div className="p-8 text-center text-sm text-stone-500">אין כרגע מספיק נתונים כדי להציג טבלה לעונה או למחזור שנבחרו.</div>
+            <div className="p-8 text-center text-sm text-stone-400">אין כרגע מספיק נתונים להצגת הטבלה.</div>
           ) : null}
 
           {standings.some((r) => r.pointsAdjustment < 0) ? (
             <div className="border-t border-stone-100 px-6 py-4">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-400">הורדות נקודות</div>
-              <div className="flex flex-wrap gap-3">
+              <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-stone-400">הורדות נקודות</div>
+              <div className="flex flex-wrap gap-2">
                 {standings
                   .filter((r) => r.pointsAdjustment < 0)
                   .map((r) => (
@@ -523,122 +580,112 @@ function PremierStandingsView({
   ).sort((left, right) => getRoundSortValue(left[0]) - getRoundSortValue(right[0]));
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#ffffff_0%,#eef3ff_42%,#e7ecfb_100%)] px-4 py-8 text-slate-950">
+    <div dir="rtl" className="min-h-screen px-4 py-8 text-stone-900">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,#2d006b,#7a00b8_55%,#00c2ff)] p-[1px] shadow-[0_24px_70px_rgba(45,0,107,0.28)]">
-          <div className="rounded-[31px] bg-[linear-gradient(135deg,#23003f,#4d007b_56%,#008fbd)] p-6 text-white md:p-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl space-y-3">
-                <div className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-1 text-xs font-bold uppercase tracking-[0.34em] text-cyan-100">
-                  טבלת ליגה
-                </div>
-                <h1 className="text-4xl font-black tracking-tight md:text-5xl">טבלת הליגה</h1>
-                <p className="max-w-2xl text-sm leading-6 text-white/78 md:text-base">
-                  כולל טופס חמשת המשחקים האחרונים, הקבוצה הבאה, ואפשרות לצפות בטבלה העדכנית או בטבלה לאחר כל מחזור.
-                </p>
-              </div>
-
-              <form className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" action="/standings">
-                <input type="hidden" name="view" value="premier" />
-                <select
-                  name="season"
-                  defaultValue={selectedSeason?.id || ''}
-                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none backdrop-blur"
-                >
-                  {seasons.map((season) => (
-                    <option key={season.id} value={season.id} className="text-slate-950">
-                      {season.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="competition"
-                  defaultValue={selectedCompetition?.id || ''}
-                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none backdrop-blur"
-                >
-                  {competitionOptions.map((competition) => (
-                    <option key={competition.id} value={competition.id} className="text-slate-950">
-                      {getCompetitionDisplayName(competition)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="round"
-                  defaultValue={selectedRound}
-                  className="rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none backdrop-blur"
-                >
-                  <option value="current" className="text-slate-950">טבלה נוכחית</option>
-                  {roundOptions.map((round) => (
-                    <option key={round} value={round} className="text-slate-950">
-                      {getRoundDisplayName(round, round)}
-                    </option>
-                  ))}
-                </select>
-                <button className="rounded-2xl bg-white px-5 py-3 text-sm font-black text-[#3a006d] transition hover:bg-cyan-100">
-                  הצג
-                </button>
-              </form>
+        <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm md:p-8">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">טבלה</p>
+              <h1 className="text-3xl font-black text-stone-900 md:text-4xl">טבלת הליגה</h1>
+              <p className="text-sm leading-6 text-stone-600">
+                כולל טופס חמשת המשחקים האחרונים, הקבוצה הבאה, ואפשרות לצפות בטבלה לאחר כל מחזור.
+              </p>
             </div>
 
-            <div className="mt-6 grid gap-3 md:grid-cols-5">
-              <PremierBadge label="עונה" value={selectedSeason?.name || '-'} />
-              <PremierBadge label="מסגרת" value={getCompetitionDisplayName(selectedCompetition || undefined)} />
-              <PremierBadge label="חתך" value={selectedRound === 'current' ? 'נוכחי' : selectedRound} />
-              <PremierBadge label="קבוצות" value={String(teamsCount)} />
-              <PremierBadge label="משחקים שהושלמו" value={String(completedLeagueGames)} />
-            </div>
+            <form className="flex flex-col gap-3 sm:flex-row sm:items-center" action="/standings">
+              <input type="hidden" name="view" value="premier" />
+              <select
+                name="season"
+                defaultValue={selectedSeason?.id || ''}
+                className="min-w-[160px] rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
+              >
+                {seasons.map((season) => (
+                  <option key={season.id} value={season.id}>{season.name}</option>
+                ))}
+              </select>
+              <select
+                name="competition"
+                defaultValue={selectedCompetition?.id || ''}
+                className="min-w-[180px] rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
+              >
+                {competitionOptions.map((competition) => (
+                  <option key={competition.id} value={competition.id}>{getCompetitionDisplayName(competition)}</option>
+                ))}
+              </select>
+              <select
+                name="round"
+                defaultValue={selectedRound}
+                className="min-w-[180px] rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
+              >
+                <option value="current">טבלה נוכחית</option>
+                {roundOptions.map((round) => (
+                  <option key={round} value={round}>{getRoundDisplayName(round, round)}</option>
+                ))}
+              </select>
+              <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90">הצג</button>
+            </form>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-[var(--accent)]/20 bg-[var(--accent-glow)] px-3 py-1.5 text-xs font-bold text-[var(--accent-text)]">
+              {selectedSeason?.name || '-'}
+            </span>
+            <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">
+              {getCompetitionDisplayName(selectedCompetition || undefined)}
+            </span>
+            <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">
+              {teamsCount} קבוצות
+            </span>
+            <span className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs font-semibold text-stone-600">
+              {completedLeagueGames} משחקים
+            </span>
           </div>
         </section>
 
         {isFallbackTable ? (
-          <div className="rounded-[24px] border border-sky-200 bg-sky-50 px-5 py-4 text-sm font-semibold leading-6 text-sky-950">
-            מוצגת כרגע טבלה מחושבת מתוך {completedLeagueGames} משחקי ליגה שהסתיימו.
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm font-semibold text-sky-900">
+            מוצגת טבלה מחושבת מתוך {completedLeagueGames} משחקי ליגה שהסתיימו.
           </div>
         ) : null}
 
-        <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_25px_60px_rgba(30,41,59,0.08)]">
-          <div className="flex flex-col gap-3 border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f5f7ff)] px-6 py-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-2xl font-black text-slate-950">טבלת דירוג</h2>
-              <p className="mt-1 text-sm text-slate-500">מיון לפי נקודות, הפרש שערים וכמות שערי זכות.</p>
-            </div>
+        <section className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-stone-100 px-6 py-5">
+            <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">טבלת דירוג</h2>
             <div className="flex flex-wrap gap-2 text-xs font-bold">
-              <LegendPill color="bg-emerald-500" label="צמרת" />
-              <LegendPill color="bg-cyan-500" label="פלייאוף/עליון" />
-              <LegendPill color="bg-rose-500" label="תחתית" />
+              <LegendPill color="bg-[var(--accent)]" label="צמרת" />
+              <LegendPill color="bg-[var(--accent-soft)]" label="פלייאוף/עליון" />
+              <LegendPill color="bg-red-400" label="תחתית" />
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[1240px] w-full">
+            <table className="min-w-[1000px] w-full text-right">
               <thead>
-                <tr className="border-b border-slate-100 bg-[#f8f9ff] text-right text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                  <th className="px-4 py-4">מיקום</th>
-                  <th className="px-4 py-4">קבוצה</th>
-                  <th className="px-4 py-4 text-center">מש&apos;</th>
-                  <th className="px-4 py-4 text-center">נ&apos;</th>
-                  <th className="px-4 py-4 text-center">ת&apos;</th>
-                  <th className="px-4 py-4 text-center">ה&apos;</th>
-                  <th className="px-4 py-4 text-center">זכות</th>
-                  <th className="px-4 py-4 text-center">חובה</th>
-                  <th className="px-4 py-4 text-center">הפרש</th>
-                  <th className="px-4 py-4 text-center">כושר</th>
-                  <th className="px-4 py-4 text-center">הבא</th>
-                  <th className="px-4 py-4 text-center">נק&apos;</th>
+                <tr className="bg-stone-50/80 text-[11px] font-black uppercase tracking-[0.15em] text-stone-400">
+                  <th className="w-14 px-3 py-3 text-center">#</th>
+                  <th className="min-w-[200px] px-3 py-3">קבוצה</th>
+                  <th className="px-3 py-3 text-center">מש׳</th>
+                  <th className="px-3 py-3 text-center">נ׳</th>
+                  <th className="px-3 py-3 text-center">ת׳</th>
+                  <th className="px-3 py-3 text-center">ה׳</th>
+                  <th className="px-3 py-3 text-center">זכות</th>
+                  <th className="px-3 py-3 text-center">חובה</th>
+                  <th className="px-3 py-3 text-center">הפרש</th>
+                  <th className="px-3 py-3 text-center">כושר</th>
+                  <th className="px-3 py-3 text-center">הבא</th>
+                  <th className="px-3 py-3 text-center">נק׳</th>
                 </tr>
               </thead>
               <tbody>
                 {standings.map((row) => {
+                  const pos = row.displayPosition;
                   const form = getTeamForm(row.teamId, snapshotGames);
                   const nextGame = getNextGame(row.teamId, futureGames);
-                  const band =
-                    row.displayPosition <= 1
-                      ? 'bg-emerald-500'
-                      : row.displayPosition <= 6
-                        ? 'bg-cyan-500'
-                        : row.displayPosition > Math.max(teamsCount - 2, 0)
-                          ? 'bg-rose-500'
-                          : 'bg-slate-200';
+                  const isTop = pos === 1;
+                  const isEurope = pos <= 4;
+                  const isRelegation = pos >= teamsCount - 1 && teamsCount > 4;
+                  const bandColor = isTop ? 'bg-[var(--accent)]' : isEurope ? 'bg-[var(--accent-soft)]' : isRelegation ? 'bg-red-400' : 'bg-transparent';
+                  const posColor = isTop ? 'bg-[var(--accent)] text-white' : isEurope ? 'bg-[var(--accent-glow)] text-[var(--accent-text)]' : isRelegation ? 'bg-red-100 text-red-700' : 'bg-stone-100 text-stone-500';
 
                   const opponent =
                     nextGame
@@ -648,61 +695,62 @@ function PremierStandingsView({
                       : null;
 
                   return (
-                    <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 transition hover:bg-[#f6f8ff]">
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <span className={`h-10 w-1 rounded-full ${band}`} />
-                          <span className="text-base font-black text-slate-950">{row.displayPosition}</span>
+                    <tr key={row.id} className="border-b border-stone-100 text-sm transition hover:bg-stone-50/70">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className={`h-8 w-0.5 rounded-full ${bandColor}`} />
+                          <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${posColor}`}>{pos}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-4">
-                        <Link href={`/teams/${row.teamId}?view=premier`} className="flex items-center gap-3 transition hover:text-[#5f00b8]">
+                      <td className="px-3 py-3">
+                        <Link href={`/teams/${row.teamId}`} className="flex items-center gap-3 transition hover:text-[var(--accent)]">
                           <TeamLogo
                             src={row.team.logoUrl}
                             alt={getDisplayTeamName(row.team)}
-                            className="h-8 w-8 rounded-full bg-white object-contain"
-                            fallbackClassName="flex h-8 w-8 items-center justify-center rounded-full bg-[#efe7ff] text-[10px] font-black text-[#5f00b8]"
+                            className="h-8 w-8 object-contain"
+                            fallbackClassName="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-glow)] text-[10px] font-black text-[var(--accent-text)]"
                           />
                           <div>
-                            <div className="font-black text-slate-950">{getDisplayTeamName(row.team)}</div>
+                            <div className="font-bold text-stone-900">{getDisplayTeamName(row.team)}</div>
                             {row.pointsAdjustment < 0 ? (
-                              <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                                <span>▼</span>
-                                <span>{Math.abs(row.pointsAdjustment)} נק׳</span>
+                              <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                                ▼ {Math.abs(row.pointsAdjustment)} נק׳
                               </div>
                             ) : null}
                           </div>
                         </Link>
                       </td>
-                      <td className="px-4 py-4 text-center font-bold">{row.played}</td>
-                      <td className="px-4 py-4 text-center font-bold">{row.wins}</td>
-                      <td className="px-4 py-4 text-center font-bold">{row.draws}</td>
-                      <td className="px-4 py-4 text-center font-bold">{row.losses}</td>
-                      <td className="px-4 py-4 text-center font-bold">{row.goalsFor}</td>
-                      <td className="px-4 py-4 text-center font-bold">{row.goalsAgainst}</td>
-                      <td className={`px-4 py-4 text-center font-black ${row.goalDifference >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.played}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.wins}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.draws}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-700">{row.losses}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-500">{row.goalsFor}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-stone-500">{row.goalsAgainst}</td>
+                      <td className={`px-3 py-3 text-center font-black ${row.goalDifference > 0 ? 'text-emerald-600' : row.goalDifference < 0 ? 'text-red-500' : 'text-stone-400'}`}>
                         {row.goalDifference > 0 ? `+${row.goalDifference}` : row.goalDifference}
                       </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center justify-center gap-2">
-                          {form.length ? form.map((entry, index) => <FormDot key={`${row.id}-${index}`} value={entry} />) : <span className="text-xs text-slate-400">-</span>}
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-center gap-1">
+                          {form.length
+                            ? form.map((entry, index) => <FormDot key={`${row.id}-${index}`} value={entry} />)
+                            : <span className="text-xs text-stone-300">—</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-center">
+                      <td className="px-3 py-3 text-center">
                         {opponent ? (
                           <div className="flex items-center justify-center">
                             <TeamLogo
                               src={opponent.logoUrl}
                               alt={getDisplayTeamName(opponent)}
-                              className="h-8 w-8 rounded-full bg-white object-contain"
-                              fallbackClassName="text-xs font-bold text-slate-500"
+                              className="h-7 w-7 object-contain"
+                              fallbackClassName="text-[10px] font-bold text-stone-400"
                             />
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-400">-</span>
+                          <span className="text-xs text-stone-300">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-center text-lg font-black text-slate-950">{row.adjustedPoints}</td>
+                      <td className="px-3 py-3 text-center text-base font-black text-stone-900">{row.adjustedPoints}</td>
                     </tr>
                   );
                 })}
@@ -711,23 +759,23 @@ function PremierStandingsView({
           </div>
 
           {!hasStoredStandings && !canDeriveTable ? (
-            <div className="px-6 py-8 text-center text-sm font-semibold text-slate-500">
-              עדיין אין מספיק נתונים כדי להציג טבלה לעונה או למחזור הזה.
+            <div className="p-8 text-center text-sm text-stone-400">
+              עדיין אין מספיק נתונים להצגת הטבלה.
             </div>
           ) : null}
 
           {standings.some((r) => r.pointsAdjustment < 0) ? (
-            <div className="border-t border-slate-100 px-6 py-4">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">הורדות נקודות</div>
-              <div className="flex flex-wrap gap-3">
+            <div className="border-t border-stone-100 px-6 py-4">
+              <div className="mb-2 text-[10px] font-black uppercase tracking-wider text-stone-400">הורדות נקודות</div>
+              <div className="flex flex-wrap gap-2">
                 {standings
                   .filter((r) => r.pointsAdjustment < 0)
                   .map((r) => (
                     <div key={r.id} className="flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs">
                       <span className="font-black text-red-700">▼ {Math.abs(r.pointsAdjustment)}</span>
-                      <span className="font-semibold text-slate-700">{getDisplayTeamName(r.team)}</span>
+                      <span className="font-semibold text-stone-700">{getDisplayTeamName(r.team)}</span>
                       {r.pointsAdjustmentNoteHe ? (
-                        <span className="text-slate-500">— {r.pointsAdjustmentNoteHe}</span>
+                        <span className="text-stone-500">— {r.pointsAdjustmentNoteHe}</span>
                       ) : null}
                     </div>
                   ))}
@@ -737,34 +785,33 @@ function PremierStandingsView({
         </section>
 
         {selectedCompetitionKind !== 'LEAGUE' && gamesByRound.length > 0 ? (
-          <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white shadow-[0_25px_60px_rgba(30,41,59,0.08)]">
-            <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f5f7ff)] px-6 py-5">
-              <h2 className="text-2xl font-black text-slate-950">שלבי המסגרת</h2>
-              <p className="mt-1 text-sm text-slate-500">תצוגה היררכית של המשחקים לפי שלב או מחזור במסגרת שנבחרה.</p>
+          <section className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+            <div className="border-b border-stone-100 px-6 py-5">
+              <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">שלבי המסגרת</h2>
             </div>
             <div className="grid gap-4 p-6 lg:grid-cols-2">
               {gamesByRound.map(([round, games]) => (
-                <div key={round} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5">
-                  <div className="mb-4 text-lg font-black text-[#23003d]">{getRoundDisplayName(round, round)}</div>
-                  <div className="space-y-3">
+                <div key={round} className="rounded-xl border border-stone-200 bg-stone-50/80 p-4">
+                  <div className="mb-3 text-base font-black text-stone-900">{getRoundDisplayName(round, round)}</div>
+                  <div className="space-y-2">
                     {games
                       .sort((a, b) => a.dateTime.getTime() - b.dateTime.getTime())
                       .map((game) => (
                         <Link
                           key={game.id}
-                          href={`/games/${game.id}?view=premier`}
-                          className="block rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-[#5f00b8] hover:shadow-sm"
+                          href={`/games/${game.id}`}
+                          className="block rounded-xl border border-stone-200 bg-white p-3 transition hover:border-[var(--accent)]/30 hover:shadow-sm"
                         >
-                          <div className="flex items-center justify-between gap-3 text-sm font-bold text-slate-500">
+                          <div className="flex items-center justify-between gap-2 text-xs text-stone-400">
                             <span>{game.dateTime.toLocaleDateString('he-IL')}</span>
-                            <span>{game.status === 'COMPLETED' ? 'הסתיים' : game.status === 'ONGOING' ? 'חי' : 'טרם שוחק'}</span>
+                            <span>{game.status === 'COMPLETED' ? 'הסתיים' : game.status === 'ONGOING' ? '● חי' : 'מתוכנן'}</span>
                           </div>
-                          <div className="mt-3 flex items-center justify-between gap-3">
-                            <div className="text-right font-bold text-slate-900">{getDisplayTeamName(game.homeTeam)}</div>
-                            <div className="min-w-[84px] rounded-full bg-[#f3ecff] px-3 py-2 text-center text-sm font-black text-[#4d007b]">
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <div className="font-bold text-stone-900">{getDisplayTeamName(game.homeTeam)}</div>
+                            <div className="min-w-[72px] rounded-lg bg-[var(--accent-glow)] px-3 py-1.5 text-center text-sm font-black text-[var(--accent-text)]">
                               {game.homeScore !== null && game.awayScore !== null ? `${game.homeScore} - ${game.awayScore}` : '-'}
                             </div>
-                            <div className="text-left font-bold text-slate-900">{getDisplayTeamName(game.awayTeam)}</div>
+                            <div className="font-bold text-stone-900">{getDisplayTeamName(game.awayTeam)}</div>
                           </div>
                         </Link>
                       ))}
@@ -795,8 +842,8 @@ function PremierBadge({ label, value }: { label: string; value: string }) {
 
 function LegendPill({ color, label }: { color: string; label: string }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-slate-600">
-      <span className={`h-2.5 w-2.5 rounded-full ${color}`} />
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2.5 py-1.5 text-stone-600">
+      <span className={`h-2 w-2 rounded-full ${color}`} />
       <span>{label}</span>
     </div>
   );

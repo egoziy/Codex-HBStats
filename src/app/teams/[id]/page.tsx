@@ -247,23 +247,23 @@ export default async function TeamPage({
   }));
 
   return (
-    <div className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#eef3ff_100%)]' : 'bg-[linear-gradient(180deg,#f7efe3_0%,#efe3d3_100%)]'}`}>
+    <div dir="rtl" className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#eef3ff_100%)]' : ''}`}>
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="overflow-hidden rounded-[30px] border border-stone-200 bg-white shadow-sm">
-          <div className="bg-[linear-gradient(120deg,#7f1d1d,#111827)] p-6 text-white">
+        <section className="overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+          <div className="hero-featured-match p-6 text-white">
             <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
               <div className="flex items-start gap-4">
                 {team.logoUrl ? (
-                  <div className="rounded-[26px] border border-white/15 bg-white/10 p-3 backdrop-blur-sm">
+                  <div className="rounded-2xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
                     <img
                       src={team.logoUrl}
                       alt={team.nameEn}
-                      className="h-20 w-20 rounded-full bg-white object-contain p-2"
+                      className="h-16 w-16 object-contain"
                     />
                   </div>
                 ) : null}
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold tracking-[0.28em] text-amber-300">מרכז קבוצה</p>
+                  <p className="text-[11px] font-bold tracking-[0.3em] text-white/60">מרכז קבוצה</p>
                   <h1 className="mt-2 text-3xl font-black leading-tight">{team.nameHe || team.nameEn}</h1>
                   <p className="mt-1 text-sm text-white/75">{team.nameEn}</p>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
@@ -302,7 +302,7 @@ export default async function TeamPage({
                     key={tab.id}
                     href={`/teams/${team.id}?view=premier&tab=${tab.id}`}
                     className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-                      selectedTab === tab.id ? 'bg-stone-900 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                      selectedTab === tab.id ? 'bg-[var(--accent)] text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                     }`}
                   >
                     {tab.label}
@@ -345,7 +345,7 @@ export default async function TeamPage({
                   {nearbyStandings.map((row) => (
                     <tr
                       key={row.id}
-                      className={`border-t border-stone-100 text-sm ${row.teamId === team.id ? 'bg-red-50' : 'bg-white'}`}
+                      className={`border-t border-stone-100 text-sm ${row.teamId === team.id ? 'bg-[var(--accent-glow)]' : 'bg-white'}`}
                     >
                       <td className="px-4 py-2.5 font-black text-stone-900">{row.displayPosition}</td>
                       <td className="px-4 py-2.5 font-semibold text-stone-900">{row.team.nameHe || row.team.nameEn}</td>
@@ -454,7 +454,7 @@ export default async function TeamPage({
                           </td>
                           <td className="px-2 py-2.5 text-center">
                             {game.status === 'COMPLETED' ? (
-                              <Link href={`/games/${game.id}`} className="inline-block rounded-lg bg-stone-100 px-3 py-1 font-black text-stone-900 transition hover:bg-red-50 hover:text-red-700">
+                              <Link href={`/games/${game.id}`} className="inline-block rounded-lg bg-stone-100 px-3 py-1 font-black text-stone-900 transition hover:bg-[var(--accent-glow)] hover:text-[var(--accent)]">
                                 {game.homeScore ?? 0} - {game.awayScore ?? 0}
                               </Link>
                             ) : (
@@ -708,8 +708,8 @@ export default async function TeamPage({
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
-      <h2 className="text-2xl font-black text-stone-900">{title}</h2>
+    <section className="modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm">
+      <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-lg font-black text-stone-900">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
   );

@@ -160,28 +160,28 @@ export default async function VenuesPage({
   });
 
   return (
-    <div className={`min-h-screen px-4 py-8 ${displayMode === 'premier' ? 'bg-[linear-gradient(180deg,#f7fbff_0%,#edf2ff_100%)]' : 'bg-stone-100'}`}>
+    <div dir="rtl" className="min-h-screen px-4 py-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className={`rounded-[30px] border p-6 shadow-sm ${displayMode === 'premier' ? 'border-white/70 bg-[linear-gradient(140deg,#6a0014,#9f1239_45%,#f97316)] text-white' : 'border-stone-200 bg-white'}`}>
-          <p className={`text-sm font-semibold tracking-[0.25em] ${displayMode === 'premier' ? 'text-orange-100' : 'text-amber-700'}`}>אצטדיונים</p>
-          <h1 className={`mt-2 text-3xl font-black ${displayMode === 'premier' ? 'text-white' : 'text-stone-900'}`}>מרכז האצטדיונים</h1>
-          <p className={`mt-3 max-w-3xl ${displayMode === 'premier' ? 'text-white/85' : 'text-stone-600'}`}>
+        <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-6 shadow-sm md:p-8">
+          <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--accent)]">אצטדיונים</p>
+          <h1 className="mt-2 text-3xl font-black text-stone-900 md:text-4xl">מרכז האצטדיונים</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-600">
             כאן אפשר לראות אצטדיונים, קיבולת, עיר, משטח, קבוצות בית ומשחקים שנשמרו אצלנו לכל איצטדיון.
           </p>
 
-          <form className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5" action="/venues">
+          <form className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5" action="/venues">
             <input type="hidden" name="view" value={displayMode} />
             <input
               type="text"
               name="q"
               defaultValue={query}
               placeholder="חיפוש איצטדיון או עיר"
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50 text-stone-900'}`}
+              className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
             />
             <select
               name="city"
               defaultValue={selectedCity}
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50 text-stone-900'}`}
+              className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
             >
               <option value="all">כל הערים</option>
               {cityOptions.map((city) => (
@@ -193,7 +193,7 @@ export default async function VenuesPage({
             <select
               name="season"
               defaultValue={selectedSeasonId}
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50 text-stone-900'}`}
+              className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
             >
               <option value="all">כל העונות</option>
               {seasons.map((season) => (
@@ -205,7 +205,7 @@ export default async function VenuesPage({
             <select
               name="competition"
               defaultValue={selectedCompetitionId}
-              className={`rounded-2xl px-4 py-3 font-semibold ${displayMode === 'premier' ? 'border border-white/40 bg-white text-slate-950' : 'border border-stone-300 bg-stone-50 text-stone-900'}`}
+              className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900 focus:outline-none"
             >
               <option value="all">כל הליגות</option>
               {competitions.map((comp) => (
@@ -214,7 +214,7 @@ export default async function VenuesPage({
                 </option>
               ))}
             </select>
-            <button className="rounded-full bg-stone-900 px-5 py-3 font-bold text-white">הצג</button>
+            <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90">הצג</button>
           </form>
         </section>
 
@@ -226,33 +226,33 @@ export default async function VenuesPage({
 
         <section className="grid gap-6 xl:grid-cols-2">
           {venueCards.map((venue) => (
-            <article key={venue.id} className="overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm">
-              <div className={`${displayMode === 'premier' ? 'bg-[linear-gradient(135deg,#7f1d1d,#1f2937)] text-white' : 'bg-stone-50 text-stone-900'} p-6`}>
+            <article key={venue.id} className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
+              <div className="hero-featured-match p-5 text-white">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-2xl font-black">{venue.nameHe || venue.nameEn}</h2>
+                      <h2 className="text-xl font-black">{venue.nameHe || venue.nameEn}</h2>
                       {venue.isIsraeli ? (
-                        <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold text-blue-200">ישראל</span>
+                        <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white">ישראל</span>
                       ) : null}
                     </div>
                     {venue.nameEn !== venue.nameHe ? (
-                      <p className={`mt-1 text-sm ${displayMode === 'premier' ? 'text-white/75' : 'text-stone-500'}`}>{venue.nameEn}</p>
+                      <p className="mt-0.5 text-sm text-white/70">{venue.nameEn}</p>
                     ) : null}
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                      <span className={`${displayMode === 'premier' ? 'bg-white/10' : 'bg-white'} rounded-full px-3 py-1.5`}>
-                        עיר: {venue.cityHe || venue.cityEn || 'לא זמין'}
+                    <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-semibold">
+                      <span className="rounded-full bg-white/15 px-2.5 py-1">
+                        {venue.cityHe || venue.cityEn || 'לא זמין'}
                       </span>
-                      <span className={`${displayMode === 'premier' ? 'bg-white/10' : 'bg-white'} rounded-full px-3 py-1.5`}>
-                        קיבולת: {venue.capacity?.toLocaleString('he-IL') || 'לא ידוע'}
+                      <span className="rounded-full bg-white/15 px-2.5 py-1">
+                        {venue.capacity?.toLocaleString('he-IL') || '—'} מושבים
                       </span>
-                      <span className={`${displayMode === 'premier' ? 'bg-white/10' : 'bg-white'} rounded-full px-3 py-1.5`}>
-                        משטח: {venue.surface || 'לא ידוע'}
+                      <span className="rounded-full bg-white/15 px-2.5 py-1">
+                        {venue.surface || 'לא ידוע'}
                       </span>
                     </div>
                   </div>
                   {venue.imageUrl ? (
-                    <img src={venue.imageUrl} alt={venue.nameHe || venue.nameEn} className="h-24 w-36 rounded-2xl object-cover" />
+                    <img src={venue.imageUrl} alt={venue.nameHe || venue.nameEn} className="h-20 w-28 rounded-xl object-cover opacity-80" />
                   ) : null}
                 </div>
               </div>
@@ -321,8 +321,8 @@ export default async function VenuesPage({
 
 function SummaryBox({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
-      <div className="text-xs font-semibold tracking-[0.18em] text-stone-500">{label}</div>
+    <div className="modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm">
+      <div className="text-xs font-bold uppercase tracking-wider text-stone-400">{label}</div>
       <div className="mt-2 text-3xl font-black text-stone-900">{value}</div>
     </div>
   );
@@ -330,9 +330,9 @@ function SummaryBox({ label, value }: { label: string; value: string }) {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[20px] border border-stone-200 bg-white p-4">
-      <div className="text-xs font-semibold text-stone-500">{label}</div>
-      <div className="mt-2 text-2xl font-black text-stone-900">{value}</div>
+    <div className="rounded-xl border border-stone-200 bg-white p-4">
+      <div className="text-xs font-semibold text-stone-400">{label}</div>
+      <div className="mt-1.5 text-xl font-black text-stone-900">{value}</div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import AccountPreferencesForm from '@/components/AccountPreferencesForm';
 import { requireUser } from '@/lib/auth';
 import { getCurrentSeasonStartYear } from '@/lib/home-live';
 import prisma from '@/lib/prisma';
+import type { Theme, ColorSchemePref } from '@/components/ThemeProvider';
 
 export default async function AccountPage() {
   const user = await requireUser();
@@ -12,14 +13,12 @@ export default async function AccountPage() {
       select: {
         favoriteTeamApiIds: true,
         favoriteCompetitionApiIds: true,
+        theme: true,
+        colorScheme: true,
       },
     }),
     prisma.season.findFirst({
-      where: {
-        year: {
-          lte: getCurrentSeasonStartYear(),
-        },
-      },
+      where: { year: { lte: getCurrentSeasonStartYear() } },
       orderBy: { year: 'desc' },
     }),
     prisma.competition.findMany({
@@ -50,16 +49,12 @@ export default async function AccountPage() {
         </section>
 
         <AccountPreferencesForm
-          teams={teams.map((team) => ({
-            apiFootballId: team.apiFootballId!,
-            name: team.nameHe || team.nameEn,
-          }))}
-          competitions={competitions.map((competition) => ({
-            apiFootballId: competition.apiFootballId!,
-            name: competition.nameHe || competition.nameEn,
-          }))}
+          teams={teams.map((t) => ({ apiFootballId: t.apiFootballId!, name: t.nameHe || t.nameEn || '' }))}
+          competitions={competitions.map((c) => ({ apiFootballId: c.apiFootballId!, name: c.nameHe || c.nameEn || '' }))}
           initialFavoriteTeamApiIds={storedUser?.favoriteTeamApiIds || []}
           initialFavoriteCompetitionApiIds={storedUser?.favoriteCompetitionApiIds || []}
+          initialTheme={(storedUser?.theme as Theme) || 'modern'}
+          initialColorScheme={(storedUser?.colorScheme as ColorSchemePref) || 'auto'}
         />
 
         <ChangePasswordForm />

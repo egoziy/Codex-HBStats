@@ -988,9 +988,15 @@ export async function POST(request: NextRequest) {
             where: { id: existingVenue.id },
             data: mergedVenueData,
           })
-        : await prisma.venue.create({
-            data: mergedVenueData,
-          });
+        : venueData.apiFootballId
+          ? await prisma.venue.upsert({
+              where: { apiFootballId: venueData.apiFootballId },
+              create: mergedVenueData,
+              update: mergedVenueData,
+            })
+          : await prisma.venue.create({
+              data: mergedVenueData,
+            });
 
       venueCache.set(key, savedVenue.id);
       return savedVenue;

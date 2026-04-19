@@ -2,6 +2,186 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLOR SCHEME — HSL-based dynamic accent system
+   Applied via data-color attribute on <html>
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --theme-hue:   0;
+  --theme-sat:   85%;
+  --theme-light: 52%;
+
+  --accent:      hsl(var(--theme-hue) var(--theme-sat) var(--theme-light));
+  --accent-soft: hsl(var(--theme-hue) var(--theme-sat) 62%);
+  --accent-deep: hsl(var(--theme-hue) calc(var(--theme-sat) - 10%) 38%);
+  --accent-glow: hsla(var(--theme-hue), var(--theme-sat), 55%, 0.14);
+  --accent-text: hsl(var(--theme-hue) var(--theme-sat) 18%);
+
+  /* Used by Tailwind arbitrary value: bg-[var(--accent)] */
+  --navbar-gradient-from: hsl(var(--theme-hue) var(--theme-sat) 28%);
+  --navbar-gradient-to:   #111827;
+}
+
+/* ── 4 named color schemes ────────────────────────────────────────────────── */
+html[data-color="red"] {
+  --theme-hue: 0;
+  --theme-sat: 85%;
+  --theme-light: 52%;
+}
+html[data-color="yellow"] {
+  --theme-hue: 45;
+  --theme-sat: 92%;
+  --theme-light: 48%;
+}
+html[data-color="green"] {
+  --theme-hue: 145;
+  --theme-sat: 63%;
+  --theme-light: 38%;
+}
+html[data-color="blue"] {
+  --theme-hue: 218;
+  --theme-sat: 83%;
+  --theme-light: 52%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODERN THEME OVERRIDES
+   Applied when data-theme="modern" on <html>
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Background & font */
+html[data-theme="modern"] body {
+  background-color: #f6f7fb !important;
+  background-image: none !important;
+  font-family: var(--font-heebo, "Heebo"), "Assistant", system-ui, -apple-system, sans-serif;
+}
+
+/* Clear amber gradient on page wrappers — every page renders a div as the
+   first child of <main>. Clearing background-image removes the amber gradient
+   while keeping inner card backgrounds (bg-white) intact. */
+html[data-theme="modern"] main,
+html[data-theme="modern"] main > div {
+  background-color: #f6f7fb !important;
+  background-image: none !important;
+}
+
+/* Hide hero banner in modern theme */
+html[data-theme="modern"] .site-banner {
+  display: none;
+}
+
+/* Modern navbar — light glass with accent top bar */
+html[data-theme="modern"] .navbar-root {
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-top: 3px solid var(--accent) !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06) !important;
+}
+
+html[data-theme="modern"] .navbar-root a,
+html[data-theme="modern"] .navbar-root button,
+html[data-theme="modern"] .navbar-root span {
+  color: #0f172a;
+}
+
+html[data-theme="modern"] .navbar-logo-sub {
+  color: var(--accent) !important;
+}
+
+html[data-theme="modern"] .navbar-link-active {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+html[data-theme="modern"] .navbar-link-active img {
+  filter: brightness(0) invert(1);
+}
+
+html[data-theme="modern"] .navbar-link-inactive {
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  background-color: transparent !important;
+  color: #0f172a !important;
+}
+
+html[data-theme="modern"] .navbar-link-inactive:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+html[data-theme="modern"] .navbar-search input {
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme="modern"] .navbar-search input::placeholder {
+  color: #566072 !important;
+}
+
+html[data-theme="modern"] .navbar-mobile-toggle {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme="modern"] .navbar-mobile-panel {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Modern auth buttons */
+html[data-theme="modern"] .navbar-auth-primary {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+html[data-theme="modern"] .navbar-auth-secondary {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  color: #0f172a !important;
+  background: transparent !important;
+}
+
+/* Modern card accent bars — opt-in via .modern-card class */
+html[data-theme="modern"] .modern-card {
+  border-radius: 12px !important;
+  border: 1px solid rgba(0, 0, 0, 0.07) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
+}
+
+html[data-theme="modern"] .modern-card-accent {
+  border-inline-start: 4px solid var(--accent) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CLASSIC THEME  (default, no data-theme attribute)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Accent color applied to classic active nav items via CSS var */
+html:not([data-theme="modern"]) .navbar-link-active {
+  background-color: rgb(252 211 77) !important; /* amber-300 */
+  color: #1c1917 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* ── Live ticker scroll animation ────────────────────────────────────────── */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.ticker-track {
+  animation: ticker-scroll 40s linear infinite;
+  width: max-content;
+}
+
+.ticker-bar:hover .ticker-track {
+  animation-play-state: paused;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -15,8 +195,7 @@ body {
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
 a {
@@ -29,5 +208,44 @@ a {
 }
 
 ::selection {
-  background: rgba(180, 83, 9, 0.2);
+  background: var(--accent-glow);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BRAND-RED → ACCENT COLOR REMAPPING
+   When a non-red color scheme is active, map Tailwind red utilities to
+   the current accent color so all brand elements shift together.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html:not([data-color="red"]) .bg-red-800  { background-color: var(--accent-deep) !important; }
+html:not([data-color="red"]) .bg-red-700  { background-color: var(--accent) !important; }
+html:not([data-color="red"]) .bg-red-600  { background-color: var(--accent) !important; }
+html:not([data-color="red"]) .bg-red-100  { background-color: hsla(var(--theme-hue), var(--theme-sat), 55%, 0.15) !important; }
+html:not([data-color="red"]) .bg-red-50   { background-color: hsla(var(--theme-hue), var(--theme-sat), 55%, 0.08) !important; }
+
+html:not([data-color="red"]) .text-red-900 { color: hsl(var(--theme-hue) var(--theme-sat) 18%) !important; }
+html:not([data-color="red"]) .text-red-800 { color: var(--accent-text) !important; }
+html:not([data-color="red"]) .text-red-700 { color: var(--accent-deep) !important; }
+html:not([data-color="red"]) .text-red-600 { color: var(--accent) !important; }
+html:not([data-color="red"]) .text-red-500 { color: var(--accent-soft) !important; }
+
+html:not([data-color="red"]) .border-red-200 { border-color: hsl(var(--theme-hue) var(--theme-sat) 80%) !important; }
+html:not([data-color="red"]) .border-red-300 { border-color: hsl(var(--theme-hue) var(--theme-sat) 70%) !important; }
+html:not([data-color="red"]) .border-red-500 { border-color: var(--accent) !important; }
+
+html:not([data-color="red"]) .ring-red-500 { --tw-ring-color: var(--accent) !important; }
+html:not([data-color="red"]) .ring-red-200 { --tw-ring-color: hsl(var(--theme-hue) var(--theme-sat) 80%) !important; }
+
+/* Hero featured-match gradient — override via dedicated class */
+.hero-featured-match {
+  background-image: linear-gradient(
+    135deg,
+    hsl(var(--theme-hue) var(--theme-sat) 22%),
+    hsl(var(--theme-hue) var(--theme-sat) 34%),
+    hsl(var(--theme-hue) var(--theme-sat) 26%)
+  ) !important;
+}
+
+/* Hover variants */
+html:not([data-color="red"]) .hover\:bg-red-700:hover { background-color: var(--accent) !important; }
+html:not([data-color="red"]) .hover\:text-red-700:hover { color: var(--accent-deep) !important; }

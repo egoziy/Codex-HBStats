@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequestUser } from '@/lib/auth';
 import { scrapeAndSaveTeam, scrapeAndSavePlayer, scrapeAllSport5, SPORT5_TEAMS } from '@/lib/sport5-scraper';
 import prisma from '@/lib/prisma';
+import { execSync, exec } from 'child_process';
+import path from 'path';
 
 // Concurrency lock — prevent multiple simultaneous scrape operations
 let scrapeInProgress = false;
@@ -69,6 +71,52 @@ export async function POST(request: NextRequest) {
     // List available teams to scrape
     if (action === 'list-teams') {
       return NextResponse.json({ teams: SPORT5_TEAMS });
+    }
+
+    // RSSSF: fire-and-forget scrape (takes many minutes)
+    if (action === 'rsssf-scrape') {
+      if (scrapeInProgress) {
+        return NextResponse.json({ error: 'סריקה כבר רצה. חכה שתסתיים.' }, { status: 429 });
+      }
+      scrapeInProgress = true;
+      const cwd = path.resolve(process.cwd());
+      exec(`node scripts/scrape-rsssf.js --mode all`, { cwd }, (err) => {
+        scrapeInProgress = false;
+        if (err) console.error('RSSSF scrape error:', err.message);
+        else console.log('RSSSF scrape completed');
+      });
+      return NextResponse.json({ success: true, message: 'סריקת RSSSF התחילה ברקע. תוצאות בטרמינל.' });
+    }
+
+    // RSSSF: merge scraped data into main DB (pre-2000 by default)
+    if (action === 'rsssf-merge') {
+      if (scrapeInProgress) {
+        return NextResponse.json({ error: 'סריקה כבר רצה. חכה שתסתיים.' }, { status: 429 });
+      }
+      scrapeInProgress = true;
+      try {
+        const maxYear = Number(body?.maxYear) || 2000;
+        const cwd = path.resolve(process.cwd());
+        const output = execSync(
+          `node scripts/merge-rsssf.js --mode all --max-year ${maxYear}`,
+          { cwd, timeout: 120_000, encoding: 'utf8' }
+        );
+        return NextResponse.json({ success: true, message: output.slice(-800) });
+      } catch (err: any) {
+        return NextResponse.json({ error: err.message?.slice(0, 300) || 'Merge failed' }, { status: 500 });
+      } finally {
+        scrapeInProgress = false;
+      }
+    }
+
+    // RSSSF: return scraped counts per category
+    if (action === 'rsssf-status') {
+      const [standings, topScorers, matches] = await Promise.all([
+        prisma.scrapedStanding.count({ where: { source: 'rsssf' } }),
+        prisma.scrapedLeaderboard.count({ where: { source: 'rsssf' } }),
+        prisma.scrapedMatch.count({ where: { source: 'rsssf' } }),
+      ]);
+      return NextResponse.json({ standings, topScorers, matches });
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
