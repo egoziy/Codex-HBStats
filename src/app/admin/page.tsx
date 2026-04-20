@@ -44,13 +44,13 @@ export default async function AdminPage({
     );
   }
 
-  const [teams, seasons, fetchJobs, telegramSourcesSetting, displayZeroStatPlayers, homepageLiveLimit, liveCountryLabels, liveSnapshots, coverageSeasons] = await Promise.all([
+  const seasons = await prisma.season.findMany({ orderBy: { year: 'desc' } });
+  const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
+
+  const [teams, fetchJobs, telegramSourcesSetting, displayZeroStatPlayers, homepageLiveLimit, liveCountryLabels, liveSnapshots, coverageSeason] = await Promise.all([
     prisma.team.findMany({
       include: { season: true },
       orderBy: [{ updatedAt: 'desc' }],
-    }),
-    prisma.season.findMany({
-      orderBy: { year: 'desc' },
     }),
     prisma.fetchJob.findMany({
       orderBy: { createdAt: 'desc' },
@@ -72,9 +72,8 @@ export default async function AdminPage({
       orderBy: [{ snapshotAt: 'desc' }],
       take: 50,
     }),
-    prisma.season.findMany({
-      take: 10,
-      orderBy: { year: 'desc' },
+    selectedSeasonId ? prisma.season.findUnique({
+      where: { id: selectedSeasonId },
       include: {
         competitions: {
           include: {
@@ -232,7 +231,7 @@ export default async function AdminPage({
           orderBy: [{ finishedAt: 'desc' }, { createdAt: 'desc' }],
         },
       },
-    }),
+    }) : Promise.resolve(null),
   ]);
 
   const telegramSourcesRaw = Array.isArray(telegramSourcesSetting?.valueJson)
@@ -250,9 +249,8 @@ export default async function AdminPage({
       )
       .filter((source): source is NonNullable<typeof source> => Boolean(source)) || [];
 
-  const selectedSeasonId = searchParams?.season || seasons[0]?.id || null;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) || seasons[0] || null;
-  const coverageRows = buildAdminCoverageRows(coverageSeasons);
+  const coverageRows = buildAdminCoverageRows(coverageSeason ? [coverageSeason] : []);
   const liveCountries = Array.from(
     new Set(
       liveSnapshots
@@ -286,6 +284,7 @@ export default async function AdminPage({
             orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
           },
           games: {
+            take: 60,
             include: {
               homeTeam: true,
               awayTeam: true,
