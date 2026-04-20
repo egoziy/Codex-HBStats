@@ -34,9 +34,6 @@ export default function AiChat() {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
 
-  // Don't render for unauthenticated users
-  if (!viewer) return null;
-
   async function handleSend() {
     const text = input.trim();
     if (!text || isLoading) return;
@@ -86,7 +83,8 @@ export default function AiChat() {
       {/* FAB Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-5 left-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-red-800 to-slate-900 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+        className="fixed bottom-5 left-5 z-[60] flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+        style={{ backgroundColor: 'var(--accent)' }}
         title="עוזר סטטיסטיקות"
       >
         {isOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
@@ -96,7 +94,7 @@ export default function AiChat() {
       {isOpen && (
         <div className="fixed bottom-20 left-5 z-[60] flex h-[500px] w-[380px] max-h-[70vh] flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl">
           {/* Header */}
-          <div className="flex items-center justify-between bg-gradient-to-l from-red-800 to-slate-900 px-4 py-3 text-white">
+          <div className="flex items-center justify-between px-4 py-3 text-white" style={{ backgroundColor: 'var(--accent)' }}>
             <span className="text-sm font-bold">עוזר סטטיסטיקות</span>
             <button onClick={() => setIsOpen(false)} className="rounded p-1 hover:bg-white/20">
               <X className="h-4 w-4" />
@@ -118,9 +116,10 @@ export default function AiChat() {
                 <div
                   className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
                     msg.role === 'user'
-                      ? 'bg-red-800 text-white'
+                      ? 'text-white'
                       : 'bg-stone-100 text-stone-800'
                   }`}
+                  style={msg.role === 'user' ? { backgroundColor: 'var(--accent)' } : undefined}
                 >
                   {msg.content}
                 </div>
@@ -149,12 +148,13 @@ export default function AiChat() {
                 rows={1}
                 maxLength={500}
                 disabled={isLoading}
-                className="flex-1 resize-none rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-red-800 disabled:opacity-50"
+                className="flex-1 resize-none rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-[var(--accent)] disabled:opacity-50"
               />
               <button
                 onClick={handleSend}
                 disabled={isLoading || !input.trim()}
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-800 text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ backgroundColor: 'var(--accent)' }}
               >
                 <Send className="h-4 w-4" />
               </button>
