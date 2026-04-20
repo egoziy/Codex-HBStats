@@ -70,9 +70,10 @@ export default async function AdminPage({
         rawJson: true,
       },
       orderBy: [{ snapshotAt: 'desc' }],
-      take: 250,
+      take: 50,
     }),
     prisma.season.findMany({
+      take: 10,
       orderBy: { year: 'desc' },
       include: {
         competitions: {
