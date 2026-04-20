@@ -49,7 +49,7 @@ export async function createSession(userId: string) {
   cookies().set(SESSION_COOKIE, rawToken, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.COOKIE_SECURE === 'true',
+    secure: false,
     expires: expiresAt,
     path: '/',
   });
