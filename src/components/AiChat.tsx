@@ -101,65 +101,80 @@ export default function AiChat() {
             </button>
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {messages.length === 0 && (
-              <div className="mt-8 text-center text-sm text-stone-400">
-                שאל אותי על כדורגל ישראלי — שחקנים, משחקים, טבלאות ועוד
+          {!viewer ? (
+            /* Guest message */
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+              <MessageCircle className="h-10 w-10 text-stone-300" />
+              <p className="text-sm font-semibold text-stone-700">העוזר החכם זמין לחברים רשומים בלבד</p>
+              <p className="text-xs text-stone-400">הירשם או התחבר כדי לשאול שאלות על כדורגל ישראלי</p>
+              <div className="flex gap-2">
+                <a href="/login" className="rounded-full px-4 py-2 text-sm font-bold text-white" style={{ backgroundColor: 'var(--accent)' }}>כניסה</a>
+                <a href="/register" className="rounded-full border border-stone-200 px-4 py-2 text-sm font-bold text-stone-700">הרשמה</a>
               </div>
-            )}
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'text-white'
-                      : 'bg-stone-100 text-stone-800'
-                  }`}
-                  style={msg.role === 'user' ? { backgroundColor: 'var(--accent)' } : undefined}
-                >
-                  {msg.content}
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="flex items-center gap-1 rounded-xl bg-stone-100 px-3 py-2 text-stone-400">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">חושב...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="border-t border-stone-200 p-3">
-            <div className="flex items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="שאל שאלה..."
-                rows={1}
-                maxLength={500}
-                disabled={isLoading}
-                className="flex-1 resize-none rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-[var(--accent)] disabled:opacity-50"
-              />
-              <button
-                onClick={handleSend}
-                disabled={isLoading || !input.trim()}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-white transition-opacity hover:opacity-80 disabled:opacity-40"
-                style={{ backgroundColor: 'var(--accent)' }}
-              >
-                <Send className="h-4 w-4" />
-              </button>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {messages.length === 0 && (
+                  <div className="mt-8 text-center text-sm text-stone-400">
+                    שאל אותי על כדורגל ישראלי — שחקנים, משחקים, טבלאות ועוד
+                  </div>
+                )}
+                {messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                        msg.role === 'user'
+                          ? 'text-white'
+                          : 'bg-stone-100 text-stone-800'
+                      }`}
+                      style={msg.role === 'user' ? { backgroundColor: 'var(--accent)' } : undefined}
+                    >
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="flex items-center gap-1 rounded-xl bg-stone-100 px-3 py-2 text-stone-400">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">חושב...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="border-t border-stone-200 p-3">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="שאל שאלה..."
+                    rows={1}
+                    maxLength={500}
+                    disabled={isLoading}
+                    className="flex-1 resize-none rounded-lg border border-stone-300 bg-stone-50 px-3 py-2 text-sm text-stone-800 outline-none placeholder:text-stone-400 focus:border-[var(--accent)] disabled:opacity-50"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={isLoading || !input.trim()}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-white transition-opacity hover:opacity-80 disabled:opacity-40"
+                    style={{ backgroundColor: 'var(--accent)' }}
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </>
