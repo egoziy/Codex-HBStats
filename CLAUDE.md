@@ -2,6 +2,31 @@
 
 פלטפורמת סטטיסטיקות כדורגל ישראלי מבוססת Next.js 14, עם ממשק בעברית (RTL), ניהול אדמין מלא, וסנכרון נתונים מ-API-Football ומאתרי ספורט ישראליים.
 
+## גרסה ופריסה
+
+**כל עדכון לפני push חייב לכלול העלאת גרסה:**
+
+1. **עדכן** `src/lib/version.ts` — שנה את `APP_VERSION`
+2. **עדכן** `package.json` — שנה את `"version"` לאותה גרסה
+
+### כללי גרסאות
+- `0.0.X` — תיקון באג / שינוי קטן (כל push רגיל)
+- `0.X.0` — פיצ'ר חדש משמעותי
+- `X.0.0` — שינוי מבני גדול
+
+### פריסה לשרת Hetzner
+לאחר push לגיט, להריץ בשרת:
+```bash
+git pull
+npm install
+npm run build && pm2 restart hbstats
+```
+אם ה-build נכשל מחוסר זיכרון:
+```bash
+NODE_OPTIONS="--max-old-space-size=3072" npm run build
+pm2 restart hbstats
+```
+
 ## טכנולוגיות
 
 - **Framework:** Next.js 14 (App Router, Server Components)

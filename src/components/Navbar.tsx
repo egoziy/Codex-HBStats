@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
+import { APP_VERSION } from '@/lib/version';
 
 type SearchResult = {
   id: string;
@@ -332,6 +333,9 @@ export default function Navbar() {
                       >
                         התנתקות
                       </button>
+                      <div className="px-3 pb-1 pt-0.5 text-center">
+                        <span className="text-[10px] text-stone-300">v{APP_VERSION}</span>
+                      </div>
                     </div>
                   )}
                 </div>
