@@ -198,7 +198,7 @@ function getNextGame(teamId: string, games: LeagueGame[]) {
 export default async function StandingsPage({
   searchParams,
 }: {
-  searchParams?: { season?: string; view?: string; round?: string; competition?: string };
+  searchParams?: { season?: string; view?: string; round?: string; competition?: string; phase?: string };
 }) {
   const displayMode = await getDisplayMode(searchParams?.view);
   const seasons = await prisma.season.findMany({
@@ -289,14 +289,35 @@ export default async function StandingsPage({
       );
 
   const hasStoredStandings = competitionStandings.length > 0;
-  const standings =
-    hasStoredStandings && isCurrentRoundView
-      ? sortStandings(competitionStandings)
-      : selectedCompetitionKind === 'LEAGUE'
-        ? buildStandingsFromGames(teams, snapshotGames)
-        : [];
-  const isFallbackTable = (!hasStoredStandings || !isCurrentRoundView) && standings.length > 0 && selectedCompetitionKind === 'LEAGUE';
   const canDeriveTable = Boolean(selectedSeason && teams.length > 0 && snapshotGames.length > 0 && selectedCompetitionKind === 'LEAGUE');
+
+  const isPlayoffSeason = hasStoredStandings && competitionStandings.some(
+    (s) => s.groupNameEn === 'Championship' || s.groupNameEn === 'Relegation'
+  );
+  const selectedPhase = isPlayoffSeason ? (searchParams?.phase ?? 'regular') : 'regular';
+  const regularRoundCount = roundOptions.filter((r) => /^Regular Season\s*-\s*\d+$/i.test(r)).length;
+  const playoffChampionshipRows = isPlayoffSeason
+    ? sortStandings(competitionStandings.filter((s) => s.groupNameEn === 'Championship'))
+    : [];
+  const playoffRelegationRows = isPlayoffSeason
+    ? sortStandings(competitionStandings.filter((s) => s.groupNameEn === 'Relegation'))
+    : [];
+  const championshipCount = playoffChampionshipRows.length;
+
+  const standings = (() => {
+    if (isPlayoffSeason && hasStoredStandings && isCurrentRoundView) {
+      if (selectedPhase === 'championship') return playoffChampionshipRows;
+      if (selectedPhase === 'relegation') return playoffRelegationRows;
+      return [
+        ...playoffChampionshipRows,
+        ...playoffRelegationRows.map((r, i) => ({ ...r, displayPosition: championshipCount + i + 1 })),
+      ];
+    }
+    if (hasStoredStandings && isCurrentRoundView) return sortStandings(competitionStandings);
+    if (selectedCompetitionKind === 'LEAGUE') return buildStandingsFromGames(teams, snapshotGames);
+    return [];
+  })();
+  const isFallbackTable = (!hasStoredStandings || !isCurrentRoundView) && standings.length > 0 && selectedCompetitionKind === 'LEAGUE';
 
   if (displayMode === 'premier') {
     return (
@@ -317,6 +338,10 @@ export default async function StandingsPage({
         competitionGames={typedGames}
         snapshotGames={snapshotGames}
         futureGames={futureGames}
+        isPlayoffSeason={isPlayoffSeason}
+        selectedPhase={selectedPhase}
+        championshipCount={championshipCount}
+        regularRoundCount={regularRoundCount}
       />
     );
   }
@@ -393,6 +418,29 @@ export default async function StandingsPage({
           ) : null}
         </section>
 
+        {isPlayoffSeason && (
+          <div className="flex gap-1 rounded-xl border border-stone-200 bg-stone-50 p-1">
+            <a
+              href={`/standings?season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&view=${displayMode}&phase=regular`}
+              className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'regular' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            >
+              סדיר{regularRoundCount > 0 ? ` · ${regularRoundCount} מחזורים` : ''}
+            </a>
+            <a
+              href={`/standings?season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&view=${displayMode}&phase=championship`}
+              className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'championship' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            >
+              פליאוף אליפות
+            </a>
+            <a
+              href={`/standings?season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&view=${displayMode}&phase=relegation`}
+              className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'relegation' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            >
+              פליאוף הישרדות
+            </a>
+          </div>
+        )}
+
         {isFallbackTable ? (
           <div className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm font-semibold text-sky-900">
             מוצגת טבלה מחושבת מתוך {snapshotGames.length} משחקי ליגה שהסתיימו.
@@ -426,25 +474,37 @@ export default async function StandingsPage({
                 </tr>
               </thead>
               <tbody>
-                {standings.map((row) => {
+                {standings.flatMap((row, index) => {
                   const pos = row.displayPosition;
                   const form = getTeamForm(row.teamId, typedGames);
-                  const isTop = pos === 1;
-                  const isEurope = pos <= 4;
-                  const isRelegation = pos >= totalTeams - 1 && totalTeams > 4;
+                  const groupName = (row as any).groupNameEn as string | null;
+                  const inChampionship = groupName === 'Championship';
+                  const inRelegation = groupName === 'Relegation';
+
+                  const isTop = pos === 1 && (!isPlayoffSeason || inChampionship);
+                  const isEurope = isPlayoffSeason
+                    ? inChampionship && pos <= 4
+                    : pos <= 4;
+                  const isRelegationPos = isPlayoffSeason
+                    ? inRelegation && pos >= totalTeams - 1 && totalTeams > 4
+                    : pos >= totalTeams - 1 && totalTeams > 4;
+
                   const bandColor = isTop ? 'bg-[var(--accent)]'
                     : isEurope ? 'bg-[var(--accent-soft)]'
-                    : isRelegation ? 'bg-red-400'
+                    : isRelegationPos ? 'bg-red-400'
                     : 'bg-transparent';
                   const posColor = isTop
                     ? 'bg-[var(--accent)] text-white'
                     : isEurope
                     ? 'bg-[var(--accent-glow)] text-[var(--accent-text)]'
-                    : isRelegation
+                    : isRelegationPos
                     ? 'bg-red-100 text-red-700'
                     : 'bg-stone-100 text-stone-500';
 
-                  return (
+                  const showDivider = isPlayoffSeason && selectedPhase === 'regular'
+                    && championshipCount > 0 && index === championshipCount - 1;
+
+                  const mainRow = (
                     <tr key={row.id} className="border-b border-stone-100 text-sm transition hover:bg-stone-50/70">
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-2">
@@ -501,6 +561,18 @@ export default async function StandingsPage({
                       <td className="px-3 py-3 text-center text-base font-black text-stone-900">{row.adjustedPoints}</td>
                     </tr>
                   );
+
+                  if (showDivider) {
+                    return [
+                      mainRow,
+                      <tr key="playoff-divider">
+                        <td colSpan={10} className="border-b border-dashed border-stone-300 bg-stone-50/70 px-4 py-2 text-center text-xs font-bold text-stone-400">
+                          קו חלוקה · פליאוף הישרדות מתחיל כאן
+                        </td>
+                      </tr>,
+                    ];
+                  }
+                  return [mainRow];
                 })}
               </tbody>
             </table>
@@ -551,6 +623,10 @@ function PremierStandingsView({
   competitionGames,
   snapshotGames,
   futureGames,
+  isPlayoffSeason,
+  selectedPhase,
+  championshipCount,
+  regularRoundCount,
 }: {
   seasons: Array<{ id: string; name: string }>;
   selectedSeason: { id: string; name: string } | null;
@@ -568,6 +644,10 @@ function PremierStandingsView({
   competitionGames: LeagueGame[];
   snapshotGames: LeagueGame[];
   futureGames: LeagueGame[];
+  isPlayoffSeason: boolean;
+  selectedPhase: string;
+  championshipCount: number;
+  regularRoundCount: number;
 }) {
   const gamesByRound = Array.from(
     competitionGames.reduce((map, game) => {
@@ -648,6 +728,29 @@ function PremierStandingsView({
           </div>
         ) : null}
 
+        {isPlayoffSeason && (
+          <div className="flex gap-1 rounded-xl border border-stone-200 bg-stone-50 p-1">
+            <a
+              href={`/standings?view=premier&season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&phase=regular`}
+              className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'regular' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            >
+              סדיר{regularRoundCount > 0 ? ` · ${regularRoundCount} מחזורים` : ''}
+            </a>
+            <a
+              href={`/standings?view=premier&season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&phase=championship`}
+              className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'championship' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            >
+              פליאוף אליפות
+            </a>
+            <a
+              href={`/standings?view=premier&season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&phase=relegation`}
+              className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'relegation' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+            >
+              פליאוף הישרדות
+            </a>
+          </div>
+        )}
+
         <section className="modern-card overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-stone-100 px-6 py-5">
             <h2 className="border-r-[3px] border-[var(--accent)] pr-3 text-xl font-black text-stone-900">טבלת דירוג</h2>
@@ -677,15 +780,25 @@ function PremierStandingsView({
                 </tr>
               </thead>
               <tbody>
-                {standings.map((row) => {
+                {standings.flatMap((row, index) => {
                   const pos = row.displayPosition;
                   const form = getTeamForm(row.teamId, snapshotGames);
                   const nextGame = getNextGame(row.teamId, futureGames);
-                  const isTop = pos === 1;
-                  const isEurope = pos <= 4;
-                  const isRelegation = pos >= teamsCount - 1 && teamsCount > 4;
-                  const bandColor = isTop ? 'bg-[var(--accent)]' : isEurope ? 'bg-[var(--accent-soft)]' : isRelegation ? 'bg-red-400' : 'bg-transparent';
-                  const posColor = isTop ? 'bg-[var(--accent)] text-white' : isEurope ? 'bg-[var(--accent-glow)] text-[var(--accent-text)]' : isRelegation ? 'bg-red-100 text-red-700' : 'bg-stone-100 text-stone-500';
+                  const groupName = (row as any).groupNameEn as string | null;
+                  const inChampionship = groupName === 'Championship';
+                  const inRelegation = groupName === 'Relegation';
+
+                  const isTop = pos === 1 && (!isPlayoffSeason || inChampionship);
+                  const isEurope = isPlayoffSeason ? inChampionship && pos <= 4 : pos <= 4;
+                  const isRelegationPos = isPlayoffSeason
+                    ? inRelegation && pos >= teamsCount - 1 && teamsCount > 4
+                    : pos >= teamsCount - 1 && teamsCount > 4;
+
+                  const bandColor = isTop ? 'bg-[var(--accent)]' : isEurope ? 'bg-[var(--accent-soft)]' : isRelegationPos ? 'bg-red-400' : 'bg-transparent';
+                  const posColor = isTop ? 'bg-[var(--accent)] text-white' : isEurope ? 'bg-[var(--accent-glow)] text-[var(--accent-text)]' : isRelegationPos ? 'bg-red-100 text-red-700' : 'bg-stone-100 text-stone-500';
+
+                  const showDivider = isPlayoffSeason && selectedPhase === 'regular'
+                    && championshipCount > 0 && index === championshipCount - 1;
 
                   const opponent =
                     nextGame
@@ -694,7 +807,7 @@ function PremierStandingsView({
                         : nextGame.homeTeam
                       : null;
 
-                  return (
+                  const mainRow = (
                     <tr key={row.id} className="border-b border-stone-100 text-sm transition hover:bg-stone-50/70">
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center gap-2">
@@ -732,7 +845,7 @@ function PremierStandingsView({
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center gap-1">
                           {form.length
-                            ? form.map((entry, index) => <FormDot key={`${row.id}-${index}`} value={entry} />)
+                            ? form.map((entry, idx) => <FormDot key={`${row.id}-${idx}`} value={entry} />)
                             : <span className="text-xs text-stone-300">—</span>}
                         </div>
                       </td>
@@ -753,6 +866,18 @@ function PremierStandingsView({
                       <td className="px-3 py-3 text-center text-base font-black text-stone-900">{row.adjustedPoints}</td>
                     </tr>
                   );
+
+                  if (showDivider) {
+                    return [
+                      mainRow,
+                      <tr key="playoff-divider">
+                        <td colSpan={12} className="border-b border-dashed border-stone-300 bg-stone-50/70 px-4 py-2 text-center text-xs font-bold text-stone-400">
+                          קו חלוקה · פליאוף הישרדות מתחיל כאן
+                        </td>
+                      </tr>,
+                    ];
+                  }
+                  return [mainRow];
                 })}
               </tbody>
             </table>
