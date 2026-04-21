@@ -323,6 +323,7 @@ export default async function AdminPage({
             orderBy: [{ createdAt: 'desc' }],
           },
           playerStats: {
+            take: 100,
             include: {
               player: {
                 include: {
@@ -334,6 +335,7 @@ export default async function AdminPage({
             orderBy: [{ goals: 'desc' }, { assists: 'desc' }],
           },
           teamStats: {
+            take: 50,
             include: {
               team: true,
               competition: true,
@@ -347,6 +349,7 @@ export default async function AdminPage({
             orderBy: [{ createdAt: 'desc' }],
           },
           leaderboardEntries: {
+            take: 100,
             include: {
               player: true,
               team: true,
@@ -355,6 +358,7 @@ export default async function AdminPage({
             orderBy: [{ category: 'asc' }, { rank: 'asc' }],
           },
           injuries: {
+            take: 50,
             include: {
               player: true,
               team: true,
@@ -369,18 +373,21 @@ export default async function AdminPage({
             orderBy: [{ fixtureDate: 'desc' }, { createdAt: 'desc' }],
           },
           transfers: {
+            take: 50,
             include: {
               player: true,
             },
             orderBy: [{ transferDate: 'desc' }, { createdAt: 'desc' }],
           },
           trophies: {
+            take: 50,
             include: {
               player: true,
             },
             orderBy: [{ playerNameHe: 'asc' }, { leagueNameEn: 'asc' }],
           },
           predictions: {
+            take: 50,
             include: {
               game: {
                 include: {
@@ -392,6 +399,7 @@ export default async function AdminPage({
             orderBy: [{ createdAt: 'desc' }],
           },
           headToHeadEntries: {
+            take: 50,
             include: {
               game: {
                 include: {
@@ -403,6 +411,7 @@ export default async function AdminPage({
             orderBy: [{ relatedDate: 'desc' }],
           },
           oddsValues: {
+            take: 50,
             include: {
               game: {
                 include: {
@@ -414,6 +423,7 @@ export default async function AdminPage({
             orderBy: [{ oddsUpdatedAt: 'desc' }, { bookmakerName: 'asc' }],
           },
           liveSnapshots: {
+            take: 30,
             where: {
               feedScope: 'LOCAL',
             },
