@@ -123,7 +123,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   }
 
   const now = new Date();
-  const [storedUser, seasonTeams, rawStandings, telegramSourcesSetting, homepageLiveLimit] = await Promise.all([
+  const [storedUser, seasonTeams, rawStandings, telegramSourcesSetting, homepageLiveLimit, ligaHaalGames] = await Promise.all([
     viewer
       ? prisma.user.findUnique({
           where: { id: viewer.id },
@@ -140,6 +140,19 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       where: { key: 'telegram_sources' },
     }),
     getHomepageLiveLimitSetting(),
+    // Exclude null-roundNameEn games — IFA-only duplicates of API-Football games.
+    // Include CANCELLED games with scores — these are technical wins (e.g. 3-0 forfeit).
+    prisma.game.findMany({
+      where: {
+        seasonId: latestSeason.id,
+        competition: { apiFootballId: 383 },
+        homeScore: { not: null },
+        roundNameEn: { not: null },
+        OR: [{ status: 'COMPLETED' }, { status: 'CANCELLED', awayScore: { not: null } }],
+      },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, roundNameEn: true },
+      orderBy: { dateTime: 'asc' },
+    }),
   ]);
   const configuredTelegramSourcesRaw = Array.isArray(telegramSourcesSetting?.valueJson)
     ? (telegramSourcesSetting.valueJson as Array<Record<string, unknown>>)
@@ -170,7 +183,56 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   const selectedTeam = selectedTeams.length === 1 ? selectedTeams[0] : null;
   const selectedTeamIds = selectedTeams.map((team) => team.id);
 
-  const sortedStandings = sortStandings(rawStandings);
+  // Detect stale standings: compare highest round in completed games vs max(played) in stored standings.
+  const maxRoundInHomeStandings = rawStandings.length > 0
+    ? Math.max(0, ...rawStandings.map((s) => s.played))
+    : 0;
+  const maxRoundInLigaGames = ligaHaalGames.reduce((max, g) => {
+    const m = g.roundNameEn?.match(/(\d+)\s*$/);
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, 0);
+  const hasOutdatedStandings = maxRoundInLigaGames > maxRoundInHomeStandings;
+
+  const sortedStandings = (() => {
+    if (hasOutdatedStandings || rawStandings.length === 0) {
+      if (ligaHaalGames.length === 0) return sortStandings(rawStandings);
+      const teamMap = new Map(seasonTeams.map((t) => [t.id, t]));
+      const rows = new Map<string, { id: string; position: number; played: number; wins: number; draws: number; losses: number; goalsFor: number; goalsAgainst: number; points: number; pointsAdjustment: number; pointsAdjustmentNoteHe: null; teamId: string; team: typeof seasonTeams[number] }>();
+      for (const game of ligaHaalGames) {
+        for (const tid of [game.homeTeamId, game.awayTeamId]) {
+          if (!rows.has(tid) && teamMap.has(tid)) {
+            rows.set(tid, { id: `home-${tid}`, position: 999, played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, points: 0, pointsAdjustment: 0, pointsAdjustmentNoteHe: null, teamId: tid, team: teamMap.get(tid)! });
+          }
+        }
+        if (game.homeScore === null || game.awayScore === null) continue;
+        const home = rows.get(game.homeTeamId);
+        const away = rows.get(game.awayTeamId);
+        if (!home || !away) continue;
+        home.played++; away.played++;
+        home.goalsFor += game.homeScore; home.goalsAgainst += game.awayScore;
+        away.goalsFor += game.awayScore; away.goalsAgainst += game.homeScore;
+        if (game.homeScore > game.awayScore) { home.wins++; home.points += 3; away.losses++; }
+        else if (game.homeScore < game.awayScore) { away.wins++; away.points += 3; home.losses++; }
+        else { home.draws++; away.draws++; home.points++; away.points++; }
+      }
+      let pos = 1;
+      const derived = sortStandings([...rows.values()].map((r) => ({ ...r, position: pos++ })));
+      // Overlay stored point adjustments (deductions) onto game-derived standings
+      const adjMap = new Map(
+        rawStandings
+          .filter((s) => (s as any).pointsAdjustment !== 0)
+          .map((s) => [s.teamId, { pointsAdjustment: (s as any).pointsAdjustment, pointsAdjustmentNoteHe: (s as any).pointsAdjustmentNoteHe }])
+      );
+      if (adjMap.size === 0) return derived;
+      let pos2 = 1;
+      return sortStandings(derived.map((row) => {
+        const adj = adjMap.get(row.teamId);
+        return adj ? { ...row, ...adj, position: pos2++ } : { ...row, position: pos2++ };
+      }));
+    }
+    return sortStandings(rawStandings);
+  })();
+
   const compactStandings = (() => {
     if (!sortedStandings.length) return [];
     if (!selectedTeamIds.length) return sortedStandings.slice(0, 6);
@@ -255,13 +317,24 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   }
 
   // ── Additional data: leaderboards, red cards, goal minutes ──
-  const [topScorers, topAssists, recentRedCards, yellowCardCounts, goalMinutesRaw] = await Promise.all([
-    prisma.competitionLeaderboardEntry.findMany({
-      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_SCORERS' },
-      orderBy: { value: 'desc' },
-      take: 5,
-      select: { playerNameHe: true, playerNameEn: true, teamNameHe: true, teamNameEn: true, value: true, playerId: true, player: { select: { nameHe: true, nameEn: true } } },
-    }),
+  const [topScorersRaw, topAssists, recentRedCards, allYellowCards, goalMinutesRaw] = await Promise.all([
+    // Derive top scorers from game events — always up-to-date unlike the Walla-scraped leaderboard
+    prisma.$queryRaw<Array<{ playerId: string; playerNameHe: string | null; playerNameEn: string | null; teamNameHe: string | null; value: number }>>`
+      SELECT ge."playerId", p."nameHe" AS "playerNameHe", p."nameEn" AS "playerNameEn",
+             t."nameHe" AS "teamNameHe", COUNT(*)::int AS value
+      FROM game_events ge
+      JOIN players p ON p.id = ge."playerId"
+      LEFT JOIN teams t ON t.id = p."teamId"
+      JOIN games g ON g.id = ge."gameId"
+      WHERE ge.type IN ('GOAL', 'PENALTY_GOAL')
+        AND g."seasonId" = ${latestSeason.id}
+        AND g."competitionId" = 'comp_liga_haal'
+        AND g.status = 'COMPLETED'
+        AND ge."playerId" IS NOT NULL
+      GROUP BY ge."playerId", p."nameHe", p."nameEn", t."nameHe"
+      ORDER BY value DESC
+      LIMIT 5
+    `,
     prisma.competitionLeaderboardEntry.findMany({
       where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_ASSISTS' },
       orderBy: { value: 'desc' },
@@ -276,22 +349,25 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       },
       select: {
         player: { select: { id: true, nameHe: true, team: { select: { nameHe: true } } } },
-        game: { select: { roundNameHe: true, dateTime: true } },
+        game: { select: { roundNameHe: true, roundNameEn: true, dateTime: true } },
       },
       orderBy: { game: { dateTime: 'desc' } },
-      take: 5,
+      take: 15,
     }),
-    // Yellow card counts per player this season (for 5th/9th yellow detection)
-    prisma.gameEvent.groupBy({
-      by: ['playerId'],
-      where: {
-        type: 'YELLOW_CARD',
-        playerId: { not: null },
-        game: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal' },
-      },
-      _count: { playerId: true },
-      having: { playerId: { _count: { gte: 5 } } },
-    }),
+    // All yellow cards this season — single JOIN query instead of N+1 batch loads
+    prisma.$queryRaw<Array<{ playerId: string; nameHe: string | null; teamNameHe: string | null; roundNameEn: string | null; dateTime: Date | null }>>`
+      SELECT ge."playerId", p."nameHe", t."nameHe" AS "teamNameHe",
+             g."roundNameEn", g."dateTime"
+      FROM game_events ge
+      JOIN games g ON g.id = ge."gameId"
+      JOIN players p ON p.id = ge."playerId"
+      LEFT JOIN teams t ON t.id = p."teamId"
+      WHERE ge.type = 'YELLOW_CARD'
+        AND ge."playerId" IS NOT NULL
+        AND g."seasonId" = ${latestSeason.id}
+        AND g."competitionId" = 'comp_liga_haal'
+      ORDER BY g."dateTime" ASC
+    `,
     prisma.$queryRaw<Array<{ bucket: string; goals: number }>>`
       SELECT
         CASE
@@ -313,6 +389,17 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       ORDER BY MIN(minute)
     `,
   ]);
+
+  // Map raw scorer query to LeaderboardBars-compatible shape
+  const topScorers = topScorersRaw.map((r) => ({
+    playerId: r.playerId,
+    playerNameHe: r.playerNameHe,
+    playerNameEn: r.playerNameEn,
+    teamNameHe: r.teamNameHe,
+    teamNameEn: null as string | null,
+    value: Number(r.value),
+    player: null as { nameHe: string | null; nameEn: string | null } | null,
+  }));
 
   // Find suspended players: red card in current or previous round, OR 5th/9th yellow
   const goalMinutesData = goalMinutesRaw.map((row) => ({ name: row.bucket, goals: Number(row.goals) }));
@@ -347,33 +434,53 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     return +new Date(a.dateTime || 0) - +new Date(b.dateTime || 0);
   });
 
-  // Suspended players: red card in last 2 rounds + 5th/9th yellow
-  const currentRoundLabel = nextRoundLabel || recentRedCards[0]?.game?.roundNameHe || null;
-  const currentRoundNum = currentRoundLabel ? parseInt(currentRoundLabel.replace(/\D/g, '')) || 0 : 0;
-  const relevantRounds = [currentRoundNum, currentRoundNum - 1].filter(Boolean).map((n) => `מחזור ${n}`);
+  // Suspended players: red card in last completed round + 5th/9th yellow
+  // Extract round number from roundNameEn (consistent format: "Regular Season - N", "Championship Group - N", etc.)
+  const extractRoundNum = (roundEn: string | null | undefined) => {
+    const m = roundEn?.match(/(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : 0;
+  };
+  // Use the next Liga Ha'al game to determine the upcoming round number
+  const nextLigaGame = nextGamesRaw.find((g) => g.competition?.apiFootballId === 383);
+  const nextLigaRoundNum = nextLigaGame ? extractRoundNum(nextLigaGame.roundNameEn) : 0;
+  // Fall back to: last red card round + 1
+  const lastRedCardRoundNum = extractRoundNum(recentRedCards[0]?.game?.roundNameEn);
+  const suspensionRoundNum = nextLigaRoundNum || lastRedCardRoundNum + 1;
 
   const redCardSuspended = recentRedCards
-    .filter((e) => relevantRounds.includes(e.game.roundNameHe || '') && e.player)
-    .map((e) => ({ id: e.player!.id, name: e.player!.nameHe, team: e.player!.team?.nameHe || '', reason: `כרטיס אדום ב${e.game.roundNameHe}` }));
+    .filter((e) => extractRoundNum(e.game.roundNameEn) === suspensionRoundNum - 1 && e.player)
+    .map((e) => ({
+      id: e.player!.id,
+      name: e.player!.nameHe,
+      team: e.player!.team?.nameHe || '',
+      reason: `כרטיס אדום ב${getRoundDisplayName(e.game.roundNameHe, e.game.roundNameEn)}`,
+    }));
 
-  const yellowSuspensionPlayerIds = yellowCardCounts
-    .filter((row) => row._count.playerId === 5 || row._count.playerId === 9)
-    .map((row) => row.playerId!)
-    .filter(Boolean);
-
-  const yellowSuspendedPlayers = yellowSuspensionPlayerIds.length
-    ? await prisma.player.findMany({
-        where: { id: { in: yellowSuspensionPlayerIds } },
-        select: { id: true, nameHe: true, team: { select: { nameHe: true } } },
-      })
-    : [];
-
-  const yellowSuspended = yellowSuspendedPlayers.map((pl) => ({
-    id: pl.id,
-    name: pl.nameHe,
-    team: pl.team?.nameHe || '',
-    reason: `צהוב ${yellowCardCounts.find((r) => r.playerId === pl.id)?._count.playerId || 5} — הרחקה`,
-  }));
+  // Group yellow cards per player sorted by date, find who hit their 5th/9th in the last round
+  const yellowsByPlayer = new Map<string, typeof allYellowCards>();
+  for (const ev of allYellowCards) {
+    if (!ev.playerId) continue;
+    if (!yellowsByPlayer.has(ev.playerId)) yellowsByPlayer.set(ev.playerId, []);
+    yellowsByPlayer.get(ev.playerId)!.push(ev);
+  }
+  const yellowSuspended: Array<{ id: string; name: string; team: string; reason: string }> = [];
+  for (const [, yellows] of yellowsByPlayer) {
+    const sorted = yellows.slice().sort((a, b) => +new Date(a.dateTime ?? 0) - +new Date(b.dateTime ?? 0));
+    for (const milestoneIdx of [4, 8]) { // 5th = index 4, 9th = index 8
+      if (sorted.length > milestoneIdx) {
+        const milestone = sorted[milestoneIdx];
+        if (extractRoundNum(milestone.roundNameEn) === suspensionRoundNum - 1) {
+          yellowSuspended.push({
+            id: milestone.playerId,
+            name: milestone.nameHe,
+            team: milestone.teamNameHe || '',
+            reason: `${milestoneIdx + 1} כרטיסים צהובים — הרחקה`,
+          });
+          break;
+        }
+      }
+    }
+  }
 
   const suspendedMap = new Map<string, { id: string; name: string; team: string; reason: string }>();
   for (const s of [...redCardSuspended, ...yellowSuspended]) {
@@ -415,45 +522,44 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       {/* ── HERO: Featured Match ── */}
       {heroGame ? (
         <section className="hero-featured-match relative overflow-hidden">
-          <div className="relative mx-auto max-w-7xl px-4 pb-8 pt-6">
-            <div className="mb-4 flex items-center justify-between">
+          <div className="relative mx-auto max-w-7xl px-4 pb-4 pt-3">
+            <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${heroGame.status === 'ONGOING' ? 'animate-pulse bg-yellow-300' : heroCompleted ? 'bg-emerald-300' : 'bg-white/50'}`} />
-                <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-white/60">
+                <div className={`h-1.5 w-1.5 rounded-full ${heroGame.status === 'ONGOING' ? 'animate-pulse bg-yellow-300' : heroCompleted ? 'bg-emerald-300' : 'bg-white/50'}`} />
+                <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/60">
                   {heroGame.status === 'ONGOING' ? 'משחק חי' : heroCompleted ? 'משחק אחרון' : 'המשחק הבא'}
                 </span>
               </div>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/60">{latestSeason.name}</span>
+              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/50">{latestSeason.name}</span>
             </div>
             <Link href={`/games/${heroGame.id}`} className="block">
               <div className="text-center">
-                <div className="text-[11px] font-medium text-white/40">{getCompetitionDisplayName(heroGame.competition)}</div>
-                <div className="mt-5 flex items-center justify-center gap-8 md:gap-16">
-                  <div className="min-w-[110px] text-center">
-                    <div className="text-2xl font-black text-white md:text-4xl leading-tight">{getTeamLabel(heroGame.homeTeam)}</div>
-                    <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">בית</div>
+                <div className="text-[10px] font-medium text-white/35">{getCompetitionDisplayName(heroGame.competition)}</div>
+                <div className="mt-2 flex items-center justify-center gap-6 md:gap-12">
+                  <div className="min-w-[90px] text-center">
+                    <div className="text-lg font-black text-white md:text-2xl leading-tight">{getTeamLabel(heroGame.homeTeam)}</div>
+                    <div className="mt-1 text-[9px] font-semibold uppercase tracking-widest text-white/35">בית</div>
                   </div>
                   <div className="flex flex-col items-center">
                     {heroCompleted ? (
-                      <div className="rounded-2xl bg-white/10 px-8 py-4 backdrop-blur-sm ring-1 ring-white/10">
-                        <div className="text-5xl font-black tabular-nums text-white md:text-6xl">
+                      <div className="rounded-xl bg-white/10 px-6 py-2 backdrop-blur-sm ring-1 ring-white/10">
+                        <div className="text-3xl font-black tabular-nums text-white md:text-4xl">
                           {heroGame.homeScore ?? 0}<span className="mx-2 text-white/25">–</span>{heroGame.awayScore ?? 0}
                         </div>
-                        <div className="mt-1 text-center text-[10px] font-bold tracking-widest text-emerald-300">סיום</div>
+                        <div className="mt-0.5 text-center text-[9px] font-bold tracking-widest text-emerald-300">סיום</div>
                       </div>
                     ) : (
-                      <div className="rounded-2xl bg-white/10 px-8 py-4 backdrop-blur-sm ring-1 ring-white/10">
-                        <div className="text-4xl font-black text-white md:text-5xl">VS</div>
-                        <div className="mt-1 text-center text-[11px] text-white/50">{formatDate(heroGame.dateTime, true)}</div>
+                      <div className="rounded-xl bg-white/10 px-6 py-2 backdrop-blur-sm ring-1 ring-white/10">
+                        <div className="text-2xl font-black text-white md:text-3xl">VS</div>
+                        <div className="mt-0.5 text-center text-[10px] text-white/50">{formatDate(heroGame.dateTime, true)}</div>
                       </div>
                     )}
                   </div>
-                  <div className="min-w-[110px] text-center">
-                    <div className="text-2xl font-black text-white md:text-4xl leading-tight">{getTeamLabel(heroGame.awayTeam)}</div>
-                    <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/35">חוץ</div>
+                  <div className="min-w-[90px] text-center">
+                    <div className="text-lg font-black text-white md:text-2xl leading-tight">{getTeamLabel(heroGame.awayTeam)}</div>
+                    <div className="mt-1 text-[9px] font-semibold uppercase tracking-widest text-white/35">חוץ</div>
                   </div>
                 </div>
-                {!heroCompleted && <div className="mt-4 text-[11px] text-white/35">{formatDate(heroGame.dateTime, true)}</div>}
               </div>
             </Link>
           </div>

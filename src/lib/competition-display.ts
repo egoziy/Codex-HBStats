@@ -76,14 +76,14 @@ export function getRoundDisplayName(roundHe?: string | null, roundEn?: string | 
     return `מחזור ${regularSeasonMatch[1]}`;
   }
 
-  const championshipRoundMatch = rawRound.match(/^Championship Round\s*-\s*(\d+)$/i);
+  const championshipRoundMatch = rawRound.match(/^Championship (?:Round|Group)\s*-\s*(\d+)$/i);
   if (championshipRoundMatch) {
-    return `פליאוף אליפות - מחזור ${championshipRoundMatch[1]}`;
+    return `פליאוף עליון - מחזור ${championshipRoundMatch[1]}`;
   }
 
-  const relegationRoundMatch = rawRound.match(/^Relegation Round\s*-\s*(\d+)$/i);
+  const relegationRoundMatch = rawRound.match(/^Relegation (?:Round|Group)\s*-\s*(\d+)$/i);
   if (relegationRoundMatch) {
-    return `פליאוף הישרדות - מחזור ${relegationRoundMatch[1]}`;
+    return `פליאוף תחתון - מחזור ${relegationRoundMatch[1]}`;
   }
 
   return ROUND_TRANSLATIONS[rawRound] || rawRound;

@@ -76,8 +76,8 @@ function getRoundSortValue(label: string) {
   if (/round of 16/i.test(normalized)) return 6000;
   if (/round of 32/i.test(normalized)) return 5000;
   if (/regular season/i.test(normalized)) return number;
-  if (/championship round/i.test(normalized)) return 1000 + number;
-  if (/relegation round/i.test(normalized)) return 2000 + number;
+  if (/championship (?:round|group)/i.test(normalized)) return 1000 + number;
+  if (/relegation (?:round|group)/i.test(normalized)) return 2000 + number;
   if (/group stage/i.test(normalized)) return 3000 + number;
   return 5000 + number;
 }
@@ -266,8 +266,14 @@ export default async function StandingsPage({
   ]);
   const teams = seasonTeams.filter((team) => competitionTeamIds.has(team.id));
   const selectedCompetitionKind = getCompetitionKind(selectedCompetition);
+  // Exclude games without roundNameEn — these are IFA-only duplicates of API-Football games.
+  // Include CANCELLED games that have scores — these are technical wins (e.g. 3-0 forfeit).
   const completedLeagueGames = typedGames.filter(
-    (game) => game.status === 'COMPLETED' && game.homeScore !== null && game.awayScore !== null
+    (game) =>
+      (game.status === 'COMPLETED' || (game.status === 'CANCELLED' && game.homeScore !== null && game.awayScore !== null)) &&
+      game.homeScore !== null &&
+      game.awayScore !== null &&
+      game.roundNameEn != null
   );
   const roundOptions = Array.from(new Set(typedGames.map((game) => normalizeRoundLabel(game.roundNameEn)))).sort(
     (a, b) => getRoundSortValue(a) - getRoundSortValue(b)
@@ -291,7 +297,18 @@ export default async function StandingsPage({
   const hasStoredStandings = competitionStandings.length > 0;
   const canDeriveTable = Boolean(selectedSeason && teams.length > 0 && snapshotGames.length > 0 && selectedCompetitionKind === 'LEAGUE');
 
-  const isPlayoffSeason = hasStoredStandings && competitionStandings.some(
+  // Detect stale standings: compare the highest round number in completed games vs max(played) in stored standings.
+  // max(played) per team in standings ≈ last complete round reflected there.
+  const maxRoundInStandings = hasStoredStandings
+    ? Math.max(0, ...competitionStandings.map((s) => s.played))
+    : 0;
+  const maxRoundInGames = completedLeagueGames.reduce((max, g) => {
+    const m = g.roundNameEn?.match(/(\d+)\s*$/);
+    return m ? Math.max(max, parseInt(m[1], 10)) : max;
+  }, 0);
+  const hasOutdatedStandings = maxRoundInGames > maxRoundInStandings;
+
+  const isPlayoffSeason = hasStoredStandings && !hasOutdatedStandings && competitionStandings.some(
     (s) => s.groupNameEn === 'Championship' || s.groupNameEn === 'Relegation'
   );
   const selectedPhase = isPlayoffSeason ? (searchParams?.phase ?? 'regular') : 'regular';
@@ -313,11 +330,27 @@ export default async function StandingsPage({
         ...playoffRelegationRows.map((r, i) => ({ ...r, displayPosition: championshipCount + i + 1 })),
       ];
     }
-    if (hasStoredStandings && isCurrentRoundView) return sortStandings(competitionStandings);
-    if (selectedCompetitionKind === 'LEAGUE') return buildStandingsFromGames(teams, snapshotGames);
+    // Standings are up-to-date: use stored standings
+    if (hasStoredStandings && isCurrentRoundView && !hasOutdatedStandings) return sortStandings(competitionStandings);
+    // Standings outdated or missing: derive from all completed games (incl. playoff rounds)
+    if (selectedCompetitionKind === 'LEAGUE') {
+      const derived = buildStandingsFromGames(teams, snapshotGames);
+      // Overlay stored point adjustments (deductions) onto game-derived standings
+      if (!hasStoredStandings) return derived;
+      const adjMap = new Map(
+        competitionStandings
+          .filter((s) => s.pointsAdjustment !== 0)
+          .map((s) => [s.teamId, { pointsAdjustment: s.pointsAdjustment, pointsAdjustmentNoteHe: s.pointsAdjustmentNoteHe }])
+      );
+      if (adjMap.size === 0) return derived;
+      return sortStandings(derived.map((row) => {
+        const adj = adjMap.get(row.teamId);
+        return adj ? { ...row, ...adj } : row;
+      }));
+    }
     return [];
   })();
-  const isFallbackTable = (!hasStoredStandings || !isCurrentRoundView) && standings.length > 0 && selectedCompetitionKind === 'LEAGUE';
+  const isFallbackTable = (!hasStoredStandings || !isCurrentRoundView || hasOutdatedStandings) && standings.length > 0 && selectedCompetitionKind === 'LEAGUE';
 
   if (displayMode === 'premier') {
     return (
@@ -430,13 +463,13 @@ export default async function StandingsPage({
               href={`/standings?season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&view=${displayMode}&phase=championship`}
               className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'championship' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              פליאוף אליפות
+              פליאוף עליון
             </a>
             <a
               href={`/standings?season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&view=${displayMode}&phase=relegation`}
               className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'relegation' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              פליאוף הישרדות
+              פליאוף תחתון
             </a>
           </div>
         )}
@@ -567,7 +600,7 @@ export default async function StandingsPage({
                       mainRow,
                       <tr key="playoff-divider">
                         <td colSpan={10} className="border-b border-dashed border-stone-300 bg-stone-50/70 px-4 py-2 text-center text-xs font-bold text-stone-400">
-                          קו חלוקה · פליאוף הישרדות מתחיל כאן
+                          קו חלוקה · פליאוף תחתון מתחיל כאן
                         </td>
                       </tr>,
                     ];
@@ -740,13 +773,13 @@ function PremierStandingsView({
               href={`/standings?view=premier&season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&phase=championship`}
               className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'championship' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              פליאוף אליפות
+              פליאוף עליון
             </a>
             <a
               href={`/standings?view=premier&season=${selectedSeason?.id || ''}&competition=${selectedCompetition?.id || ''}&phase=relegation`}
               className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${selectedPhase === 'relegation' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
             >
-              פליאוף הישרדות
+              פליאוף תחתון
             </a>
           </div>
         )}
@@ -872,7 +905,7 @@ function PremierStandingsView({
                       mainRow,
                       <tr key="playoff-divider">
                         <td colSpan={12} className="border-b border-dashed border-stone-300 bg-stone-50/70 px-4 py-2 text-center text-xs font-bold text-stone-400">
-                          קו חלוקה · פליאוף הישרדות מתחיל כאן
+                          קו חלוקה · פליאוף תחתון מתחיל כאן
                         </td>
                       </tr>,
                     ];

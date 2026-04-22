@@ -148,6 +148,24 @@ export default async function TeamPage({
       })
     : [];
 
+  // All-time home stats: find all team records with the same name across seasons
+  const allTimeTeamIds = await prisma.team.findMany({
+    where: team.nameHe ? { nameHe: team.nameHe } : { nameEn: team.nameEn },
+    select: { id: true },
+  }).then((rows) => rows.map((r) => r.id));
+
+  const allTimeHomeGames = allTimeTeamIds.length
+    ? await prisma.game.findMany({
+        where: {
+          homeTeamId: { in: allTimeTeamIds },
+          status: 'COMPLETED',
+          homeScore: { not: null },
+          awayScore: { not: null },
+        },
+        select: { homeScore: true, awayScore: true },
+      })
+    : [];
+
   // Build lookup: playerId → sidelined entry
   const sidelinedByPlayerId = new Map<string, typeof sidelinedEntries[0]>();
   const sidelinedByApiId = new Map<number, typeof sidelinedEntries[0]>();
@@ -196,6 +214,25 @@ export default async function TeamPage({
   const nextGame = upcomingGames[0] || null;
   const lastGame = completedGames[0] || null;
   const recentGames = completedGames.slice(0, 5);
+
+  // Home record stats
+  const thisSeasonHomeGames = completedGames.filter(
+    (g) => g.homeTeamId === team.id && g.homeScore !== null && g.awayScore !== null
+  );
+  const homeSeasonStats = {
+    played: thisSeasonHomeGames.length,
+    wins: thisSeasonHomeGames.filter((g) => (g.homeScore ?? 0) > (g.awayScore ?? 0)).length,
+    draws: thisSeasonHomeGames.filter((g) => g.homeScore === g.awayScore).length,
+    losses: thisSeasonHomeGames.filter((g) => (g.homeScore ?? 0) < (g.awayScore ?? 0)).length,
+    goalsFor: thisSeasonHomeGames.reduce((s, g) => s + (g.homeScore ?? 0), 0),
+    goalsAgainst: thisSeasonHomeGames.reduce((s, g) => s + (g.awayScore ?? 0), 0),
+  };
+  const allTimeHomeStats = {
+    played: allTimeHomeGames.length,
+    wins: allTimeHomeGames.filter((g) => (g.homeScore ?? 0) > (g.awayScore ?? 0)).length,
+    draws: allTimeHomeGames.filter((g) => g.homeScore === g.awayScore).length,
+    losses: allTimeHomeGames.filter((g) => (g.homeScore ?? 0) < (g.awayScore ?? 0)).length,
+  };
 
   const topScorers = team.players
     .map((player) => {
@@ -354,6 +391,107 @@ export default async function TeamPage({
                   ))}
                 </tbody>
               </table>
+            </div>
+          </Panel>
+        </section>
+        ) : null}
+
+        {(team.venue || team.stadiumHe) && (displayMode !== 'premier' || selectedTab === 'overview') ? (
+        <section>
+          <Panel title={`אצטדיון ${team.venue?.nameHe || team.stadiumHe || team.venue?.nameEn || ''}`}>
+            <div className="grid gap-5 xl:grid-cols-[280px_1fr]">
+              {/* Pitch diagram */}
+              <div className="overflow-hidden rounded-xl bg-emerald-700" style={{ minHeight: 140 }}>
+                <svg viewBox="0 0 420 270" className="w-full h-full" fill="none">
+                  <rect width="420" height="270" fill="#2d8a4e"/>
+                  <rect x="25" y="18" width="370" height="234" stroke="white" strokeWidth="2.5" fill="none" opacity="0.75"/>
+                  <line x1="210" y1="18" x2="210" y2="252" stroke="white" strokeWidth="2" opacity="0.75"/>
+                  <circle cx="210" cy="135" r="44" stroke="white" strokeWidth="2" fill="none" opacity="0.75"/>
+                  <circle cx="210" cy="135" r="3" fill="white" opacity="0.75"/>
+                  <rect x="25" y="78" width="82" height="114" stroke="white" strokeWidth="2" fill="none" opacity="0.75"/>
+                  <rect x="25" y="103" width="35" height="64" stroke="white" strokeWidth="2" fill="none" opacity="0.75"/>
+                  <rect x="313" y="78" width="82" height="114" stroke="white" strokeWidth="2" fill="none" opacity="0.75"/>
+                  <rect x="360" y="103" width="35" height="64" stroke="white" strokeWidth="2" fill="none" opacity="0.75"/>
+                  <path d="M25 18 Q32 18 32 25" stroke="white" strokeWidth="1.5" fill="none" opacity="0.5"/>
+                  <path d="M395 18 Q388 18 388 25" stroke="white" strokeWidth="1.5" fill="none" opacity="0.5"/>
+                  <path d="M25 252 Q32 252 32 245" stroke="white" strokeWidth="1.5" fill="none" opacity="0.5"/>
+                  <path d="M395 252 Q388 252 388 245" stroke="white" strokeWidth="1.5" fill="none" opacity="0.5"/>
+                </svg>
+              </div>
+
+              <div className="space-y-4">
+                {/* Venue details */}
+                {(team.venue?.capacity || team.venue?.cityHe || team.cityHe || team.venue?.surface) ? (
+                  <div className="flex flex-wrap gap-2">
+                    {team.venue?.capacity ? (
+                      <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2 text-center">
+                        <div className="text-[10px] text-stone-400">קיבולת</div>
+                        <div className="text-sm font-black text-stone-900">{team.venue.capacity.toLocaleString('he-IL')}</div>
+                      </div>
+                    ) : null}
+                    {(team.venue?.cityHe || team.cityHe || team.venue?.cityEn) ? (
+                      <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2 text-center">
+                        <div className="text-[10px] text-stone-400">עיר</div>
+                        <div className="text-sm font-black text-stone-900">{team.venue?.cityHe || team.cityHe || team.venue?.cityEn}</div>
+                      </div>
+                    ) : null}
+                    {team.venue?.surface ? (
+                      <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2 text-center">
+                        <div className="text-[10px] text-stone-400">משטח</div>
+                        <div className="text-sm font-black text-stone-900">{team.venue.surface}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* This season home record */}
+                {homeSeasonStats.played > 0 ? (
+                  <div>
+                    <div className="mb-2 text-xs font-bold text-stone-400 uppercase tracking-wider">ביתי עונה זו</div>
+                    <div className="flex flex-wrap gap-2">
+                      <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-center min-w-[52px]">
+                        <div className="text-[10px] text-stone-400">משחקים</div>
+                        <div className="text-base font-black text-stone-900">{homeSeasonStats.played}</div>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center min-w-[52px]">
+                        <div className="text-[10px] text-emerald-600">נצחונות</div>
+                        <div className="text-base font-black text-emerald-800">{homeSeasonStats.wins}</div>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-center min-w-[52px]">
+                        <div className="text-[10px] text-amber-600">תיקו</div>
+                        <div className="text-base font-black text-amber-800">{homeSeasonStats.draws}</div>
+                      </div>
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-center min-w-[52px]">
+                        <div className="text-[10px] text-red-600">הפסדים</div>
+                        <div className="text-base font-black text-red-800">{homeSeasonStats.losses}</div>
+                      </div>
+                      <div className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-center min-w-[64px]">
+                        <div className="text-[10px] text-stone-400">שערים</div>
+                        <div className="text-base font-black text-stone-900">{homeSeasonStats.goalsFor}:{homeSeasonStats.goalsAgainst}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* All-time home win % */}
+                {allTimeHomeStats.played > 0 ? (
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">ביתי כל הזמנים</span>
+                      <span className="text-sm font-black text-stone-900">
+                        {Math.round((allTimeHomeStats.wins / allTimeHomeStats.played) * 100)}% נצחונות
+                      </span>
+                    </div>
+                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-stone-100">
+                      <div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.round((allTimeHomeStats.wins / allTimeHomeStats.played) * 100)}%` }} />
+                      <div className="h-full bg-amber-400 transition-all" style={{ width: `${Math.round((allTimeHomeStats.draws / allTimeHomeStats.played) * 100)}%` }} />
+                    </div>
+                    <div className="mt-1 text-[11px] text-stone-400">
+                      {allTimeHomeStats.played} משחקים · {allTimeHomeStats.wins} נ · {allTimeHomeStats.draws} ת · {allTimeHomeStats.losses} ה
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </Panel>
         </section>
