@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import AdminCollapsible from '@/components/AdminCollapsible';
+import FootyStatsFetchForm from '@/components/FootyStatsFetchForm';
 import AdminLiveCountriesClient from '@/components/AdminLiveCountriesClient';
 import AdminHomepageLiveSettingsClient from '@/components/AdminHomepageLiveSettingsClient';
 import AdminPlayerDisplaySettingsClient from '@/components/AdminPlayerDisplaySettingsClient';
@@ -529,15 +530,27 @@ export default async function AdminPage({
 
         {/* Data tab (default) */}
         {adminTab === 'data' ? (
-          <AdminManagerClient
-            teams={groupedTeams}
-            fetchTeams={teams}
-            fetchJobs={fetchJobs}
-            seasons={seasons}
-            selectedSeasonId={selectedSeason?.id || null}
-            rawData={rawData}
-            coverageRows={coverageRows}
-          />
+          <div className="space-y-4">
+            <section className="rounded-[20px] border border-stone-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center gap-3">
+                <h2 className="text-base font-black text-stone-900">FootyStats — סנכרון נתונים</h2>
+                <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">מחליף API-Football</span>
+              </div>
+              <p className="mb-4 text-xs text-stone-500">
+                xG, יחסים, שחקנים + אירועי משחק (2025/26). נתוני שחקנים ומשחקים לכל עונות 2013–2025.
+              </p>
+              <FootyStatsFetchForm />
+            </section>
+            <AdminManagerClient
+              teams={groupedTeams}
+              fetchTeams={teams}
+              fetchJobs={fetchJobs}
+              seasons={seasons}
+              selectedSeasonId={selectedSeason?.id || null}
+              rawData={rawData}
+              coverageRows={coverageRows}
+            />
+          </div>
         ) : null}
       </div>
     </div>

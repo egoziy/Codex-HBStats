@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/auth';
 import AdminSetupClient from '@/components/AdminSetupClient';
+import FootyStatsFetchForm from '@/components/FootyStatsFetchForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,10 +74,25 @@ export default async function AdminSetupPage() {
 
         <AdminSetupClient />
 
+        {/* FootyStats Integration */}
+        <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center gap-3">
+            <h2 className="text-lg font-black text-stone-900">FootyStats — סנכרון נתונים</h2>
+            <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              מחליף API-Football
+            </span>
+          </div>
+          <p className="mb-4 text-sm text-stone-500">
+            xG, יחסים, סטטיסטיקות שחקנים + אירועי משחק לעונת 2025/26 (ליגת העל). נתוני שחקנים ומשחקים זמינים לכל עונות 2013–2025.
+          </p>
+          <FootyStatsFetchForm />
+        </section>
+
         <section className="rounded-[24px] border border-stone-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-black text-stone-900">הערות חשובות</h2>
           <ul className="mt-3 space-y-2 text-sm text-stone-600">
-            <li>• <strong>API-Football</strong> — צריך למשוך בנפרד דרך דף &quot;נתונים ומשיכה&quot; באדמין (לעונות 2016+).</li>
+            <li>• <strong>FootyStats</strong> — דורש <code>FOOTYSTATS_API_KEY</code> ב-.env. מחליף את API-Football לנתוני ליגת העל.</li>
+            <li>• <strong>API-Football</strong> — עדיין נתמך דרך דף &quot;נתונים ומשיכה&quot; באדמין (לעונות 2016+).</li>
             <li>• <strong>Puppeteer</strong> — מצבים full ו-merge-only דורשים Google Chrome מותקן על השרת.</li>
             <li>• <strong>זמנים</strong> — תלויים במהירות האינטרנט ועומס השרתים החיצוניים.</li>
             <li>• <strong>בטיחות</strong> — הייבוא לא מוחק נתונים קיימים. רק ממלא חסרים.</li>

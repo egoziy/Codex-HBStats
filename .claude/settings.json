@@ -126,7 +126,13 @@
       "Bash(PGPASSWORD=postgres \"/c/Program Files/PostgreSQL/16/bin/pg_dump.exe\" -h 127.0.0.1 -p 5432 -U postgres -d hbs --no-owner --no-privileges --clean --if-exists -f \"c:/Users/popch/Downloads/Claude/HBS-Stats/HBS-Stats-Codex-HBStats/hbs_backup_20260411.sql\")",
       "Bash(PGPASSWORD=postgres \"/c/Program Files/PostgreSQL/16/bin/pg_dump.exe\" -h 127.0.0.1 -p 5432 -U postgres -d hbs --no-owner --no-privileges --clean --if-exists -f \"c:/Users/popch/Downloads/hbs_backup_20260411.sql\")",
       "Read(//c/Users/popch/Downloads/**)",
-      "Bash('/c/Program Files/PostgreSQL/16/bin/psql.exe' -h 127.0.0.1 -p 5432 -U postgres -d hbs -c ':*)"
+      "Bash('/c/Program Files/PostgreSQL/16/bin/psql.exe' -h 127.0.0.1 -p 5432 -U postgres -d hbs -c ':*)",
+      "Bash(flutter analyze *)",
+      "Bash(xcrun simctl list *)",
+      "WebFetch(domain:footystats.org)",
+      "WebFetch(domain:api.football-data-api.com)",
+      "Bash(curl -s -o /dev/null -w * http://localhost:*)",
+      "Bash(curl -s \"https://api.football-data-api.com/*)"
     ],
     "additionalDirectories": [
       "\\tmp"

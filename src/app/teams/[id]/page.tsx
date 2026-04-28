@@ -985,7 +985,7 @@ function buildRefereeSummaries(
     referee: { id: string; nameEn: string; nameHe: string | null } | null;
     events: Array<{
       teamId: string | null;
-      type: 'GOAL' | 'ASSIST' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION_IN' | 'SUBSTITUTION_OUT' | 'OWN_GOAL' | 'PENALTY_GOAL' | 'PENALTY_MISSED';
+      type: 'GOAL' | 'ASSIST' | 'YELLOW_CARD' | 'RED_CARD' | 'YELLOW_RED_CARD' | 'SUBSTITUTION_IN' | 'SUBSTITUTION_OUT' | 'OWN_GOAL' | 'PENALTY_GOAL' | 'PENALTY_MISSED';
     }>;
   }>,
   teamId: string

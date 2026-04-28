@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { apiFootballFetch, isApiFootballRateLimitError } from '@/lib/api-football';
 import { getAllowedLiveCountryLabels } from '@/lib/live-competition-settings';
+import { fsGetTodayMatches } from '@/lib/footystats';
 
 export type HomepageLiveEvent = {
   id: string;
@@ -874,4 +875,146 @@ export async function getHomepageLiveSnapshots(
   });
 
   return sortLiveSnapshots(normalizedSnapshots.map(mapSnapshotToHomepage)).slice(0, limit);
+}
+
+// ── FootyStats live feed ──────────────────────────────────────────────────────
+// Uses /today-matches as a live score source. Stored with feedScope='FOOTYSTATS_LIVE'.
+// The apiFootballFixtureId column stores the FootyStats match ID (different ID space,
+// distinguished by feedScope so no collision with api-football snapshots).
+
+const FOOTYSTATS_LIVE_STALENESS_SECONDS = 60;
+
+const FS_LIVE_STATUS_SHORT: Record<string, string> = {
+  live: '1H',
+  complete: 'FT',
+  incomplete: 'NS',
+  suspended: 'SUSP',
+  canceled: 'CANC',
+  'in progress': 'LIVE',
+};
+
+export async function refreshFootyStatsLiveSnapshots(): Promise<void> {
+  if (!process.env.FOOTYSTATS_API_KEY) return;
+
+  try {
+    const todayMatches = await fsGetTodayMatches();
+
+    // Delete stale snapshots no longer in today's feed
+    const activeIds = todayMatches.map((m) => m.id);
+    if (activeIds.length) {
+      await prisma.liveGameSnapshot.deleteMany({
+        where: { feedScope: 'FOOTYSTATS_LIVE', apiFootballFixtureId: { notIn: activeIds } },
+      });
+    } else {
+      await prisma.liveGameSnapshot.deleteMany({ where: { feedScope: 'FOOTYSTATS_LIVE' } });
+    }
+
+    // Build a map from footyStats team ID → DB team record
+    const fsTeamIds = Array.from(new Set(todayMatches.flatMap((m) => [m.homeID, m.awayID])));
+    const dbTeams = fsTeamIds.length
+      ? await prisma.team.findMany({
+          where: { footyStatsId: { in: fsTeamIds } },
+          select: { footyStatsId: true, nameHe: true, nameEn: true },
+          orderBy: { season: { year: 'desc' } },
+        })
+      : [];
+
+    const teamByFsId = new Map<number, { nameHe: string; nameEn: string }>();
+    for (const t of dbTeams) {
+      if (t.footyStatsId && !teamByFsId.has(t.footyStatsId)) {
+        teamByFsId.set(t.footyStatsId, t);
+      }
+    }
+
+    for (const m of todayMatches) {
+      const homeTeam = teamByFsId.get(m.homeID);
+      const awayTeam = teamByFsId.get(m.awayID);
+
+      await prisma.liveGameSnapshot.upsert({
+        where: {
+          apiFootballFixtureId_feedScope: {
+            apiFootballFixtureId: m.id,
+            feedScope: 'FOOTYSTATS_LIVE',
+          },
+        },
+        update: {
+          homeScore: m.homeGoalCount ?? null,
+          awayScore: m.awayGoalCount ?? null,
+          statusShort: FS_LIVE_STATUS_SHORT[m.status?.toLowerCase()] || m.status || null,
+          statusLong: m.status || null,
+          snapshotAt: new Date(),
+          homeTeamNameHe: homeTeam?.nameHe || m.home_name,
+          homeTeamNameEn: homeTeam?.nameEn || m.home_name,
+          awayTeamNameHe: awayTeam?.nameHe || m.away_name,
+          awayTeamNameEn: awayTeam?.nameEn || m.away_name,
+        },
+        create: {
+          apiFootballFixtureId: m.id,
+          feedScope: 'FOOTYSTATS_LIVE',
+          leagueNameEn: 'Israeli Premier League',
+          leagueNameHe: 'ליגת העל',
+          statusShort: FS_LIVE_STATUS_SHORT[m.status?.toLowerCase()] || m.status || null,
+          statusLong: m.status || null,
+          snapshotAt: new Date(),
+          fixtureDate: new Date(m.date_unix * 1000),
+          homeTeamApiFootballId: null,
+          homeTeamNameHe: homeTeam?.nameHe || m.home_name,
+          homeTeamNameEn: homeTeam?.nameEn || m.home_name,
+          awayTeamApiFootballId: null,
+          awayTeamNameHe: awayTeam?.nameHe || m.away_name,
+          awayTeamNameEn: awayTeam?.nameEn || m.away_name,
+          homeScore: m.homeGoalCount ?? null,
+          awayScore: m.awayGoalCount ?? null,
+          eventCount: 0,
+          rawJson: m as any,
+        },
+      });
+    }
+  } catch (err) {
+    console.error('FootyStats live refresh failed:', err);
+  }
+}
+
+export async function getFootyStatsLiveSnapshots(limit = 10): Promise<HomepageLiveSnapshot[]> {
+  const now = new Date();
+  const staleThreshold = new Date(now.getTime() - FOOTYSTATS_LIVE_STALENESS_SECONDS * 1000);
+
+  const existing = await prisma.liveGameSnapshot.findFirst({
+    where: { feedScope: 'FOOTYSTATS_LIVE' },
+    orderBy: { snapshotAt: 'desc' },
+    select: { snapshotAt: true },
+  });
+
+  if (!existing || existing.snapshotAt < staleThreshold) {
+    await refreshFootyStatsLiveSnapshots();
+  }
+
+  const snapshots = await prisma.liveGameSnapshot.findMany({
+    where: { feedScope: 'FOOTYSTATS_LIVE' },
+    orderBy: { snapshotAt: 'desc' },
+    take: limit,
+  });
+
+  return snapshots.map((snap) => ({
+    id: snap.id,
+    fixtureId: snap.apiFootballFixtureId,
+    leagueApiFootballId: null,
+    homeTeamApiFootballId: null,
+    awayTeamApiFootballId: null,
+    countryLabel: 'ישראל',
+    countryFlagUrl: null,
+    leagueLabel: snap.leagueNameHe || 'ליגת העל',
+    roundLabel: snap.roundHe || snap.roundEn || '',
+    statusLabel: snap.statusLong || snap.statusShort || '',
+    minuteLabel: snap.elapsed ? `${snap.elapsed}′` : '',
+    homeTeamName: snap.homeTeamNameHe || snap.homeTeamNameEn || '',
+    awayTeamName: snap.awayTeamNameHe || snap.awayTeamNameEn || '',
+    scoreLabel:
+      snap.homeScore !== null && snap.awayScore !== null
+        ? `${snap.homeScore} - ${snap.awayScore}`
+        : 'vs',
+    eventCount: snap.eventCount,
+    gameHref: snap.gameId ? `/games/${snap.gameId}` : '#',
+    events: [],
+  }));
 }
