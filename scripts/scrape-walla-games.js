@@ -12,7 +12,9 @@ const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const CHROME_PATH = path.join('C:', 'Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe');
+const CHROME_PATH = process.env.CHROME_PATH
+  || (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+                                    : path.join('C:', 'Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'));
 const SOURCE = 'walla';
 
 // Team IDs per season from Walla (team_id/league_id)

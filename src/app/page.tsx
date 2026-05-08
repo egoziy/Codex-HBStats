@@ -464,9 +464,13 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     yellowsByPlayer.get(ev.playerId)!.push(ev);
   }
   const yellowSuspended: Array<{ id: string; name: string; team: string; reason: string }> = [];
+  // Players approaching a suspension: their next yellow triggers it (count is one of 4 / 8 / 12).
+  const yellowAtRisk: Array<{ id: string; name: string; team: string; count: number; nextMilestone: number }> = [];
+
   for (const [, yellows] of yellowsByPlayer) {
     const sorted = yellows.slice().sort((a, b) => +new Date(a.dateTime ?? 0) - +new Date(b.dateTime ?? 0));
-    for (const milestoneIdx of [4, 8]) { // 5th = index 4, 9th = index 8
+    // Suspension at 5th, 9th, 13th yellow (zero-indexed: 4, 8, 12)
+    for (const milestoneIdx of [4, 8, 12]) {
       if (sorted.length > milestoneIdx) {
         const milestone = sorted[milestoneIdx];
         if (extractRoundNum(milestone.roundNameEn) === suspensionRoundNum - 1) {
@@ -480,7 +484,22 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
         }
       }
     }
+    // At-risk: count is currently 4, 8, or 12 — next yellow → suspension
+    const last = sorted[sorted.length - 1];
+    if (!last) continue;
+    if ([4, 8, 12].includes(sorted.length)) {
+      yellowAtRisk.push({
+        id: last.playerId,
+        name: last.nameHe,
+        team: last.teamNameHe || '',
+        count: sorted.length,
+        nextMilestone: sorted.length + 1,
+      });
+    }
   }
+
+  // Sort at-risk by count desc (12 > 8 > 4) then by name
+  yellowAtRisk.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'he'));
 
   const suspendedMap = new Map<string, { id: string; name: string; team: string; reason: string }>();
   for (const s of [...redCardSuspended, ...yellowSuspended]) {
@@ -634,6 +653,23 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
                       <div>
                         <div className="text-sm font-black text-red-900">{player.name}</div>
                         <div className="text-[11px] text-red-700">{player.team} · {player.reason}</div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {yellowAtRisk.length > 0 && (
+              <Card title="זהירות מהרחקה" actionHref="/statistics" actionLabel="לסטטיסטיקות">
+                <div className="mb-2 text-[11px] text-amber-800">שחקנים שכרטיס צהוב נוסף יביא להרחקה אוטומטית</div>
+                <div className="space-y-2">
+                  {yellowAtRisk.map((player) => (
+                    <Link key={player.id} href={`/players/${player.id}`} className="flex items-center gap-3 rounded-xl border border-amber-100 bg-amber-50 p-3 transition hover:border-amber-300">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-black text-white">{player.count}</span>
+                      <div>
+                        <div className="text-sm font-black text-amber-900">{player.name}</div>
+                        <div className="text-[11px] text-amber-700">{player.team} · {player.count} צהובים — צהוב נוסף = הרחקה</div>
                       </div>
                     </Link>
                   ))}

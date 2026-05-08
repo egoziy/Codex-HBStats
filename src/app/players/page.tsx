@@ -14,11 +14,15 @@ function buildPlayersFilterFields({
   seasons,
   allTeams,
   competitions,
+  competitionTeamIds,
+  teamCompetitionsMap,
 }: {
   displayMode: string;
   seasons: Array<{ id: string; name: string }>;
   allTeams: Array<{ id: string; seasonId: string; nameHe: string | null; nameEn: string }>;
   competitions: Array<{ id: string; nameHe: string | null; nameEn: string }>;
+  competitionTeamIds: Set<string> | null;
+  teamCompetitionsMap: Map<string, Set<string>>;
 }) {
   const selectClass =
     displayMode === 'premier'
@@ -44,11 +48,16 @@ function buildPlayersFilterFields({
       name: 'teamId',
       includeAllOption: true,
       allLabel: 'כל הקבוצות',
-      options: allTeams.map((team) => ({
-        value: team.id,
-        label: team.nameHe || team.nameEn,
-        meta: { season: [team.seasonId] },
-      })),
+      options: allTeams
+        .filter((team) => !competitionTeamIds || competitionTeamIds.size === 0 || competitionTeamIds.has(team.id))
+        .map((team) => ({
+          value: team.id,
+          label: team.nameHe || team.nameEn,
+          meta: {
+            season: [team.seasonId],
+            competitionId: Array.from(teamCompetitionsMap.get(team.id) || []),
+          },
+        })),
       className: selectClass,
     },
   ];
@@ -73,6 +82,23 @@ export default async function PlayersPage({
         orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
       })
     : [];
+
+  // Build a map of team → list of competitionIds it has games in (any season)
+  // Used for client-side filtering so the dropdown updates immediately when the league dropdown changes.
+  const teamCompetitionsMap = new Map<string, Set<string>>();
+  if (allTeams.length) {
+    const allGames = await prisma.game.findMany({
+      where: { competitionId: { not: null } },
+      select: { homeTeamId: true, awayTeamId: true, competitionId: true },
+    });
+    for (const g of allGames) {
+      if (!g.competitionId) continue;
+      for (const tid of [g.homeTeamId, g.awayTeamId]) {
+        if (!teamCompetitionsMap.has(tid)) teamCompetitionsMap.set(tid, new Set());
+        teamCompetitionsMap.get(tid)!.add(g.competitionId);
+      }
+    }
+  }
   const competitions = await prisma.competition.findMany({
     select: { id: true, nameHe: true, nameEn: true },
     orderBy: { nameHe: 'asc' },
@@ -107,6 +133,8 @@ export default async function PlayersPage({
     seasons,
     allTeams,
     competitions,
+    competitionTeamIds,
+    teamCompetitionsMap,
   });
 
   const teamFilter = selectedTeamId !== 'all'
@@ -299,6 +327,8 @@ export default async function PlayersPage({
         selectedCompetitionId={selectedCompetitionId}
         teams={teams}
         allTeams={allTeams}
+        competitionTeamIds={competitionTeamIds}
+        teamCompetitionsMap={teamCompetitionsMap}
         selectedTeamId={selectedTeamId}
         visiblePlayers={visiblePlayers}
         mainPlayers={mainPlayers}
@@ -418,6 +448,8 @@ function PremierPlayersView({
   selectedCompetitionId,
   teams,
   allTeams,
+  competitionTeamIds,
+  teamCompetitionsMap,
   selectedTeamId,
   visiblePlayers,
   mainPlayers,
@@ -430,6 +462,8 @@ function PremierPlayersView({
   selectedCompetitionId: string;
   teams: Array<{ id: string; nameHe: string | null; nameEn: string }>;
   allTeams: Array<{ id: string; seasonId: string; nameHe: string | null; nameEn: string }>;
+  competitionTeamIds: Set<string> | null;
+  teamCompetitionsMap: Map<string, Set<string>>;
   selectedTeamId: string;
   visiblePlayers: any[];
   mainPlayers: any[];
@@ -440,6 +474,8 @@ function PremierPlayersView({
     seasons,
     allTeams,
     competitions,
+    competitionTeamIds,
+    teamCompetitionsMap,
   });
   const activePlayers = visiblePlayers.filter((player) => player.stat.gamesPlayed > 0 || player.stat.minutesPlayed > 0);
   const topContributors = [...activePlayers]

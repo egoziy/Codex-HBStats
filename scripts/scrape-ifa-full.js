@@ -17,14 +17,16 @@
  *   node scripts/scrape-ifa-full.js --mode stats --season 14 --league 40
  */
 
-const { execSync } = require('child_process');
 const cheerio = require('cheerio');
+const puppeteer = require('puppeteer-core');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 const SOURCE = 'footballOrgIl';
 const BASE = 'https://www.football.org.il';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const CHROME_PATH = process.env.CHROME_PATH
+  || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 // ── CLI args ──────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -59,23 +61,61 @@ function cleanName(str) {
   return str.replace(/^(קבוצה|שם השחקן|שם הקבוצה|מיקום|תאריך|משחק|מגרש|שעה|תוצאה)\s*/g, '').trim();
 }
 
-// ── HTTP helpers (curl-based to bypass Cloudflare TLS fingerprinting) ──
-function curlGet(url) {
-  const escaped = url.replace(/"/g, '\\"');
-  const cmd = `curl -s --max-time 20 -H "User-Agent: ${UA}" -H "Accept-Language: he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7" "${escaped}"`;
-  return execSync(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }).toString('utf-8');
+// ── HTTP helpers (Puppeteer-based to bypass Cloudflare WAF) ──
+let _browser = null;
+let _page = null;
+
+async function ensureBrowser() {
+  if (_browser && _page) return;
+  _browser = await puppeteer.launch({
+    executablePath: CHROME_PATH,
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
+  });
+  _page = await _browser.newPage();
+  await _page.setUserAgent(UA);
+  await _page.setExtraHTTPHeaders({ 'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7' });
+  // Warm-up: visit homepage so Cloudflare cookies are set on the page context.
+  try { await _page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 }); } catch {}
 }
 
-function curlPost(url, body, contentType) {
-  const escaped = url.replace(/"/g, '\\"');
-  const bodyEscaped = body.replace(/"/g, '\\"');
-  const cmd = `curl -s --max-time 20 -X POST -H "User-Agent: ${UA}" -H "Content-Type: ${contentType}" -H "X-Requested-With: XMLHttpRequest" -H "Accept-Language: he-IL,he;q=0.9" -d "${bodyEscaped}" "${escaped}"`;
-  return execSync(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }).toString('utf-8');
+async function closeBrowser() {
+  try { if (_browser) await _browser.close(); } catch {}
+  _browser = null;
+  _page = null;
+}
+
+async function curlGet(url) {
+  await ensureBrowser();
+  return await _page.evaluate(async (u) => {
+    const r = await fetch(u, {
+      headers: { 'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7' },
+      credentials: 'include',
+    });
+    return await r.text();
+  }, url);
+}
+
+async function curlPost(url, body, contentType) {
+  await ensureBrowser();
+  return await _page.evaluate(async (u, b, ct) => {
+    const r = await fetch(u, {
+      method: 'POST',
+      headers: {
+        'Content-Type': ct,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept-Language': 'he-IL,he;q=0.9',
+      },
+      body: b,
+      credentials: 'include',
+    });
+    return await r.text();
+  }, url, body, contentType);
 }
 
 async function fetchPage(path) {
   const url = path.startsWith('http') ? path : `${BASE}${path}`;
-  const html = curlGet(url);
+  const html = await curlGet(url);
   if (!html || html.length < 100) throw new Error('Empty response');
   return cheerio.load(html);
 }
@@ -93,7 +133,7 @@ async function fetchAjax(method, params) {
   // Try JSON POST (ASP.NET ScriptService pattern)
   try {
     const body = JSON.stringify(params);
-    const data = curlPost(url, body, 'application/json; charset=utf-8');
+    const data = await curlPost(url, body, 'application/json; charset=utf-8');
     const parsed = JSON.parse(data);
     const d = parsed?.d || parsed;
     if (d?.HtmlData) return cheerio.load(d.HtmlData);
@@ -103,7 +143,7 @@ async function fetchAjax(method, params) {
   // Fallback: GET with query params → XML response
   try {
     const qs = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
-    const data = curlGet(`${url}?${qs}`);
+    const data = await curlGet(`${url}?${qs}`);
     const m = data.match(/<HtmlData>([\s\S]*)<\/HtmlData>/);
     if (m) return cheerio.load(unescapeHtml(m[1]));
   } catch (e) { /* fall through */ }
@@ -136,11 +176,12 @@ async function scrapeStandings(leagueId, sid) {
   }
 
   const teams = [];
-  $('a.table_row.link_url').each((_, el) => {
-    const $row = $(el);
+
+  // Build a parsed-row from a single $row element. Returns null on failure.
+  function parseRow($row, groupNameHe) {
     const href = $row.attr('href') || '';
     const teamIdMatch = href.match(/team_id=(\d+)/);
-    if (!teamIdMatch) return;
+    if (!teamIdMatch) return null;
 
     const cols = $row.find('.table_col');
     const pos = parseInt(cols.filter('.place').text().trim(), 10);
@@ -148,7 +189,6 @@ async function scrapeStandings(leagueId, sid) {
     const name = cleanName($nameCol.text().trim());
     const goalsText = cols.filter('.goals-col').text().trim();
 
-    // Parse remaining cols by position (after pos + name)
     const numCols = [];
     cols.each((i, c) => {
       if ($(c).hasClass('place') || $(c).hasClass('team_name') || $(c).hasClass('goals-col')) return;
@@ -158,22 +198,90 @@ async function scrapeStandings(leagueId, sid) {
       if (!isNaN(n)) numCols.push(n);
     });
 
-    // Goals format: "against-for" (e.g., "30-78")
     let goalsFor = 0, goalsAgainst = 0;
     const gm = goalsText.match(/(\d+)\s*-\s*(\d+)/);
     if (gm) { goalsAgainst = +gm[1]; goalsFor = +gm[2]; }
 
-    // numCols should be: played, wins, draws, losses, points
     const [played = 0, wins = 0, draws = 0, losses = 0, points = 0] = numCols;
 
-    teams.push({
-      pos: pos || teams.length + 1,
+    return {
+      pos,
       name: name || 'Unknown',
       teamSourceId: teamIdMatch[1],
       played, wins, draws, losses,
       goalsFor, goalsAgainst, points,
+      groupNameHe,
+    };
+  }
+
+  // Walk playoff sections first — each <section class="playoff-container"> has its own title.
+  $('section.playoff-container').each((_, sec) => {
+    const $sec = $(sec);
+    const groupNameHe = $sec.find('h3.title .playoff-title-inner').first().text().trim() ||
+                        $sec.find('h3.title').first().text().trim() ||
+                        null;
+    $sec.find('a.table_row.link_url').each((__, el) => {
+      const row = parseRow($(el), groupNameHe);
+      if (row) teams.push(row);
     });
   });
+
+  // Fallback: rows outside any playoff-container (regular season, no split)
+  if (!teams.length) {
+    $('a.table_row.link_url').each((_, el) => {
+      const row = parseRow($(el), null);
+      if (row) teams.push(row);
+    });
+  }
+
+  // Re-sequence positions if missing (per group)
+  let seq = 0;
+  for (const t of teams) {
+    seq++;
+    if (!t.pos) t.pos = seq;
+  }
+
+  // Parse point adjustments from .comment notes
+  // Format: "ל<TEAM> הופחת(ו) <N> נקוד(ה|ות)"
+  const adjustments = new Map(); // teamNameHe → { points, note }
+  $('div.comment, .comment').each((_, el) => {
+    const txt = $(el).text().trim();
+    const m = txt.match(/^ל(.+?)\s+הופחת(?:ו|ה)?\s+(\d+)\s+נקוד/);
+    if (m) {
+      const teamNameHe = m[1].trim();
+      const points = parseInt(m[2], 10);
+      adjustments.set(teamNameHe, { points, note: txt });
+    }
+  });
+  // Try matching adjustments to rows via name fuzzy includes (IFA uses long names in notes,
+  // short forms in table, e.g., "הפועל תל אביב" in note vs "הפועל ת\"א" in table)
+  function nameMatchForAdj(teamShort, teamFull) {
+    // Expand common Israeli football abbreviations FIRST, then strip quotes/whitespace.
+    const expand = (s) => s
+      .replace(/ת["'״׳]א|תל-אביב/g, 'תל אביב')
+      .replace(/ב["'״׳]ש|באר-שבע/g, 'באר שבע')
+      .replace(/פ["'״׳]ת/g, 'פתח תקווה')
+      .replace(/ר["'״׳]ג/g, 'רמת גן')
+      .replace(/ק["'״׳]ש/g, 'קריית שמונה')
+      .replace(/כפ["'״׳]ס/g, 'כפר סבא')
+      .replace(/י-ם|ירושלם/g, 'ירושלים')
+      .replace(/ראשל["'״׳]צ/g, 'ראשון לציון')
+      .replace(/בית["'״׳]ר/g, 'ביתר')
+      .replace(/הפ['׳]/g, 'הפועל');
+    const norm = (s) => expand(s).replace(/['"`׳״]/g, '').replace(/\s+/g, ' ').trim();
+    const a = norm(teamShort), b = norm(teamFull);
+    if (a === b) return true;
+    return b.includes(a) || a.includes(b);
+  }
+  for (const t of teams) {
+    for (const [adjTeamName, adj] of adjustments) {
+      if (nameMatchForAdj(t.name, adjTeamName)) {
+        t.pointsAdjustment = -adj.points;
+        t.pointsAdjustmentNoteHe = adj.note;
+        break;
+      }
+    }
+  }
 
   if (!teams.length) {
     console.log('    → no standings data found');
@@ -194,8 +302,22 @@ async function scrapeStandings(leagueId, sid) {
     // Upsert ScrapedStanding
     await prisma.scrapedStanding.upsert({
       where: { source_season_leagueNameHe_position: { source: SOURCE, season: label, leagueNameHe: league, position: t.pos } },
-      update: { teamNameHe: t.name, played: t.played, wins: t.wins, draws: t.draws, losses: t.losses, goalsFor: t.goalsFor, goalsAgainst: t.goalsAgainst, points: t.points, scrapedAt: new Date() },
-      create: { source: SOURCE, season: label, leagueNameHe: league, position: t.pos, teamNameHe: t.name, played: t.played, wins: t.wins, draws: t.draws, losses: t.losses, goalsFor: t.goalsFor, goalsAgainst: t.goalsAgainst, points: t.points },
+      update: {
+        teamNameHe: t.name, played: t.played, wins: t.wins, draws: t.draws, losses: t.losses,
+        goalsFor: t.goalsFor, goalsAgainst: t.goalsAgainst, points: t.points,
+        groupNameHe: t.groupNameHe || null,
+        pointsAdjustment: t.pointsAdjustment || 0,
+        pointsAdjustmentNoteHe: t.pointsAdjustmentNoteHe || null,
+        scrapedAt: new Date(),
+      },
+      create: {
+        source: SOURCE, season: label, leagueNameHe: league, position: t.pos,
+        teamNameHe: t.name, played: t.played, wins: t.wins, draws: t.draws, losses: t.losses,
+        goalsFor: t.goalsFor, goalsAgainst: t.goalsAgainst, points: t.points,
+        groupNameHe: t.groupNameHe || null,
+        pointsAdjustment: t.pointsAdjustment || 0,
+        pointsAdjustmentNoteHe: t.pointsAdjustmentNoteHe || null,
+      },
     });
   }
 
@@ -592,7 +714,7 @@ async function scrapePlayerStats(teamSourceId, teamName, sid) {
     // Try form-encoded POST via curl
     try {
       const body = `team_id=${teamSourceId}&season_id=${sid}&language=-1&isFemale=false&orderBy=GamesCount&asc=false`;
-      const data = curlPost(`${BASE}/Components.asmx/TeamPlayersStatistics`, body, 'application/x-www-form-urlencoded');
+      const data = await curlPost(`${BASE}/Components.asmx/TeamPlayersStatistics`, body, 'application/x-www-form-urlencoded');
       const m = data.match(/<HtmlData>([\s\S]*)<\/HtmlData>/);
       if (m) $ = cheerio.load(unescapeHtml(m[1]));
       else {
@@ -829,12 +951,14 @@ async function main() {
   ]);
   console.log(`\n  DB totals (IFA): standings=${dbCounts[0]}, matches=${dbCounts[1]}, players=${dbCounts[2]}, events=${dbCounts[3]}, lineups=${dbCounts[4]}`);
 
+  await closeBrowser();
   await prisma.$disconnect();
   console.log('\nDone!');
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error('FATAL:', err);
-  prisma.$disconnect();
+  await closeBrowser();
+  await prisma.$disconnect();
   process.exit(1);
 });

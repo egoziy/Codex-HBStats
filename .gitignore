@@ -15,6 +15,11 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+env
+env.*
+
+# Local raw data archives (FootyStats / scraper dumps — too large for git)
+data/
 
 # Python
 .venv/

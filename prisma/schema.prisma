@@ -1125,23 +1125,26 @@ model ScrapedMatchLineup {
 }
 
 model ScrapedStanding {
-  id             String       @id @default(cuid())
-  source         String
-  season         String
-  leagueNameHe   String?
-  position       Int
-  teamNameHe     String
-  played         Int          @default(0)
-  wins           Int          @default(0)
-  draws          Int          @default(0)
-  losses         Int          @default(0)
-  goalsFor       Int          @default(0)
-  goalsAgainst   Int          @default(0)
-  goalDifference Int          @default(0)
-  points         Int          @default(0)
-  scrapedAt      DateTime     @default(now())
-  teamId         String?
-  team           ScrapedTeam? @relation(fields: [teamId], references: [id])
+  id                     String       @id @default(cuid())
+  source                 String
+  season                 String
+  leagueNameHe           String?
+  position               Int
+  teamNameHe             String
+  played                 Int          @default(0)
+  wins                   Int          @default(0)
+  draws                  Int          @default(0)
+  losses                 Int          @default(0)
+  goalsFor               Int          @default(0)
+  goalsAgainst           Int          @default(0)
+  goalDifference         Int          @default(0)
+  points                 Int          @default(0)
+  groupNameHe            String?
+  pointsAdjustment       Int          @default(0)
+  pointsAdjustmentNoteHe String?
+  scrapedAt              DateTime     @default(now())
+  teamId                 String?
+  team                   ScrapedTeam? @relation(fields: [teamId], references: [id])
 
   @@unique([source, season, leagueNameHe, position])
   @@index([source, season])
@@ -1306,4 +1309,89 @@ enum MediaAssetKind {
   PLAYER_PHOTO
   BANNER
   VENUE_PHOTO
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// FootyStats raw archive — one table per endpoint, raw JSON payloads.
+// ──────────────────────────────────────────────────────────────────────
+
+model FootyStatsRawLeagueList {
+  id        Int      @id @default(autoincrement())
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@map("footystats_raw_league_list")
+}
+
+model FootyStatsRawSeasonSummary {
+  id          Int      @id @default(autoincrement())
+  leagueKey   String
+  year        Int
+  seasonId    Int
+  payload     Json
+  fetchedAt   DateTime @default(now())
+
+  @@unique([leagueKey, year], name: "leagueKey_year_unique")
+  @@index([seasonId])
+  @@map("footystats_raw_season_summary")
+}
+
+model FootyStatsRawTeams {
+  id          Int      @id @default(autoincrement())
+  leagueKey   String
+  year        Int
+  seasonId    Int
+  payload     Json
+  fetchedAt   DateTime @default(now())
+
+  @@unique([leagueKey, year])
+  @@map("footystats_raw_teams")
+}
+
+model FootyStatsRawPlayers {
+  id          Int      @id @default(autoincrement())
+  leagueKey   String
+  year        Int
+  seasonId    Int
+  payload     Json
+  fetchedAt   DateTime @default(now())
+
+  @@unique([leagueKey, year])
+  @@map("footystats_raw_players")
+}
+
+model FootyStatsRawReferees {
+  id          Int      @id @default(autoincrement())
+  leagueKey   String
+  year        Int
+  seasonId    Int
+  payload     Json
+  fetchedAt   DateTime @default(now())
+
+  @@unique([leagueKey, year])
+  @@map("footystats_raw_referees")
+}
+
+model FootyStatsRawMatchList {
+  id          Int      @id @default(autoincrement())
+  leagueKey   String
+  year        Int
+  seasonId    Int
+  payload     Json
+  fetchedAt   DateTime @default(now())
+
+  @@unique([leagueKey, year])
+  @@map("footystats_raw_match_list")
+}
+
+model FootyStatsRawMatch {
+  matchId     Int      @id
+  leagueKey   String
+  year        Int
+  seasonId    Int
+  payload     Json
+  fetchedAt   DateTime @default(now())
+
+  @@index([leagueKey, year])
+  @@map("footystats_raw_match")
 }

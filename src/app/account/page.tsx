@@ -30,9 +30,15 @@ export default async function AccountPage() {
 
   const teams = latestSeason
     ? await prisma.team.findMany({
-        where: { seasonId: latestSeason.id, apiFootballId: { not: null } },
+        where: {
+          seasonId: latestSeason.id,
+          OR: [
+            { apiFootballId: { not: null } },
+            { footyStatsId: { not: null } },
+          ],
+        },
         orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
-        select: { apiFootballId: true, nameHe: true, nameEn: true },
+        select: { apiFootballId: true, footyStatsId: true, nameHe: true, nameEn: true },
       })
     : [];
 
@@ -49,7 +55,7 @@ export default async function AccountPage() {
         </section>
 
         <AccountPreferencesForm
-          teams={teams.map((t) => ({ apiFootballId: t.apiFootballId!, name: t.nameHe || t.nameEn || '' }))}
+          teams={teams.map((t) => ({ apiFootballId: t.apiFootballId ?? -t.footyStatsId!, name: t.nameHe || t.nameEn || '' }))}
           competitions={competitions.map((c) => ({ apiFootballId: c.apiFootballId!, name: c.nameHe || c.nameEn || '' }))}
           initialFavoriteTeamApiIds={storedUser?.favoriteTeamApiIds || []}
           initialFavoriteCompetitionApiIds={storedUser?.favoriteCompetitionApiIds || []}

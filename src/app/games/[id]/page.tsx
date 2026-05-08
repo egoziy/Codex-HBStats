@@ -361,7 +361,7 @@ function PremierGameView({
                   <PremierTeamBadge name={homeTeamName} logoUrl={game.homeTeam.logoUrl} align="right" />
                   <div className="text-center">
                     <div className="text-sm font-semibold text-white/80">{getCompetitionDisplayName(game.competition)}</div>
-                    <div className="mt-2 text-4xl font-black tracking-tight md:text-5xl">{getGameScoreDisplay(game)}</div>
+                    <div dir="ltr" className="mt-2 text-4xl font-black tracking-tight md:text-5xl">{getGameScoreDisplay({ ...game, homeScore: game.awayScore, awayScore: game.homeScore, homeScoreRegular: game.awayScoreRegular, awayScoreRegular: game.homeScoreRegular, homePenalty: game.awayPenalty, awayPenalty: game.homePenalty })}</div>
                     <div className="mt-2 text-sm text-white/80">
                       {new Intl.DateTimeFormat('he-IL', { dateStyle: 'medium', timeStyle: 'short' }).format(game.dateTime)}
                     </div>
@@ -373,7 +373,7 @@ function PremierGameView({
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs font-semibold">
                   <span className="rounded-full bg-white/12 px-3 py-1.5">שופט: {refereeName}</span>
-                  <span className="rounded-full bg-white/12 px-3 py-1.5">שערים: {eventSummary.homeGoals}-{eventSummary.awayGoals}</span>
+                  <span className="rounded-full bg-white/12 px-3 py-1.5">שערים: <span dir="ltr">{eventSummary.awayGoals}-{eventSummary.homeGoals}</span></span>
                   <span className="rounded-full bg-white/12 px-3 py-1.5">סטטוס: {formatGameStatus(game.status)}</span>
                 </div>
               </div>
@@ -461,7 +461,7 @@ function PremierGameView({
                 {summaryCards.map((card) => (
                   <div key={card.label} className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-semibold tracking-[0.18em] text-slate-500">{card.label}</div>
-                    <div className="mt-2 text-2xl font-black text-slate-900">{card.value}</div>
+                    <div dir="ltr" className="mt-2 text-2xl font-black text-slate-900 text-right">{card.value}</div>
                     {card.note ? <div className="mt-2 text-sm text-slate-600">{card.note}</div> : null}
                   </div>
                 ))}
@@ -1151,58 +1151,60 @@ function buildSummaryCards(
   const goalConversionHome = homeShotsOnTarget && homeShotsOnTarget > 0 ? Math.round((homeGoals / homeShotsOnTarget) * 100) : null;
   const goalConversionAway = awayShotsOnTarget && awayShotsOnTarget > 0 ? Math.round((awayGoals / awayShotsOnTarget) * 100) : null;
 
+  // Order: away-home so home value appears on the right (matching home team badge position in RTL layout).
+  // Container forces dir="ltr" — that locks LTR rendering, then "away / home" visually shows away on left, home on right.
   return [
     {
       label: 'תוצאה',
-      value: `${homeGoals}-${awayGoals}`,
+      value: `${awayGoals}-${homeGoals}`,
       delta: homeGoals === awayGoals ? 'תיקו' : homeGoals > awayGoals ? 'יתרון בית' : 'יתרון חוץ',
       note: 'מופק גם מאירועים אם תוצאת ה־API לא זמינה',
     },
     {
       label: 'דיוק בבעיטות',
-      value: `${formatPercent(shotAccuracyHome)} / ${formatPercent(shotAccuracyAway)}`,
+      value: `${formatPercent(shotAccuracyAway)} / ${formatPercent(shotAccuracyHome)}`,
       delta: 'בית / חוץ',
       note: 'אחוז הבעיטות למסגרת מתוך כלל הבעיטות',
     },
     {
       label: 'ניצול מצבים',
-      value: `${formatPercent(goalConversionHome)} / ${formatPercent(goalConversionAway)}`,
+      value: `${formatPercent(goalConversionAway)} / ${formatPercent(goalConversionHome)}`,
       delta: 'בית / חוץ',
       note: 'שערים חלקי בעיטות למסגרת',
     },
     {
       label: 'אחזקת כדור',
-      value: `${formatPercent(homePossession)} / ${formatPercent(awayPossession)}`,
+      value: `${formatPercent(awayPossession)} / ${formatPercent(homePossession)}`,
       delta: 'בית / חוץ',
       note: 'אחוזי שליטה במשחק',
     },
     {
       label: 'קרנות',
-      value: `${formatNumber(homeCorners)} / ${formatNumber(awayCorners)}`,
+      value: `${formatNumber(awayCorners)} / ${formatNumber(homeCorners)}`,
       delta: homeCorners !== null && awayCorners !== null ? diffLabel(homeCorners, awayCorners) : null,
       note: 'קרנות לטובת כל צד',
     },
     {
       label: 'עבירות',
-      value: `${formatNumber(homeFouls)} / ${formatNumber(awayFouls)}`,
+      value: `${formatNumber(awayFouls)} / ${formatNumber(homeFouls)}`,
       delta: homeFouls !== null && awayFouls !== null ? diffLabel(homeFouls, awayFouls) : null,
       note: 'עבירות שנרשמו במשחק',
     },
     {
       label: 'צהובים',
-      value: `${formatNumber(homeYellowCards)} / ${formatNumber(awayYellowCards)}`,
+      value: `${formatNumber(awayYellowCards)} / ${formatNumber(homeYellowCards)}`,
       delta: homeYellowCards !== null && awayYellowCards !== null ? diffLabel(homeYellowCards, awayYellowCards) : null,
       note: 'כולל נתון שמור או מחושב מהאירועים',
     },
     {
       label: 'אדומים',
-      value: `${formatNumber(homeRedCards)} / ${formatNumber(awayRedCards)}`,
+      value: `${formatNumber(awayRedCards)} / ${formatNumber(homeRedCards)}`,
       delta: homeRedCards !== null && awayRedCards !== null ? diffLabel(homeRedCards, awayRedCards) : null,
       note: 'כולל נתון שמור או מחושב מהאירועים',
     },
     {
       label: 'בעיטות למסגרת',
-      value: `${formatNumber(homeShotsOnTarget)} / ${formatNumber(awayShotsOnTarget)}`,
+      value: `${formatNumber(awayShotsOnTarget)} / ${formatNumber(homeShotsOnTarget)}`,
       delta: homeShotsOnTarget !== null && awayShotsOnTarget !== null ? diffLabel(homeShotsOnTarget, awayShotsOnTarget) : null,
       note: 'ניסיונות שהלכו למסגרת',
     },

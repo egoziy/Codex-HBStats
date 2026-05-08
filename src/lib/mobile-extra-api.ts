@@ -69,7 +69,7 @@ function normalizeIdArray(value: unknown) {
     new Set(
       value
         .map((item) => Number(item))
-        .filter((item) => Number.isInteger(item) && item > 0)
+        .filter((item) => Number.isInteger(item) && item !== 0)
     )
   );
 }

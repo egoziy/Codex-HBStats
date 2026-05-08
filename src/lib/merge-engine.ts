@@ -429,6 +429,11 @@ export async function previewStandingsMerge(
     const dbTeams = await prisma.team.findMany({ where: { seasonId }, select: { id: true, nameHe: true, nameEn: true } });
     const matchedTeam = dbTeams.find((t) => matchTeamName(scraped.teamNameHe, t.nameHe));
 
+    // IFA → DB field translation for playoff group
+    const groupNameEn = scraped.groupNameHe === 'פלייאוף עליון' ? 'Championship'
+      : scraped.groupNameHe === 'פלייאוף תחתון' ? 'Relegation'
+      : null;
+
     if (matchedTeam) {
       // Team exists — check standings
       const existing = await prisma.standing.findFirst({ where: { seasonId, teamId: matchedTeam.id } });
@@ -441,6 +446,16 @@ export async function previewStandingsMerge(
         if (existing.goalsFor === 0 && scraped.goalsFor > 0) fields.goalsFor = { old: 0, new: scraped.goalsFor };
         if (existing.goalsAgainst === 0 && scraped.goalsAgainst > 0) fields.goalsAgainst = { old: 0, new: scraped.goalsAgainst };
         if (existing.points === 0 && scraped.points > 0) fields.points = { old: 0, new: scraped.points };
+        // Always update playoff group + adjustments from IFA — these are authoritative
+        if (scraped.groupNameHe && existing.groupNameHe !== scraped.groupNameHe) {
+          fields.groupNameHe = { old: existing.groupNameHe, new: scraped.groupNameHe };
+          fields.groupNameEn = { old: existing.groupNameEn, new: groupNameEn };
+        }
+        if (scraped.pointsAdjustment !== 0 && existing.pointsAdjustment !== scraped.pointsAdjustment) {
+          fields.pointsAdjustment = { old: existing.pointsAdjustment, new: scraped.pointsAdjustment };
+          fields.pointsAdjustmentNoteHe = { old: existing.pointsAdjustmentNoteHe, new: scraped.pointsAdjustmentNoteHe };
+        }
+        if (existing.position !== scraped.position) fields.position = { old: existing.position, new: scraped.position };
         if (Object.keys(fields).length > 0) {
           changes.push({ type: 'update', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || undefined, scrapedName: `${scraped.teamNameHe} (${scraped.season})`, matchedName: matchedTeam.nameHe, matchedId: existing.id, fields });
         } else {
@@ -452,7 +467,20 @@ export async function previewStandingsMerge(
           type: 'create', entity: 'standing', leagueNameHe: scraped?.leagueNameHe || undefined,
           scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
           matchedName: matchedTeam.nameHe,
-          fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
+          fields: {
+            position: { old: null, new: scraped.position },
+            played: { old: null, new: scraped.played },
+            wins: { old: null, new: scraped.wins },
+            draws: { old: null, new: scraped.draws },
+            losses: { old: null, new: scraped.losses },
+            goalsFor: { old: null, new: scraped.goalsFor },
+            goalsAgainst: { old: null, new: scraped.goalsAgainst },
+            points: { old: null, new: scraped.points },
+            groupNameHe: { old: null, new: scraped.groupNameHe },
+            groupNameEn: { old: null, new: groupNameEn },
+            pointsAdjustment: { old: null, new: scraped.pointsAdjustment },
+            pointsAdjustmentNoteHe: { old: null, new: scraped.pointsAdjustmentNoteHe },
+          },
         });
       }
     } else {
@@ -463,7 +491,20 @@ export async function previewStandingsMerge(
         scrapedName: `${scraped.teamNameHe} (${scraped.season})`,
         matchedName: `[חדש] ${resolved.nameHe}`,
         reason: 'ייצור קבוצה חדשה + שורת טבלה',
-        fields: { position: { old: null, new: scraped.position }, played: { old: null, new: scraped.played }, wins: { old: null, new: scraped.wins }, draws: { old: null, new: scraped.draws }, losses: { old: null, new: scraped.losses }, goalsFor: { old: null, new: scraped.goalsFor }, goalsAgainst: { old: null, new: scraped.goalsAgainst }, points: { old: null, new: scraped.points } },
+        fields: {
+          position: { old: null, new: scraped.position },
+          played: { old: null, new: scraped.played },
+          wins: { old: null, new: scraped.wins },
+          draws: { old: null, new: scraped.draws },
+          losses: { old: null, new: scraped.losses },
+          goalsFor: { old: null, new: scraped.goalsFor },
+          goalsAgainst: { old: null, new: scraped.goalsAgainst },
+          points: { old: null, new: scraped.points },
+          groupNameHe: { old: null, new: scraped.groupNameHe },
+          groupNameEn: { old: null, new: groupNameEn },
+          pointsAdjustment: { old: null, new: scraped.pointsAdjustment },
+          pointsAdjustmentNoteHe: { old: null, new: scraped.pointsAdjustmentNoteHe },
+        },
       });
     }
   }
@@ -850,6 +891,10 @@ export async function executeMerge(mergeId: string): Promise<{ updated: number; 
             goalsFor: change.fields.goalsFor?.new ?? 0,
             goalsAgainst: change.fields.goalsAgainst?.new ?? 0,
             points: change.fields.points?.new ?? 0,
+            groupNameHe: change.fields.groupNameHe?.new ?? null,
+            groupNameEn: change.fields.groupNameEn?.new ?? null,
+            pointsAdjustment: change.fields.pointsAdjustment?.new ?? 0,
+            pointsAdjustmentNoteHe: change.fields.pointsAdjustmentNoteHe?.new ?? null,
           },
         });
         snapshots.push({ id: created.id, entity: 'standing', original: {}, action: 'create' });
