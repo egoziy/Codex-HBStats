@@ -465,6 +465,23 @@ model PlayerStatistics {
   assistsPer90          Float?
   minPerGoal            Int?
   cardsPer90            Float?
+  // Rich API-Football per-season stats
+  shotsOnTarget         Int?
+  passesTotal           Int?
+  passesAccuracy        Int?         // percent 0-100
+  tacklesTotal          Int?
+  tacklesBlocks         Int?
+  tacklesInterceptions  Int?
+  duelsTotal            Int?
+  duelsWon              Int?
+  foulsCommitted        Int?
+  foulsDrawn            Int?
+  dribblesAttempts      Int?
+  dribblesSuccess       Int?
+  rating                Float?       // 0-10 player rating
+  position              String?
+  appearances           Int?         // distinct from gamesPlayed (number of games where player was in squad)
+  additionalInfo        Json?        // raw API-Football statistics block for any extra fields
   competition           Competition? @relation(fields: [competitionId], references: [id])
   player                Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
   season                Season?      @relation(fields: [seasonId], references: [id])
@@ -1394,4 +1411,93 @@ model FootyStatsRawMatch {
 
   @@index([leagueKey, year])
   @@map("footystats_raw_match")
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// API-Football raw archive — one table per endpoint, raw JSON payloads.
+// ──────────────────────────────────────────────────────────────────────
+
+model ApiFootballRawLeagueList {
+  id        Int      @id @default(autoincrement())
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@map("apifootball_raw_league_list")
+}
+
+model ApiFootballRawTeams {
+  id        Int      @id @default(autoincrement())
+  leagueId  Int
+  season    Int
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@unique([leagueId, season])
+  @@map("apifootball_raw_teams")
+}
+
+model ApiFootballRawFixtures {
+  id        Int      @id @default(autoincrement())
+  leagueId  Int
+  season    Int
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@unique([leagueId, season])
+  @@map("apifootball_raw_fixtures")
+}
+
+model ApiFootballRawStandings {
+  id        Int      @id @default(autoincrement())
+  leagueId  Int
+  season    Int
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@unique([leagueId, season])
+  @@map("apifootball_raw_standings")
+}
+
+model ApiFootballRawPlayers {
+  id        Int      @id @default(autoincrement())
+  leagueId  Int
+  season    Int
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@unique([leagueId, season])
+  @@map("apifootball_raw_players")
+}
+
+model ApiFootballRawFixtureLineup {
+  fixtureId Int      @id
+  leagueId  Int
+  season    Int
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@index([leagueId, season])
+  @@map("apifootball_raw_fixture_lineup")
+}
+
+model ApiFootballRawFixtureEvents {
+  fixtureId Int      @id
+  leagueId  Int
+  season    Int
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@index([leagueId, season])
+  @@map("apifootball_raw_fixture_events")
+}
+
+model ApiFootballRawFixtureStatistics {
+  fixtureId Int      @id
+  leagueId  Int
+  season    Int
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@index([leagueId, season])
+  @@map("apifootball_raw_fixture_statistics")
 }

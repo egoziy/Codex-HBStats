@@ -47,7 +47,11 @@ export function getGameScoreDisplay(game: {
 }) {
   if (game.status === 'COMPLETED' || game.status === 'ONGOING') {
     const score = `${game.homeScore ?? 0} - ${game.awayScore ?? 0}`;
-    const hasExtraTime = game.statusShort === 'AET' || (game.homeScoreRegular != null && game.awayScoreRegular != null);
+    // Extra time only when 90-min score differs from final score, OR explicit AET status.
+    const regularDiffers =
+      game.homeScoreRegular != null && game.awayScoreRegular != null &&
+      (game.homeScoreRegular !== game.homeScore || game.awayScoreRegular !== game.awayScore);
+    const hasExtraTime = game.statusShort === 'AET' || regularDiffers;
     const hasPenalties = game.homePenalty != null && game.awayPenalty != null;
     const regularScore = hasExtraTime ? `${game.homeScoreRegular ?? 0} - ${game.awayScoreRegular ?? 0}` : null;
 

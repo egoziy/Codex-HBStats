@@ -201,6 +201,7 @@ export default async function PlayerPage({
       awayTeam: true,
       events: {
         select: {
+          id: true,
           minute: true,
           extraMinute: true,
           type: true,
@@ -352,7 +353,9 @@ export default async function PlayerPage({
   // Prefer DB stats when available (authoritative source from IFA/API).
   // Fall back to derived (event-based) stats only when DB has no data for a field.
   const hasDbStats = dbSeasonTotals.gamesPlayed > 0 || dbSeasonTotals.goals > 0;
-  const pick = (derived: number, db: number) => hasDbStats && db > 0 ? db : Math.max(derived, db);
+  // Always pick the higher of derived (from game_events) and db (player_statistics).
+  // Derived can include cards from IFA-merged events that aren't in API-Football's player stats.
+  const pick = (derived: number, db: number) => Math.max(derived, db);
   const derivedTotals = {
     ...derivedTotalsBase,
     goals: pick(derivedTotalsBase.goals, dbSeasonTotals.goals),
@@ -388,6 +391,29 @@ export default async function PlayerPage({
     .sort((left, right) => +new Date(right.dateTime) - +new Date(left.dateTime));
   const filteredPlayerGameRows = playerGameRows.filter((row) => matchesGameFilter(row, activeGameFilter));
 
+  // Card history (yellow + red) with game info for the discipline detail panel
+  const seasonPlayerIdSet = new Set(seasonPlayers.map((p: any) => p.id));
+  const cardHistory: Array<{ id: string; type: 'YELLOW_CARD' | 'RED_CARD' | 'YELLOW_RED_CARD'; minute: number; dateTime: Date; gameId: string; opponentNameHe: string; opponentNameEn: string; isHome: boolean }> = [];
+  for (const game of allGames) {
+    const playerOnHome = seasonPlayers.some((p: any) => p.teamId === game.homeTeamId);
+    const playerOnAway = seasonPlayers.some((p: any) => p.teamId === game.awayTeamId);
+    if (!playerOnHome && !playerOnAway) continue;
+    const isHome = playerOnHome;
+    const opponent: any = isHome ? game.awayTeam : game.homeTeam;
+    for (const ev of (game.events as any[] || [])) {
+      if (!ev.playerId || !seasonPlayerIdSet.has(ev.playerId)) continue;
+      if (ev.type !== 'YELLOW_CARD' && ev.type !== 'RED_CARD' && ev.type !== 'YELLOW_RED_CARD') continue;
+      cardHistory.push({
+        id: ev.id, type: ev.type, minute: ev.minute, dateTime: game.dateTime,
+        gameId: game.id,
+        opponentNameHe: opponent?.nameHe || '',
+        opponentNameEn: opponent?.nameEn || '',
+        isHome,
+      });
+    }
+  }
+  cardHistory.sort((a, b) => +new Date(b.dateTime) - +new Date(a.dateTime));
+
   if (displayMode === 'premier') {
     return (
       <PremierPlayerView
@@ -412,6 +438,7 @@ export default async function PlayerPage({
         trophies={trophies}
         sidelinedEntries={sidelinedEntries}
         currentSidelined={currentSidelined || null}
+        cardHistory={cardHistory}
       />
     );
   }
@@ -680,6 +707,7 @@ function PremierPlayerView({
   trophies,
   sidelinedEntries,
   currentSidelined,
+  cardHistory,
 }: {
   canonicalPlayer: any;
   canonicalPlayerId: string;
@@ -689,6 +717,7 @@ function PremierPlayerView({
   selectedSeason: { id: string; name: string; year: number } | undefined;
   selectedSeasonId: string;
   availableSeasons: Array<{ id: string; name: string; year: number }>;
+  cardHistory: Array<{ id: string; type: string; minute: number; dateTime: Date; gameId: string; opponentNameHe: string; opponentNameEn: string; isHome: boolean }>;
   derivedTotals: {
     goals: number;
     assists: number;
@@ -757,8 +786,8 @@ function PremierPlayerView({
   const possessionRows = [
     { label: 'מסירות', value: formatFraction(apiStats.passesTotal, apiStats.passesAccuracy, '%') },
     { label: 'מסירות מפתח', value: formatMetric(sumAggregatedStat(aggregatedStats, 'keyPasses')) },
-    { label: 'כדורים ארוכים', value: formatFraction(apiStats.longBallsTotal, apiStats.longBallsAccuracy, '%') },
-    { label: 'יציאות קדימה', value: formatFraction(apiStats.dribblesSuccess, apiStats.dribblesAttempts) },
+    { label: 'דריבלים', value: formatFraction(apiStats.dribblesSuccess, apiStats.dribblesAttempts) },
+    { label: 'דו־קרבים', value: formatFraction(apiStats.duelsWon, apiStats.duelsTotal) },
   ];
 
   const physicalRows = [
@@ -772,7 +801,6 @@ function PremierPlayerView({
     { label: 'תיקולים', value: formatMetric(apiStats.tacklesTotal) },
     { label: 'חטיפות', value: formatMetric(apiStats.tacklesInterceptions) },
     { label: 'חסימות', value: formatMetric(apiStats.tacklesBlocks) },
-    { label: 'תיקולים שניצח', value: formatMetric(apiStats.tacklesWon) },
   ];
 
   const disciplineRows = [
@@ -780,7 +808,6 @@ function PremierPlayerView({
     { label: 'אדומים', value: formatMetric(derivedTotals.redCards) },
     { label: 'עבירות שביצע', value: formatMetric(apiStats.foulsCommitted) },
     { label: 'עבירות שסחט', value: formatMetric(apiStats.foulsDrawn) },
-    { label: 'נבדלים', value: formatMetric(apiStats.offsides) },
   ];
 
   return (
@@ -952,7 +979,12 @@ function PremierPlayerView({
               </div>
             ) : null}
 
-            {activeTab === 'stats' ? <StatCategoryCard title="משמעת" rows={disciplineRows} /> : null}
+            {activeTab === 'stats' ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <StatCategoryCard title="משמעת" rows={disciplineRows} />
+                {cardHistory.length > 0 ? <CardHistoryPanel history={cardHistory} /> : null}
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -1129,18 +1161,57 @@ function StatCategoryCard({
   rows: Array<{ label: string; value: string }>;
   className?: string;
 }) {
-  const visibleRows = rows.filter((row) => row.value !== '0' && row.value !== '0/0' && row.value !== '0 (0%)');
+  const visibleRows = rows.filter((row) => row.value !== '0' && row.value !== '0/0' && row.value !== '0 (0%)' && row.value !== '-');
+  if (!visibleRows.length) return null;
 
   return (
     <section className={`modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm ${className}`}>
       <h3 className="border-r-[3px] border-[var(--accent)] pr-3 text-base font-black text-stone-900">{title}</h3>
       <div className="mt-4 space-y-3">
-        {(visibleRows.length ? visibleRows : rows).map((row) => (
+        {visibleRows.map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-4">
             <div className="text-sm text-stone-600">{row.label}</div>
             <div className="text-sm font-black text-stone-900">{row.value}</div>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function CardHistoryPanel({
+  history,
+}: {
+  history: Array<{ id: string; type: string; minute: number; dateTime: Date; gameId: string; opponentNameHe: string; opponentNameEn: string; isHome: boolean }>;
+}) {
+  const yellow = history.filter((c) => c.type === 'YELLOW_CARD');
+  const red = history.filter((c) => c.type === 'RED_CARD' || c.type === 'YELLOW_RED_CARD');
+  const items = [...red, ...yellow]; // reds first
+  return (
+    <section className="modern-card rounded-xl border border-stone-200/80 bg-white p-5 shadow-sm">
+      <h3 className="border-r-[3px] border-[var(--accent)] pr-3 text-base font-black text-stone-900">
+        כרטיסים — היסטוריה
+      </h3>
+      <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+        {items.map((c) => {
+          const dateStr = new Intl.DateTimeFormat('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(new Date(c.dateTime));
+          const opponent = c.opponentNameHe || c.opponentNameEn;
+          const sideLabel = c.isHome ? 'בית' : 'חוץ';
+          const isRed = c.type === 'RED_CARD' || c.type === 'YELLOW_RED_CARD';
+          return (
+            <a
+              key={c.id}
+              href={`/games/${c.gameId}`}
+              className={`flex items-center justify-between gap-3 rounded-lg border ${isRed ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'} px-3 py-2 transition hover:opacity-80`}
+            >
+              <span className={`inline-block h-3 w-2 shrink-0 rounded-sm ${isRed ? 'bg-red-600' : 'bg-amber-400'}`} aria-hidden />
+              <div className="flex flex-1 items-center justify-between gap-2 text-sm">
+                <span className="font-semibold text-stone-800">{dateStr} · {sideLabel} מול {opponent}</span>
+                <span className="font-black text-stone-900">{c.minute}׳</span>
+              </div>
+            </a>
+          );
+        })}
       </div>
     </section>
   );
@@ -1167,29 +1238,28 @@ function sumAggregatedStat(rows: AggregatedStatRow[], field: 'shots' | 'keyPasse
 }
 
 function aggregatePlayerApiStats(seasonPlayers: any[]) {
-  const blocks = seasonPlayers.flatMap((player) =>
-    Array.isArray(player.additionalInfo?.statistics) ? player.additionalInfo.statistics : []
-  );
-
-  const sum = (getter: (block: any) => number | null | undefined) =>
-    blocks.reduce((total, block) => total + (Number(getter(block)) || 0), 0);
+  // Sum the dedicated columns on each playerStats row (populated by 30b-player-stats.js).
+  const stats = seasonPlayers.flatMap((p) => p.playerStats || []);
+  const sum = (field: string) =>
+    stats.reduce((total: number, row: any) => total + (typeof row[field] === 'number' ? row[field] : 0), 0);
+  // Weighted average for percent fields based on passesTotal.
+  const totalPasses = sum('passesTotal');
+  const accuracyWeighted = stats.reduce((total: number, row: any) =>
+    total + ((row.passesAccuracy || 0) * (row.passesTotal || 0)), 0);
+  const passesAccuracy = totalPasses > 0 ? Math.round(accuracyWeighted / totalPasses) : null;
 
   return {
-    passesTotal: sum((block) => block?.passes?.total),
-    passesAccuracy: sum((block) => Number.parseInt(String(block?.passes?.accuracy || '0'), 10)),
-    longBallsTotal: sum((block) => block?.passes?.key),
-    longBallsAccuracy: 0,
-    dribblesAttempts: sum((block) => block?.dribbles?.attempts),
-    dribblesSuccess: sum((block) => block?.dribbles?.success),
-    duelsTotal: sum((block) => block?.duels?.total),
-    duelsWon: sum((block) => block?.duels?.won),
-    tacklesTotal: sum((block) => block?.tackles?.total),
-    tacklesBlocks: sum((block) => block?.tackles?.blocks),
-    tacklesInterceptions: sum((block) => block?.tackles?.interceptions),
-    tacklesWon: sum((block) => block?.tackles?.total),
-    foulsCommitted: sum((block) => block?.fouls?.committed),
-    foulsDrawn: sum((block) => block?.fouls?.drawn),
-    offsides: sum((block) => block?.offsides),
+    passesTotal: totalPasses || null,
+    passesAccuracy,
+    dribblesAttempts: sum('dribblesAttempts') || null,
+    dribblesSuccess: sum('dribblesSuccess') || null,
+    duelsTotal: sum('duelsTotal') || null,
+    duelsWon: sum('duelsWon') || null,
+    tacklesTotal: sum('tacklesTotal') || null,
+    tacklesBlocks: sum('tacklesBlocks') || null,
+    tacklesInterceptions: sum('tacklesInterceptions') || null,
+    foulsCommitted: sum('foulsCommitted') || null,
+    foulsDrawn: sum('foulsDrawn') || null,
   };
 }
 

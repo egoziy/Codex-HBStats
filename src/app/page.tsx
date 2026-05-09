@@ -193,7 +193,24 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   }, 0);
   const hasOutdatedStandings = maxRoundInLigaGames > maxRoundInHomeStandings;
 
+  // Playoff awareness: if standings have group info (Championship Round / Relegation Round),
+  // upper-playoff teams take positions 1..N and lower-playoff teams start at N+1, regardless of points.
+  const isChampionshipGroup = (g: string | null | undefined) => /championship/i.test(g || '');
+  const isRelegationGroup = (g: string | null | undefined) => /relegation/i.test(g || '');
+  const hasPlayoffGroups = rawStandings.some((s) => isChampionshipGroup((s as any).groupNameEn) || isRelegationGroup((s as any).groupNameEn));
+
   const sortedStandings = (() => {
+    if (hasPlayoffGroups && rawStandings.length > 0) {
+      const upper = sortStandings(rawStandings.filter((s) => isChampionshipGroup((s as any).groupNameEn)));
+      const lower = sortStandings(rawStandings.filter((s) => isRelegationGroup((s as any).groupNameEn)));
+      const ungrouped = sortStandings(rawStandings.filter((s) => !isChampionshipGroup((s as any).groupNameEn) && !isRelegationGroup((s as any).groupNameEn)));
+      const upperCount = upper.length;
+      return [
+        ...upper,
+        ...lower.map((r, i) => ({ ...r, displayPosition: upperCount + i + 1 })),
+        ...ungrouped.map((r, i) => ({ ...r, displayPosition: upperCount + lower.length + i + 1 })),
+      ];
+    }
     if (hasOutdatedStandings || rawStandings.length === 0) {
       if (ligaHaalGames.length === 0) return sortStandings(rawStandings);
       const teamMap = new Map(seasonTeams.map((t) => [t.id, t]));
@@ -365,7 +382,6 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       WHERE ge.type = 'YELLOW_CARD'
         AND ge."playerId" IS NOT NULL
         AND g."seasonId" = ${latestSeason.id}
-        AND g."competitionId" = 'comp_liga_haal'
       ORDER BY g."dateTime" ASC
     `,
     prisma.$queryRaw<Array<{ bucket: string; goals: number }>>`
@@ -434,21 +450,18 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     return +new Date(a.dateTime || 0) - +new Date(b.dateTime || 0);
   });
 
-  // Suspended players: red card in last completed round + 5th/9th yellow
-  // Extract round number from roundNameEn (consistent format: "Regular Season - N", "Championship Group - N", etc.)
-  const extractRoundNum = (roundEn: string | null | undefined) => {
-    const m = roundEn?.match(/(\d+)\s*$/);
-    return m ? parseInt(m[1], 10) : 0;
-  };
-  // Use the next Liga Ha'al game to determine the upcoming round number
-  const nextLigaGame = nextGamesRaw.find((g) => g.competition?.apiFootballId === 383);
-  const nextLigaRoundNum = nextLigaGame ? extractRoundNum(nextLigaGame.roundNameEn) : 0;
-  // Fall back to: last red card round + 1
-  const lastRedCardRoundNum = extractRoundNum(recentRedCards[0]?.game?.roundNameEn);
-  const suspensionRoundNum = nextLigaRoundNum || lastRedCardRoundNum + 1;
+  // Suspended players (red card in last completed match + 5th/9th/13th yellow on last match).
+  // Date-based: a player is suspended when their milestone yellow OR red card was earned
+  // in the most recent matchday (within ~5 days of the latest completed league match).
+  const allYellowTimes = allYellowCards.map((y) => +new Date(y.dateTime ?? 0)).filter((t) => t > 0);
+  const allRedTimes = recentRedCards.map((r) => +new Date(r.game?.dateTime ?? 0)).filter((t) => t > 0);
+  const latestCompletedMatchTime = Math.max(0, ...allYellowTimes, ...allRedTimes);
+  // "Latest matchday" = anything within the last 5 days of the latest completed match.
+  const matchdayCutoff = latestCompletedMatchTime - 5 * 24 * 3600 * 1000;
+  const isInLatestMatchday = (t: number) => latestCompletedMatchTime > 0 && t >= matchdayCutoff;
 
   const redCardSuspended = recentRedCards
-    .filter((e) => extractRoundNum(e.game.roundNameEn) === suspensionRoundNum - 1 && e.player)
+    .filter((e) => e.player && isInLatestMatchday(+new Date(e.game?.dateTime ?? 0)))
     .map((e) => ({
       id: e.player!.id,
       name: e.player!.nameHe,
@@ -456,7 +469,6 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       reason: `כרטיס אדום ב${getRoundDisplayName(e.game.roundNameHe, e.game.roundNameEn)}`,
     }));
 
-  // Group yellow cards per player sorted by date, find who hit their 5th/9th in the last round
   const yellowsByPlayer = new Map<string, typeof allYellowCards>();
   for (const ev of allYellowCards) {
     if (!ev.playerId) continue;
@@ -464,16 +476,18 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     yellowsByPlayer.get(ev.playerId)!.push(ev);
   }
   const yellowSuspended: Array<{ id: string; name: string; team: string; reason: string }> = [];
-  // Players approaching a suspension: their next yellow triggers it (count is one of 4 / 8 / 12).
   const yellowAtRisk: Array<{ id: string; name: string; team: string; count: number; nextMilestone: number }> = [];
 
   for (const [, yellows] of yellowsByPlayer) {
     const sorted = yellows.slice().sort((a, b) => +new Date(a.dateTime ?? 0) - +new Date(b.dateTime ?? 0));
-    // Suspension at 5th, 9th, 13th yellow (zero-indexed: 4, 8, 12)
+    // Suspension at 5th / 9th / 13th yellow (zero-indexed: 4, 8, 12).
+    // Player is suspended ONLY when: (a) they have at least N yellows, and (b) the milestone yellow was in the most recent matchday.
     for (const milestoneIdx of [4, 8, 12]) {
       if (sorted.length > milestoneIdx) {
         const milestone = sorted[milestoneIdx];
-        if (extractRoundNum(milestone.roundNameEn) === suspensionRoundNum - 1) {
+        const milestoneTime = +new Date(milestone.dateTime ?? 0);
+        // Only "just earned" if the milestone IS the player's most recent yellow AND it was in the latest matchday
+        if (milestoneIdx === sorted.length - 1 && isInLatestMatchday(milestoneTime)) {
           yellowSuspended.push({
             id: milestone.playerId,
             name: milestone.nameHe,
@@ -484,7 +498,7 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
         }
       }
     }
-    // At-risk: count is currently 4, 8, or 12 — next yellow → suspension
+    // At-risk: current count is 4, 8, or 12 — next yellow triggers suspension.
     const last = sorted[sorted.length - 1];
     if (!last) continue;
     if ([4, 8, 12].includes(sorted.length)) {
@@ -499,13 +513,21 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
   }
 
   // Sort at-risk by count desc (12 > 8 > 4) then by name
-  yellowAtRisk.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'he'));
+  // Group at-risk by team so same-team players appear adjacent.
+  yellowAtRisk.sort((a, b) =>
+    (a.team || '').localeCompare(b.team || '', 'he') ||
+    b.count - a.count ||
+    a.name.localeCompare(b.name, 'he')
+  );
 
   const suspendedMap = new Map<string, { id: string; name: string; team: string; reason: string }>();
   for (const s of [...redCardSuspended, ...yellowSuspended]) {
     if (!suspendedMap.has(s.id)) suspendedMap.set(s.id, s);
   }
-  const suspendedPlayers = Array.from(suspendedMap.values());
+  const suspendedPlayers = Array.from(suspendedMap.values()).sort((a, b) =>
+    (a.team || '').localeCompare(b.team || '', 'he') ||
+    a.name.localeCompare(b.name, 'he')
+  );
 
   const groupedHeadToHeadMap = new Map<string, HeadToHeadGroup>();
   for (const entry of headToHeadEntries) {

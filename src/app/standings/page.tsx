@@ -52,6 +52,11 @@ type LeagueGame = {
   } | null;
 };
 
+// API-Football's groupNameEn is "League , Championship Round" / "League , Relegation Round";
+// historical data may use just "Championship" / "Relegation". Match both via substring.
+function isChampionshipGroup(g: string | null | undefined): boolean { return /championship/i.test(g || ''); }
+function isRelegationGroup(g: string | null | undefined): boolean { return /relegation/i.test(g || ''); }
+
 function hasHebrew(value: string | null | undefined) {
   return Boolean(value && /[\u0590-\u05FF]/.test(value));
 }
@@ -306,18 +311,21 @@ export default async function StandingsPage({
     const m = g.roundNameEn?.match(/(\d+)\s*$/);
     return m ? Math.max(max, parseInt(m[1], 10)) : max;
   }, 0);
-  const hasOutdatedStandings = maxRoundInGames > maxRoundInStandings;
-
+  // If standings have playoff group info, they're already split into upper/lower — round
+  // numbers in playoff games (e.g., "Relegation Group - 32") legitimately exceed the played
+  // count of upper-playoff teams. Don't treat that as stale.
+  const hasPlayoffGroupInfo = competitionStandings.some((s) => isChampionshipGroup(s.groupNameEn) || isRelegationGroup(s.groupNameEn));
+  const hasOutdatedStandings = !hasPlayoffGroupInfo && maxRoundInGames > maxRoundInStandings;
   const isPlayoffSeason = hasStoredStandings && !hasOutdatedStandings && competitionStandings.some(
-    (s) => s.groupNameEn === 'Championship' || s.groupNameEn === 'Relegation'
+    (s) => isChampionshipGroup(s.groupNameEn) || isRelegationGroup(s.groupNameEn)
   );
   const selectedPhase = isPlayoffSeason ? (searchParams?.phase ?? 'regular') : 'regular';
   const regularRoundCount = roundOptions.filter((r) => /^Regular Season\s*-\s*\d+$/i.test(r)).length;
   const playoffChampionshipRows = isPlayoffSeason
-    ? sortStandings(competitionStandings.filter((s) => s.groupNameEn === 'Championship'))
+    ? sortStandings(competitionStandings.filter((s) => isChampionshipGroup(s.groupNameEn)))
     : [];
   const playoffRelegationRows = isPlayoffSeason
-    ? sortStandings(competitionStandings.filter((s) => s.groupNameEn === 'Relegation'))
+    ? sortStandings(competitionStandings.filter((s) => isRelegationGroup(s.groupNameEn)))
     : [];
   const championshipCount = playoffChampionshipRows.length;
 
@@ -511,8 +519,8 @@ export default async function StandingsPage({
                   const pos = row.displayPosition;
                   const form = getTeamForm(row.teamId, typedGames);
                   const groupName = (row as any).groupNameEn as string | null;
-                  const inChampionship = groupName === 'Championship';
-                  const inRelegation = groupName === 'Relegation';
+                  const inChampionship = isChampionshipGroup(groupName);
+                  const inRelegation = isRelegationGroup(groupName);
 
                   const isTop = pos === 1 && (!isPlayoffSeason || inChampionship);
                   const isEurope = isPlayoffSeason
@@ -818,8 +826,8 @@ function PremierStandingsView({
                   const form = getTeamForm(row.teamId, snapshotGames);
                   const nextGame = getNextGame(row.teamId, futureGames);
                   const groupName = (row as any).groupNameEn as string | null;
-                  const inChampionship = groupName === 'Championship';
-                  const inRelegation = groupName === 'Relegation';
+                  const inChampionship = isChampionshipGroup(groupName);
+                  const inRelegation = isRelegationGroup(groupName);
 
                   const isTop = pos === 1 && (!isPlayoffSeason || inChampionship);
                   const isEurope = isPlayoffSeason ? inChampionship && pos <= 4 : pos <= 4;

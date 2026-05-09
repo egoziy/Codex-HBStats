@@ -73,6 +73,18 @@ export const toolDefinitions = [
       required: ['category'],
     },
   },
+  {
+    name: 'getTeamCardSummary',
+    description: 'Per-team summary of yellow + red cards per player for the season. Returns each player with their yellow count and a status: SUSPENDED (just hit 5/9/13 milestone in latest matchday → next game banned), AT_RISK (count is 4/8/12 → next yellow triggers ban), or CLEAR. Use this to answer questions like "who is suspended" or "who is at risk of suspension" for a specific team.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        teamName: { type: 'string', description: 'Team name (Hebrew or English)' },
+        seasonYear: { type: 'number', description: 'Season year (defaults to most recent)' },
+      },
+      required: ['teamName'],
+    },
+  },
 ];
 
 // ─── Tool Implementations ───
@@ -244,6 +256,80 @@ export async function getLeaderboard(args: { category: string; seasonYear?: numb
   }));
 }
 
+export async function getTeamCardSummary(args: { teamName: string; seasonYear?: number }) {
+  // Resolve season
+  const seasonRow = args.seasonYear
+    ? await prisma.season.findFirst({ where: { year: args.seasonYear } })
+    : await prisma.season.findFirst({ orderBy: { year: 'desc' } });
+  if (!seasonRow) return { error: 'Season not found' };
+
+  // Resolve team(s) by name in that season
+  const teams = await prisma.team.findMany({
+    where: {
+      seasonId: seasonRow.id,
+      OR: [
+        { nameHe: { contains: args.teamName, mode: 'insensitive' } },
+        { nameEn: { contains: args.teamName, mode: 'insensitive' } },
+      ],
+    },
+    select: { id: true, nameHe: true, nameEn: true },
+  });
+  if (teams.length === 0) return { error: `No team matching "${args.teamName}" in ${args.seasonYear ?? seasonRow.year}` };
+
+  const teamIds = teams.map((t) => t.id);
+
+  // For each player on those teams, count yellow + red events across ALL competitions in this season
+  const rows = await prisma.$queryRaw<Array<{
+    playerId: string; nameHe: string; nameEn: string; yellow: number; red: number; lastYellow: Date | null;
+  }>>`
+    SELECT p.id AS "playerId", p."nameHe", p."nameEn",
+      SUM(CASE WHEN ge.type = 'YELLOW_CARD' THEN 1 ELSE 0 END)::int AS yellow,
+      SUM(CASE WHEN ge.type IN ('RED_CARD', 'YELLOW_RED_CARD') THEN 1 ELSE 0 END)::int AS red,
+      MAX(CASE WHEN ge.type = 'YELLOW_CARD' THEN g."dateTime" END) AS "lastYellow"
+    FROM players p
+    LEFT JOIN game_events ge ON ge."playerId" = p.id
+    LEFT JOIN games g ON g.id = ge."gameId" AND g."seasonId" = ${seasonRow.id}
+    WHERE p."teamId" = ANY(${teamIds}::text[])
+    GROUP BY p.id, p."nameHe", p."nameEn"
+    HAVING SUM(CASE WHEN ge.type = 'YELLOW_CARD' THEN 1 ELSE 0 END) > 0
+        OR SUM(CASE WHEN ge.type IN ('RED_CARD', 'YELLOW_RED_CARD') THEN 1 ELSE 0 END) > 0
+    ORDER BY yellow DESC, red DESC
+  `;
+
+  // Latest yellow league-wide (within this season) for "matchday" cutoff
+  const latestRow = await prisma.$queryRaw<Array<{ latest: Date | null }>>`
+    SELECT MAX(g."dateTime") AS latest
+    FROM game_events ge JOIN games g ON g.id = ge."gameId"
+    WHERE ge.type = 'YELLOW_CARD' AND g."seasonId" = ${seasonRow.id}
+  `;
+  const latestTime = latestRow[0]?.latest ? +new Date(latestRow[0].latest) : 0;
+  const cutoff = latestTime - 5 * 24 * 3600 * 1000;
+
+  const players = rows.map((r) => {
+    const lastTime = r.lastYellow ? +new Date(r.lastYellow) : 0;
+    const inLatestMatchday = lastTime >= cutoff && latestTime > 0;
+    let status: 'SUSPENDED' | 'AT_RISK' | 'CLEAR' = 'CLEAR';
+    if ([5, 9, 13].includes(r.yellow) && inLatestMatchday) status = 'SUSPENDED';
+    else if ([4, 8, 12].includes(r.yellow)) status = 'AT_RISK';
+    return {
+      playerId: r.playerId,
+      name: r.nameHe || r.nameEn,
+      yellow: r.yellow,
+      red: r.red,
+      lastYellowDate: r.lastYellow ? new Date(r.lastYellow).toISOString().slice(0, 10) : null,
+      status,
+    };
+  });
+
+  return {
+    team: teams[0].nameHe || teams[0].nameEn,
+    season: seasonRow.name,
+    suspended: players.filter((p) => p.status === 'SUSPENDED'),
+    atRisk: players.filter((p) => p.status === 'AT_RISK'),
+    allPlayers: players,
+  };
+}
+
 // ─── Tool Dispatcher ───
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -258,6 +344,8 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       return getStandings(args as any);
     case 'getLeaderboard':
       return getLeaderboard(args as any);
+    case 'getTeamCardSummary':
+      return getTeamCardSummary(args as any);
     default:
       return { error: `Unknown tool: ${name}` };
   }
