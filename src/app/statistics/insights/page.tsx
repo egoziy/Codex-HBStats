@@ -240,22 +240,58 @@ async function buildAllSections(seasonId: string) {
     .map((r) => ({ name: r.venueName, value: (r.goals / r.games).toFixed(2), sub: `${r.goals} שערים / ${r.games} משחקים` }))
     .sort((a, b) => Number(b.value) - Number(a.value));
 
+  // ── xG aggregate per team ──
+  const xgRows = await prisma.$queryRaw<Array<{
+    teamId: string; teamNameHe: string; xgFor: number; xgAgainst: number; games: number;
+  }>>`
+    WITH per AS (
+      SELECT t.id AS team_id,
+        SUM(CASE WHEN g."homeTeamId"=t.id THEN gs."homeXg" WHEN g."awayTeamId"=t.id THEN gs."awayXg" ELSE 0 END)::float AS xg_for,
+        SUM(CASE WHEN g."homeTeamId"=t.id THEN gs."awayXg" WHEN g."awayTeamId"=t.id THEN gs."homeXg" ELSE 0 END)::float AS xg_ag,
+        COUNT(*)::int AS games
+      FROM teams t
+      JOIN games g ON (g."homeTeamId"=t.id OR g."awayTeamId"=t.id) AND g."seasonId" = ${seasonId} AND g."competitionId"='comp_liga_haal' AND g.status='COMPLETED'
+      JOIN game_statistics gs ON gs."gameId"=g.id AND gs."homeXg" IS NOT NULL AND gs."awayXg" IS NOT NULL
+      GROUP BY t.id
+    )
+    SELECT t.id AS "teamId", t."nameHe" AS "teamNameHe", per.xg_for AS "xgFor", per.xg_ag AS "xgAgainst", per.games
+    FROM teams t JOIN per ON per.team_id = t.id WHERE per.games >= 3
+  `;
+  const xgFor: Row[] = xgRows
+    .map((r) => ({ name: r.teamNameHe, value: (Number(r.xgFor) / r.games).toFixed(2), sub: `סה״כ ${Number(r.xgFor).toFixed(2)} ב-${r.games} משחקים` }))
+    .sort((a, b) => Number(b.value) - Number(a.value));
+  const xgAgainst: Row[] = xgRows
+    .map((r) => ({ name: r.teamNameHe, value: (Number(r.xgAgainst) / r.games).toFixed(2), sub: `סה״כ ${Number(r.xgAgainst).toFixed(2)} ב-${r.games} משחקים` }))
+    .sort((a, b) => Number(a.value) - Number(b.value));
+  const xgDiff: Row[] = xgRows
+    .map((r) => ({ name: r.teamNameHe, value: (Number(r.xgFor) - Number(r.xgAgainst)).toFixed(2), sub: `${r.games} משחקים` }))
+    .sort((a, b) => Number(b.value) - Number(a.value));
+
   return {
     teamHomeGoalAvg, teamAwayGoalAvg, teamGoalsScored, teamGoalsConceded,
     homeSuccessRate, awaySuccessRate, winWhenScoringFirst, winWhenNotScoringFirst,
     minPerGoalScored, minPerGoalConceded, goalBuckets, penaltyConversion,
-    refYellows, refReds, venueGoalAvg,
+    refYellows, refReds, venueGoalAvg, xgFor, xgAgainst, xgDiff,
   };
 }
+
+type CategoryKey = 'teams' | 'situations' | 'referees' | 'venues';
+const CATEGORIES: Array<{ key: CategoryKey; label: string }> = [
+  { key: 'teams',      label: 'קבוצות' },
+  { key: 'situations', label: 'מצבי משחק' },
+  { key: 'referees',   label: 'שופטים' },
+  { key: 'venues',     label: 'אצטדיונים' },
+];
 
 export default async function StatisticsInsightsPage({
   searchParams,
 }: {
-  searchParams?: { season?: string };
+  searchParams?: { season?: string; cat?: CategoryKey };
 }) {
   const seasons = await prisma.season.findMany({ orderBy: { year: 'desc' } });
   const selectedSeasonId = searchParams?.season || seasons.find((s) => s.year <= 2025)?.id || seasons[0]?.id;
   const selectedSeason = seasons.find((s) => s.id === selectedSeasonId);
+  const cat: CategoryKey = (CATEGORIES.find((c) => c.key === searchParams?.cat)?.key as CategoryKey) || 'teams';
 
   const data = await buildAllSections(selectedSeasonId || '');
 
@@ -268,32 +304,54 @@ export default async function StatisticsInsightsPage({
           <p className="mt-2 text-sm leading-6 text-stone-600">
             סטטיסטיקות ברמת קבוצה, שופט, אצטדיון. עונה: <strong>{selectedSeason?.name}</strong> · ליגת העל
           </p>
-          <form action="/statistics/insights" className="mt-4">
+          <form action="/statistics/insights" className="mt-4 flex flex-wrap items-center gap-3">
+            <input type="hidden" name="cat" value={cat} />
             <select name="season" defaultValue={selectedSeasonId} className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm font-semibold text-stone-900">
               {seasons.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
             </select>
-            <button className="ms-3 rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white">הצג</button>
+            <button className="rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-bold text-white">הצג</button>
           </form>
         </section>
 
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          <RowCard title="ממוצע שערים בבית" rows={data.teamHomeGoalAvg.slice(0, 8)} />
-          <RowCard title="ממוצע שערים בחוץ" rows={data.teamAwayGoalAvg.slice(0, 8)} />
-          <RowCard title="ממוצע כיבושים למשחק" rows={data.teamGoalsScored.slice(0, 8)} />
-          <RowCard title="ממוצע ספיגות למשחק" rows={data.teamGoalsConceded.slice(0, 8)} />
-          <RowCard title="אחוז הצלחה בבית" rows={data.homeSuccessRate.slice(0, 8)} />
-          <RowCard title="אחוז הצלחה בחוץ" rows={data.awaySuccessRate.slice(0, 8)} />
-          <RowCard title="ניצחונות כשכובשים ראשונים" rows={data.winWhenScoringFirst.slice(0, 8)} />
-          <RowCard title="ניצחונות כשלא כובשים ראשונים" rows={data.winWhenNotScoringFirst.slice(0, 8)} />
-          <RowCard title="כל כמה דקות כובשים" rows={data.minPerGoalScored.slice(0, 8)} />
-          <RowCard title="כל כמה דקות סופגים" rows={data.minPerGoalConceded.slice(0, 8)} />
-          <RowCard title="שערים לפי דקות" rows={data.goalBuckets} />
-          <RowCard title="אחוז ניצול פנדלים" rows={data.penaltyConversion} />
-          <RowCard title="שופטים — צהובים/משחק" rows={data.refYellows.slice(0, 10)} />
-          <RowCard title="שופטים — אדומים/משחק" rows={data.refReds.slice(0, 10)} />
-          <RowCard title="אצטדיונים — שערים/משחק" rows={data.venueGoalAvg.slice(0, 10)} />
-        </div>
+        <nav className="flex flex-wrap gap-2 rounded-xl border border-stone-200 bg-stone-50 p-1">
+          {CATEGORIES.map((c) => {
+            const active = c.key === cat;
+            return (
+              <a key={c.key}
+                href={`/statistics/insights?season=${selectedSeasonId}&cat=${c.key}`}
+                className={`flex-1 rounded-lg px-4 py-2 text-center text-sm font-bold transition ${active ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+                {c.label}
+              </a>
+            );
+          })}
+        </nav>
 
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          {cat === 'teams' && (<>
+            <RowCard title="ממוצע כיבושים למשחק" rows={data.teamGoalsScored.slice(0, 8)} />
+            <RowCard title="ממוצע ספיגות למשחק" rows={data.teamGoalsConceded.slice(0, 8)} />
+            <RowCard title="ממוצע שערים בבית" rows={data.teamHomeGoalAvg.slice(0, 8)} />
+            <RowCard title="ממוצע שערים בחוץ" rows={data.teamAwayGoalAvg.slice(0, 8)} />
+            <RowCard title="אחוז הצלחה בבית" rows={data.homeSuccessRate.slice(0, 8)} />
+            <RowCard title="אחוז הצלחה בחוץ" rows={data.awaySuccessRate.slice(0, 8)} />
+          </>)}
+          {cat === 'situations' && (<>
+            <RowCard title="ניצחונות כשכובשים ראשונים" rows={data.winWhenScoringFirst.slice(0, 8)} />
+            <RowCard title="ניצחונות כשלא כובשים ראשונים" rows={data.winWhenNotScoringFirst.slice(0, 8)} />
+            <RowCard title="כל כמה דקות כובשים" rows={data.minPerGoalScored.slice(0, 8)} />
+            <RowCard title="כל כמה דקות סופגים" rows={data.minPerGoalConceded.slice(0, 8)} />
+            <RowCard title="שערים לפי דקות" rows={data.goalBuckets} />
+            <RowCard title="אחוז ניצול פנדלים" rows={data.penaltyConversion} />
+            <RowCard title="xG בעד (ממוצע למשחק)" rows={data.xgFor.slice(0, 8)} />
+            <RowCard title="xG נגד (ממוצע למשחק)" rows={data.xgAgainst.slice(0, 8)} />
+            <RowCard title="הפרש xG (סה״כ)" rows={data.xgDiff.slice(0, 8)} />
+          </>)}
+          {cat === 'referees' && (<>
+            <RowCard title="צהובים למשחק" rows={data.refYellows.slice(0, 12)} />
+            <RowCard title="אדומים למשחק" rows={data.refReds.slice(0, 12)} />
+          </>)}
+          {cat === 'venues' && (<RowCard title="שערים למשחק לפי אצטדיון" rows={data.venueGoalAvg.slice(0, 15)} />)}
+        </div>
         <section className="modern-card rounded-2xl border border-stone-200/80 bg-white p-5 text-sm text-stone-600 shadow-sm">
           <p>
             <strong>הערות:</strong> אחוז שערים בבעיטות חופשיות / נגיחות וממוצע קהל ביתי זמינים רק עד 2019/20 (מקור Walla, לא מתעדכן).

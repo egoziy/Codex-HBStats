@@ -42,8 +42,15 @@ async function main() {
     gameByKey.set(k.toLowerCase(), g.id);
   }
 
-  // Helper to normalise English names — strip "FC", trailing "FC" etc.
-  function normEn(s) { return (s || '').replace(/\s*FC$/i, '').trim().toLowerCase(); }
+  // Helper to normalise English names — strip "FC", apostrophes, hyphens, accents.
+  function normEn(s) {
+    return (s || '')
+      .replace(/\s*FC$/i, '')
+      .replace(/['’`\-]/g, '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim().toLowerCase();
+  }
   // Build a tolerant lookup: (date, homeNorm, awayNorm) → gameId
   const gameByLooseKey = new Map();
   for (const g of dbGames) {

@@ -119,6 +119,8 @@ export default async function TeamPage({
             awayYellowCards: true,
             homeRedCards: true,
             awayRedCards: true,
+            homeXg: true,
+            awayXg: true,
           },
         },
       },
@@ -232,6 +234,71 @@ export default async function TeamPage({
     wins: allTimeHomeGames.filter((g) => (g.homeScore ?? 0) > (g.awayScore ?? 0)).length,
     draws: allTimeHomeGames.filter((g) => g.homeScore === g.awayScore).length,
     losses: allTimeHomeGames.filter((g) => (g.homeScore ?? 0) < (g.awayScore ?? 0)).length,
+  };
+
+  // ── Insights: away record, win-when-scoring-first, min-per-goal ──
+  const thisSeasonAwayGames = completedGames.filter(
+    (g) => g.awayTeamId === team.id && g.homeScore !== null && g.awayScore !== null
+  );
+  const awaySeasonStats = {
+    played: thisSeasonAwayGames.length,
+    wins: thisSeasonAwayGames.filter((g) => (g.awayScore ?? 0) > (g.homeScore ?? 0)).length,
+    draws: thisSeasonAwayGames.filter((g) => g.homeScore === g.awayScore).length,
+    losses: thisSeasonAwayGames.filter((g) => (g.awayScore ?? 0) < (g.homeScore ?? 0)).length,
+    goalsFor: thisSeasonAwayGames.reduce((s, g) => s + (g.awayScore ?? 0), 0),
+    goalsAgainst: thisSeasonAwayGames.reduce((s, g) => s + (g.homeScore ?? 0), 0),
+  };
+
+  // Determine first goal for each completed game by scanning events.
+  let scoredFirstWins = 0, scoredFirstTotal = 0, concededFirstWins = 0, concededFirstTotal = 0;
+  for (const game of completedGames) {
+    const goalEvents = (game.events as any[] || [])
+      .filter((e: any) => ['GOAL', 'PENALTY_GOAL', 'OWN_GOAL'].includes(e.type) && (e.minute != null))
+      .sort((a: any, b: any) => (a.minute - b.minute) || ((a.sortOrder ?? 0) - (b.sortOrder ?? 0)));
+    const first = goalEvents[0];
+    if (!first) continue;
+    const homeWin = (game.homeScore ?? 0) > (game.awayScore ?? 0);
+    const awayWin = (game.awayScore ?? 0) > (game.homeScore ?? 0);
+    const teamWon = (game.homeTeamId === team.id && homeWin) || (game.awayTeamId === team.id && awayWin);
+    // Determine if first goal was scored BY this team. Own goals count for the OPPONENT side.
+    const firstScoringTeamId = first.type === 'OWN_GOAL'
+      ? (first.teamId === game.homeTeamId ? game.awayTeamId : game.homeTeamId)
+      : first.teamId;
+    if (firstScoringTeamId === team.id) {
+      scoredFirstTotal++;
+      if (teamWon) scoredFirstWins++;
+    } else if (firstScoringTeamId) {
+      concededFirstTotal++;
+      if (teamWon) concededFirstWins++;
+    }
+  }
+
+  const totalCompleted = completedGames.length;
+  const totalGoalsFor = homeSeasonStats.goalsFor + awaySeasonStats.goalsFor;
+  const totalGoalsAgainst = homeSeasonStats.goalsAgainst + awaySeasonStats.goalsAgainst;
+
+  // xG aggregate (only sum games where xG is present)
+  let xgFor = 0, xgAgainst = 0, xgGames = 0;
+  for (const game of completedGames) {
+    const gs = (game as any).gameStats;
+    if (!gs?.homeXg || !gs?.awayXg) continue;
+    if (game.homeTeamId === team.id) { xgFor += gs.homeXg; xgAgainst += gs.awayXg; }
+    else if (game.awayTeamId === team.id) { xgFor += gs.awayXg; xgAgainst += gs.homeXg; }
+    else continue;
+    xgGames++;
+  }
+  const insights = {
+    homeWinRate: homeSeasonStats.played ? Math.round((homeSeasonStats.wins / homeSeasonStats.played) * 100) : 0,
+    awayWinRate: awaySeasonStats.played ? Math.round((awaySeasonStats.wins / awaySeasonStats.played) * 100) : 0,
+    homeSuccessRate: homeSeasonStats.played ? Math.round(((homeSeasonStats.wins * 3 + homeSeasonStats.draws) / (homeSeasonStats.played * 3)) * 100) : 0,
+    awaySuccessRate: awaySeasonStats.played ? Math.round(((awaySeasonStats.wins * 3 + awaySeasonStats.draws) / (awaySeasonStats.played * 3)) * 100) : 0,
+    homeGoalsAvg: homeSeasonStats.played ? (homeSeasonStats.goalsFor / homeSeasonStats.played).toFixed(2) : '0',
+    awayGoalsAvg: awaySeasonStats.played ? (awaySeasonStats.goalsFor / awaySeasonStats.played).toFixed(2) : '0',
+    minPerGoalScored: totalGoalsFor ? Math.round((totalCompleted * 90) / totalGoalsFor) : null,
+    minPerGoalConceded: totalGoalsAgainst ? Math.round((totalCompleted * 90) / totalGoalsAgainst) : null,
+    winPctScoringFirst: scoredFirstTotal ? Math.round((scoredFirstWins / scoredFirstTotal) * 100) : null,
+    winPctConcedingFirst: concededFirstTotal ? Math.round((concededFirstWins / concededFirstTotal) * 100) : null,
+    scoredFirstTotal, scoredFirstWins, concededFirstTotal, concededFirstWins,
   };
 
   const topScorers = team.players
@@ -634,6 +701,21 @@ export default async function TeamPage({
               <StatRow label="קלין שיט" value={String(derived.cleanSheets)} />
               <StatRow label="קרנות" value={String(derived.corners)} />
               <StatRow label="נבדלים" value={String(derived.offsides)} />
+            </div>
+          </Panel>
+          <Panel title="תובנות מתקדמות">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <StatRow label="אחוז הצלחה בבית" value={`${insights.homeSuccessRate}%`} />
+              <StatRow label="אחוז הצלחה בחוץ" value={`${insights.awaySuccessRate}%`} />
+              <StatRow label="ממוצע שערים בבית" value={insights.homeGoalsAvg} />
+              <StatRow label="ממוצע שערים בחוץ" value={insights.awayGoalsAvg} />
+              {insights.minPerGoalScored != null ? <StatRow label="כל כמה דקות כובשים" value={`${insights.minPerGoalScored}'`} /> : null}
+              {insights.minPerGoalConceded != null ? <StatRow label="כל כמה דקות סופגים" value={`${insights.minPerGoalConceded}'`} /> : null}
+              {insights.winPctScoringFirst != null ? <StatRow label="ניצחונות אחרי כיבוש ראשון" value={`${insights.winPctScoringFirst}% (${insights.scoredFirstWins}/${insights.scoredFirstTotal})`} /> : null}
+              {insights.winPctConcedingFirst != null ? <StatRow label="ניצחונות אחרי ספיגה ראשונה" value={`${insights.winPctConcedingFirst}% (${insights.concededFirstWins}/${insights.concededFirstTotal})`} /> : null}
+              {xgGames > 0 ? <StatRow label="xG בעד (סה״כ)" value={`${xgFor.toFixed(2)} (${(xgFor / xgGames).toFixed(2)} ל-משחק)`} /> : null}
+              {xgGames > 0 ? <StatRow label="xG נגד (סה״כ)" value={`${xgAgainst.toFixed(2)} (${(xgAgainst / xgGames).toFixed(2)} ל-משחק)`} /> : null}
+              {xgGames > 0 ? <StatRow label="הפרש xG" value={(xgFor - xgAgainst).toFixed(2)} /> : null}
             </div>
           </Panel>
 

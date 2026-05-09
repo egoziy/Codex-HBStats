@@ -966,6 +966,8 @@ function hasDetailedGameStats(
         awayYellowCards: number | null;
         homeRedCards: number | null;
         awayRedCards: number | null;
+        homeXg: number | null;
+        awayXg: number | null;
       }
     | null
 ) {
@@ -1042,6 +1044,8 @@ function buildComparisonRows(
         awayYellowCards: number | null;
         homeRedCards: number | null;
         awayRedCards: number | null;
+        homeXg: number | null;
+        awayXg: number | null;
       }
     | null,
   eventSummary: ReturnType<typeof buildEventSummary>
@@ -1125,6 +1129,8 @@ function buildSummaryCards(
         awayYellowCards: number | null;
         homeRedCards: number | null;
         awayRedCards: number | null;
+        homeXg: number | null;
+        awayXg: number | null;
       }
     | null,
   eventSummary: ReturnType<typeof buildEventSummary>
@@ -1145,6 +1151,8 @@ function buildSummaryCards(
   const awayYellowCards = stats?.awayYellowCards ?? eventSummary.awayYellowCards;
   const homeRedCards = stats?.homeRedCards ?? eventSummary.homeRedCards;
   const awayRedCards = stats?.awayRedCards ?? eventSummary.awayRedCards;
+  const homeXg = stats?.homeXg ?? null;
+  const awayXg = stats?.awayXg ?? null;
 
   const shotAccuracyHome = homeShotsTotal && homeShotsTotal > 0 && homeShotsOnTarget !== null ? Math.round((homeShotsOnTarget / homeShotsTotal) * 100) : null;
   const shotAccuracyAway = awayShotsTotal && awayShotsTotal > 0 && awayShotsOnTarget !== null ? Math.round((awayShotsOnTarget / awayShotsTotal) * 100) : null;
@@ -1160,6 +1168,12 @@ function buildSummaryCards(
       delta: homeGoals === awayGoals ? 'תיקו' : homeGoals > awayGoals ? 'יתרון בית' : 'יתרון חוץ',
       note: 'מופק גם מאירועים אם תוצאת ה־API לא זמינה',
     },
+    ...(homeXg != null && awayXg != null ? [{
+      label: 'xG (שערים צפויים)',
+      value: `${Number(awayXg).toFixed(2)} / ${Number(homeXg).toFixed(2)}`,
+      delta: 'בית / חוץ',
+      note: 'הסתברות לכל בעיטה — הצפי הסטטיסטי לתוצאה מ-FootyStats',
+    }] : []),
     {
       label: 'דיוק בבעיטות',
       value: `${formatPercent(shotAccuracyAway)} / ${formatPercent(shotAccuracyHome)}`,
