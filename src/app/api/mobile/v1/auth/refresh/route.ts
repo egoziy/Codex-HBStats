@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { signAccessToken } from '@/lib/jwt';
 import { getCachedResponse, setCachedResponse } from '@/lib/refresh-cache';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import type { RefreshRequest, RefreshResponse } from '@shared/types/mobile-api';
 
 const REFRESH_TTL_DAYS = 60;
@@ -28,6 +29,12 @@ export async function POST(request: NextRequest) {
   const refreshToken = body?.refreshToken;
   if (!refreshToken || typeof refreshToken !== 'string') {
     return NextResponse.json({ error: 'refreshToken is required' }, { status: 400 });
+  }
+
+  // Per-IP rate limit on refresh
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`refresh:ip:${ip}`, 10, 60_000)) {
+    return NextResponse.json({ error: 'Too many refresh attempts.' }, { status: 429 });
   }
 
   const tokenHash = sha256(refreshToken);

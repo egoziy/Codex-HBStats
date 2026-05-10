@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { verifyPassword } from '@/lib/auth';
 import { signAccessToken } from '@/lib/jwt';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import type { LoginRequest, LoginResponse } from '@shared/types/mobile-api';
 
 const REFRESH_TTL_DAYS = 60;
@@ -25,6 +26,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  // Per-IP rate limit: any request (valid or not) counts toward IP limit
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`login:ip:${ip}`, 5, 60_000)) {
+    return NextResponse.json({ error: 'Too many login attempts. Try again in a minute.' }, { status: 429 });
+  }
+
   if (
     !body.email ||
     !body.password ||
@@ -32,6 +39,11 @@ export async function POST(request: NextRequest) {
     typeof body.password !== 'string'
   ) {
     return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+  }
+
+  // Per-email rate limit: only counts valid-shape requests
+  if (!checkRateLimit(`login:email:${body.email.toLowerCase()}`, 10, 60 * 60_000)) {
+    return NextResponse.json({ error: 'Too many login attempts for this account.' }, { status: 429 });
   }
 
   const user = await prisma.user.findUnique({

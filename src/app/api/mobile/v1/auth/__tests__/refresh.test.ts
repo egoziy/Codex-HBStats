@@ -50,6 +50,10 @@ describe('POST /api/mobile/v1/auth/refresh', () => {
     // Clear idempotency cache between tests
     const { _clearIdempotencyCacheForTests } = await import('@/lib/refresh-cache');
     _clearIdempotencyCacheForTests();
+
+    // Reset rate limiter between tests
+    const { _resetRateLimitForTests } = await import('@/lib/rate-limit');
+    _resetRateLimitForTests();
   });
 
   afterEach(async () => {

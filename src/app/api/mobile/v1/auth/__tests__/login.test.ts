@@ -20,6 +20,11 @@ describe('POST /api/mobile/v1/auth/login', () => {
   let testEmail: string;
   let testUserId: string;
 
+  beforeEach(async () => {
+    const { _resetRateLimitForTests } = await import('@/lib/rate-limit');
+    _resetRateLimitForTests();
+  });
+
   beforeAll(async () => {
     testEmail = `login-test-${Date.now()}@test.local`;
     const user = await prisma.user.create({
@@ -81,5 +86,13 @@ describe('POST /api/mobile/v1/auth/login', () => {
     expect(res2.status).toBe(400);
     const res3 = await POST(mkReq({}));
     expect(res3.status).toBe(400);
+  });
+
+  test('returns 429 after 5 failed attempts within 1 min from same IP', async () => {
+    for (let i = 0; i < 5; i++) {
+      await POST(mkReq({ email: 'doesnt@matter.tld', password: 'wrong' }));
+    }
+    const res = await POST(mkReq({ email: 'doesnt@matter.tld', password: 'wrong' }));
+    expect(res.status).toBe(429);
   });
 });

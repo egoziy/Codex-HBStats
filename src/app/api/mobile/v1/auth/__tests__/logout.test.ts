@@ -31,6 +31,10 @@ describe('logout endpoints', () => {
       data: { email, name: 'Logout Tester', password: await hashPassword(password), isActive: true },
     });
     userId = user.id;
+
+    // Reset rate limiter — logout tests call loginAs() which hits the login rate limit
+    const { _resetRateLimitForTests } = await import('@/lib/rate-limit');
+    _resetRateLimitForTests();
   });
 
   afterEach(async () => {
