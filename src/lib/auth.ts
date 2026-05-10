@@ -38,12 +38,18 @@ export async function createSession(userId: string) {
   const tokenHash = sha256(rawToken);
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  await prisma.session.create({
+  // Web sessions don't rotate — familyId = id keeps schema invariants happy.
+  const created = await prisma.session.create({
     data: {
       userId,
       tokenHash,
       expiresAt,
+      familyId: '__placeholder__',
     },
+  });
+  await prisma.session.update({
+    where: { id: created.id },
+    data: { familyId: created.id },
   });
 
   cookies().set(SESSION_COOKIE, rawToken, {
