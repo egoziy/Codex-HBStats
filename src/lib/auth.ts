@@ -97,26 +97,33 @@ export async function getCurrentUser() {
 }
 
 export async function getRequestUser(request: NextRequest) {
+  // 1. Cookie-based session (web)
   const rawToken = request.cookies.get(SESSION_COOKIE)?.value;
-
-  if (!rawToken) {
-    return null;
+  if (rawToken) {
+    const session = await prisma.session.findUnique({
+      where: { tokenHash: sha256(rawToken) },
+      include: { user: true },
+    });
+    if (session && session.expiresAt >= new Date() && session.user.isActive) {
+      return toSafeUser(session.user);
+    }
   }
 
-  const session = await prisma.session.findUnique({
-    where: {
-      tokenHash: sha256(rawToken),
-    },
-    include: {
-      user: true,
-    },
-  });
-
-  if (!session || session.expiresAt < new Date() || !session.user.isActive) {
-    return null;
+  // 2. Bearer JWT (mobile)
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.slice(7).trim();
+    const { verifyAccessToken } = await import('./jwt');
+    const claims = verifyAccessToken(token);
+    if (claims) {
+      const user = await prisma.user.findUnique({ where: { id: claims.userId } });
+      if (user && user.isActive) {
+        return toSafeUser(user);
+      }
+    }
   }
 
-  return toSafeUser(session.user);
+  return null;
 }
 
 export async function requireUser() {
