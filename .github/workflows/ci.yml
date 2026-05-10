@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hbstats_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma db push
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hbstats_test
+      - run: npx tsc --noEmit
+      - run: npm test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hbstats_test
+          JWT_SECRET: ci-secret-at-least-32-bytes-long-xx
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm', cache-dependency-path: mobile/package-lock.json }
+      - run: npm ci --legacy-peer-deps
+      - run: npx tsc --noEmit
+      - run: npm test -- --ci
+
+  bundle-secret-scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm', cache-dependency-path: mobile/package-lock.json }
+      - run: npm ci --legacy-peer-deps
+      - name: Export Metro bundle
+        run: npx expo export --platform ios --output-dir dist
+      - name: Scan bundle for known secret patterns
+        run: |
+          set -e
+          if grep -RIE 'sk_live_[A-Za-z0-9]+|sk_test_[A-Za-z0-9]+|api[_-]?key[_-]?[a-f0-9]{32,}|AKIA[0-9A-Z]{16}|JWT_SECRET=' dist/; then
+            echo "ERROR: secret-shaped string found in mobile bundle"
+            exit 1
+          fi
+          echo "Bundle scan clean"

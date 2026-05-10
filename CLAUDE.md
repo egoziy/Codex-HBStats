@@ -258,3 +258,50 @@ Progress tracking בזמן אמת עם progress bar ושלבים.
 - **Fallback:** `MediaImage.tsx` — `onError` handler עם initials placeholder
 - **DB push:** לא migrations — `npx prisma db push` לסנכרון סכמה
 - **Scraping:** נתונים נשמרים ב-Scraped* tables, מוזגים אחרי review
+
+## אפליקציה מובייל (iOS — בפיתוח)
+
+נבנית כ-React Native + Expo SDK 54, בתיקיית `mobile/`. מקור הטיפוסים המשותף: `shared/types/`.
+
+### הרצה מקומית
+
+```bash
+# Backend (אותו תהליך כמו web)
+npm run dev -- --port 8011
+
+# Mobile (טרמינל נפרד)
+cd mobile
+EXPO_PUBLIC_API_BASE_URL=http://localhost:8011 npx expo start --ios
+```
+
+### בדיקות
+
+- **Backend (Jest):** `npm test` מהשורש — 28 tests (auth endpoints + JWT + rate limiting)
+- **Mobile (Jest):** `cd mobile && npm test` — 23 tests (unit + integration with MSW)
+
+### Auth model
+
+- Web: cookies (`hbs_session`, httpOnly, 14 ימים) — בלי שינוי
+- Mobile: bearer tokens (JWT access 15 דק' + opaque refresh 60 ימים, ב-Keychain)
+- שני המסלולים משתמשים באותה טבלת `Session`, ב-`getRequestUser` משולב
+- Refresh rotation עם reuse detection (familyId) + 30s idempotency window
+
+### Mobile API endpoints
+
+כולם תחת `/api/mobile/v1/*`:
+- `auth/login`, `auth/refresh`, `auth/logout`, `auth/logout-all`
+- `home`, `live`, `teams/:id`, `games/:id`, `players/:id`, `news`, `preferences`, `standings`, `stats`
+
+### Stack mobile
+
+- Expo SDK 54 + Expo Router 6 (file-based routing)
+- NativeWind 4 (Tailwind for RN) + RTL by default (`I18nManager.forceRTL(true)`)
+- TanStack Query (caching, persister yet to come in Plan 2)
+- expo-secure-store (refresh token in Keychain), in-memory access token
+- apiClient with Bearer header injection + 401-refresh-retry + singleflight
+- MSW for integration tests
+
+### תיעוד מלא
+
+- Spec (כל 3 הפאזות — iOS v1.0/v1.1, Android): [docs/superpowers/specs/2026-05-10-mobile-app-design.md](docs/superpowers/specs/2026-05-10-mobile-app-design.md)
+- Plan 1 (Foundation + Auth, סופק): [docs/superpowers/plans/2026-05-10-mobile-foundation-and-auth.md](docs/superpowers/plans/2026-05-10-mobile-foundation-and-auth.md)
