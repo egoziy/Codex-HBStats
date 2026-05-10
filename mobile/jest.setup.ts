@@ -1,4 +1,9 @@
 import '@testing-library/jest-native/extend-expect';
+import { server } from './__tests__/msw/server';
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();

@@ -2,7 +2,14 @@ import React from 'react';
 import { Text, Button } from 'react-native';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import * as SecureStore from 'expo-secure-store';
+import { server } from '../../__tests__/msw/server';
 import { AuthProvider, useAuth } from '../AuthContext';
+
+// This unit-test file mocks global.fetch directly via jest.fn().
+// Stop the MSW server (started in jest.setup.ts) so MSW does not intercept
+// these calls — the jest.fn() mock is the sole fetch handler here.
+beforeAll(() => server.close());
+afterAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 
 const fetchMock = jest.fn();
 global.fetch = fetchMock as unknown as typeof fetch;
