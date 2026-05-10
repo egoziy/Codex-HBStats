@@ -47,9 +47,13 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  replacedAt DateTime?
+  replacedBy String?
+  familyId  String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([familyId])
   @@map("sessions")
 }
 
