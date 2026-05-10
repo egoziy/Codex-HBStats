@@ -13,3 +13,20 @@ export const handlers = [
     return HttpResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }),
 ];
+
+export const refreshHandlers = [
+  http.get('http://localhost:8011/api/mobile/v1/home', ({ request }) => {
+    const auth = request.headers.get('authorization');
+    if (auth === 'Bearer fresh-access') {
+      return HttpResponse.json({ liveStrip: [], compactStandings: [] });
+    }
+    return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }),
+  http.post('http://localhost:8011/api/mobile/v1/auth/refresh', async ({ request }) => {
+    const body = (await request.json()) as { refreshToken: string };
+    if (body.refreshToken === 'old-refresh') {
+      return HttpResponse.json({ accessToken: 'fresh-access', refreshToken: 'new-refresh' });
+    }
+    return HttpResponse.json({ error: 'Invalid' }, { status: 401 });
+  }),
+];
