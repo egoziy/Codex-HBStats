@@ -2,8 +2,8 @@ import '../global.css';
 import { useEffect } from 'react';
 import { I18nManager } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from '@/lib/queryClient';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { queryClient, persister } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 
 if (!I18nManager.isRTL) {
@@ -30,7 +30,14 @@ function AuthGate() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: 24 * 60 * 60 * 1000,
+        buster: 'v1',
+      }}
+    >
       <AuthProvider>
         <AuthGate />
         <Stack screenOptions={{ headerShown: false }}>
@@ -38,6 +45,6 @@ export default function RootLayout() {
           <Stack.Screen name="login" />
         </Stack>
       </AuthProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }

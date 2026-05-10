@@ -5,6 +5,12 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  setItem: jest.fn(async () => {}),
+  getItem: jest.fn(async () => null),
+  removeItem: jest.fn(async () => {}),
+}));
+
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();
   return {
