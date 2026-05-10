@@ -51,3 +51,13 @@ coverage/
 
 # Prisma
 prisma/dev.db*
+
+# Mobile (Expo)
+mobile/.expo
+mobile/dist
+mobile/node_modules
+mobile/web-build
+mobile/ios
+mobile/android
+mobile/.env.local
+mobile/docs/apple-credentials.md
