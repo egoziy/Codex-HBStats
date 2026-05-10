@@ -1,3 +1,4 @@
+import '../global.css';
 import { I18nManager } from 'react-native';
 import { Stack } from 'expo-router';
 
