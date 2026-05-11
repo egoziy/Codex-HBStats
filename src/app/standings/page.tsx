@@ -102,9 +102,11 @@ function buildStandingsFromGames(
     awayTeamId: string;
     homeScore: number | null;
     awayScore: number | null;
+    roundNameEn?: string | null;
   }>
 ) {
   const rows = new Map<string, DerivedStandingRow>();
+  const teamPlayoffGroup = new Map<string, 'championship' | 'relegation' | null>();
 
   for (const team of teams) {
     rows.set(team.id, {
@@ -122,6 +124,7 @@ function buildStandingsFromGames(
       teamId: team.id,
       team,
     });
+    teamPlayoffGroup.set(team.id, null);
   }
 
   for (const game of games) {
@@ -130,6 +133,19 @@ function buildStandingsFromGames(
     const home = rows.get(game.homeTeamId);
     const away = rows.get(game.awayTeamId);
     if (!home || !away) continue;
+
+    // Infer playoff group from round name: any team that appears in a
+    // 'Championship Group' game is in the championship playoff; any in
+    // 'Relegation Group' is in the relegation playoff. Regular-season-only
+    // games leave the team's group as null.
+    const round = game.roundNameEn || '';
+    if (/championship/i.test(round)) {
+      teamPlayoffGroup.set(game.homeTeamId, 'championship');
+      teamPlayoffGroup.set(game.awayTeamId, 'championship');
+    } else if (/relegation/i.test(round)) {
+      teamPlayoffGroup.set(game.homeTeamId, 'relegation');
+      teamPlayoffGroup.set(game.awayTeamId, 'relegation');
+    }
 
     home.played += 1;
     away.played += 1;
@@ -158,13 +174,24 @@ function buildStandingsFromGames(
     away.points += 1;
   }
 
+  const allRows = [...rows.values()];
+  const champRows = allRows.filter((r) => teamPlayoffGroup.get(r.teamId) === 'championship');
+  const relRows = allRows.filter((r) => teamPlayoffGroup.get(r.teamId) === 'relegation');
+
+  // If we detected a playoff split, force championship teams to fill positions
+  // 1..N (sorted by points among themselves) and relegation teams to fill N+1.. .
+  // This matches the Israeli league convention: a relegation-group team can have
+  // more points than a championship-group team but still ranks below it.
+  if (champRows.length > 0 && relRows.length > 0) {
+    let pos = 1;
+    return [
+      ...sortStandings(champRows.map((r) => ({ ...r, groupNameEn: 'Championship Group' }))).map((r) => ({ ...r, position: pos++ })),
+      ...sortStandings(relRows.map((r) => ({ ...r, groupNameEn: 'Relegation Group' }))).map((r) => ({ ...r, position: pos++ })),
+    ];
+  }
+
   let fallbackPosition = 1;
-  return sortStandings(
-    [...rows.values()].map((row) => ({
-      ...row,
-      position: fallbackPosition++,
-    }))
-  );
+  return sortStandings(allRows.map((row) => ({ ...row, position: fallbackPosition++ })));
 }
 
 function getTeamForm(teamId: string, games: LeagueGame[]) {
