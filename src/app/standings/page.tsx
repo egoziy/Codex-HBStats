@@ -5,6 +5,7 @@ import { getCompetitionById } from '@/lib/competitions';
 import { getDisplayMode } from '@/lib/display-mode';
 import prisma from '@/lib/prisma';
 import { sortStandings, type StandingWithDerived } from '@/lib/standings';
+import { buildStandingsFromGames } from '@/lib/standings-from-games';
 import { TeamLogo } from '@/components/MediaImage';
 
 export const dynamic = 'force-dynamic';
@@ -93,105 +94,6 @@ function getCompetitionKind(competition?: {
 }) {
   const mapped = competition?.apiFootballId ? getCompetitionById(String(competition.apiFootballId)) : null;
   return mapped?.kind || competition?.type || 'LEAGUE';
-}
-
-function buildStandingsFromGames(
-  teams: TeamName[],
-  games: Array<{
-    homeTeamId: string;
-    awayTeamId: string;
-    homeScore: number | null;
-    awayScore: number | null;
-    roundNameEn?: string | null;
-  }>
-) {
-  const rows = new Map<string, DerivedStandingRow>();
-  const teamPlayoffGroup = new Map<string, 'championship' | 'relegation' | null>();
-
-  for (const team of teams) {
-    rows.set(team.id, {
-      id: `derived-${team.id}`,
-      position: 999,
-      played: 0,
-      wins: 0,
-      draws: 0,
-      losses: 0,
-      goalsFor: 0,
-      goalsAgainst: 0,
-      points: 0,
-      pointsAdjustment: 0,
-      pointsAdjustmentNoteHe: null,
-      teamId: team.id,
-      team,
-    });
-    teamPlayoffGroup.set(team.id, null);
-  }
-
-  for (const game of games) {
-    if (game.homeScore === null || game.awayScore === null) continue;
-
-    const home = rows.get(game.homeTeamId);
-    const away = rows.get(game.awayTeamId);
-    if (!home || !away) continue;
-
-    // Infer playoff group from round name: any team that appears in a
-    // 'Championship Group' game is in the championship playoff; any in
-    // 'Relegation Group' is in the relegation playoff. Regular-season-only
-    // games leave the team's group as null.
-    const round = game.roundNameEn || '';
-    if (/championship/i.test(round)) {
-      teamPlayoffGroup.set(game.homeTeamId, 'championship');
-      teamPlayoffGroup.set(game.awayTeamId, 'championship');
-    } else if (/relegation/i.test(round)) {
-      teamPlayoffGroup.set(game.homeTeamId, 'relegation');
-      teamPlayoffGroup.set(game.awayTeamId, 'relegation');
-    }
-
-    home.played += 1;
-    away.played += 1;
-    home.goalsFor += game.homeScore;
-    home.goalsAgainst += game.awayScore;
-    away.goalsFor += game.awayScore;
-    away.goalsAgainst += game.homeScore;
-
-    if (game.homeScore > game.awayScore) {
-      home.wins += 1;
-      home.points += 3;
-      away.losses += 1;
-      continue;
-    }
-
-    if (game.homeScore < game.awayScore) {
-      away.wins += 1;
-      away.points += 3;
-      home.losses += 1;
-      continue;
-    }
-
-    home.draws += 1;
-    away.draws += 1;
-    home.points += 1;
-    away.points += 1;
-  }
-
-  const allRows = [...rows.values()];
-  const champRows = allRows.filter((r) => teamPlayoffGroup.get(r.teamId) === 'championship');
-  const relRows = allRows.filter((r) => teamPlayoffGroup.get(r.teamId) === 'relegation');
-
-  // If we detected a playoff split, force championship teams to fill positions
-  // 1..N (sorted by points among themselves) and relegation teams to fill N+1.. .
-  // This matches the Israeli league convention: a relegation-group team can have
-  // more points than a championship-group team but still ranks below it.
-  if (champRows.length > 0 && relRows.length > 0) {
-    let pos = 1;
-    return [
-      ...sortStandings(champRows.map((r) => ({ ...r, groupNameEn: 'Championship Group' }))).map((r) => ({ ...r, position: pos++ })),
-      ...sortStandings(relRows.map((r) => ({ ...r, groupNameEn: 'Relegation Group' }))).map((r) => ({ ...r, position: pos++ })),
-    ];
-  }
-
-  let fallbackPosition = 1;
-  return sortStandings(allRows.map((row) => ({ ...row, position: fallbackPosition++ })));
 }
 
 function getTeamForm(teamId: string, games: LeagueGame[]) {
