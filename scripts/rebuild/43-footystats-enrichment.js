@@ -114,8 +114,11 @@ async function main() {
         data: { footyStatsId: fs.matchId },
       }).then(() => fsLinked++).catch(() => null);
 
-      // Upsert game_statistics with xG + advanced stats
-      const stats = {
+      // Build the candidate stats object. xG of exactly 0 is treated as
+      // "no data" — real matches always produce some xG, so 0 is a sentinel
+      // used by the FootyStats API when no data exists yet for the match.
+      const isMissingXg = (v) => v == null || v === 0;
+      const candidate = {
         homeTeamPossession: data.team_a_possession ?? null,
         awayTeamPossession: data.team_b_possession ?? null,
         homeShotsOnTarget:  data.team_a_shotsOnTarget ?? null,
@@ -132,13 +135,20 @@ async function main() {
         awayYellowCards:    data.team_b_yellow_cards ?? null,
         homeRedCards:       data.team_a_red_cards ?? null,
         awayRedCards:       data.team_b_red_cards ?? null,
-        homeXg:             data.team_a_xg ?? null,
-        awayXg:             data.team_b_xg ?? null,
+        homeXg:             isMissingXg(data.team_a_xg) ? null : data.team_a_xg,
+        awayXg:             isMissingXg(data.team_b_xg) ? null : data.team_b_xg,
       };
+
+      // For an UPDATE, drop fields where the new value is null so we don't
+      // clobber previously-populated good data when the current source is
+      // empty (e.g. FootyStats account terminated and HTML scrape pending).
+      const updateData = Object.fromEntries(
+        Object.entries(candidate).filter(([, v]) => v != null),
+      );
       await prisma.gameStatistics.upsert({
         where: { gameId },
-        update: stats,
-        create: { gameId, ...stats },
+        update: updateData,
+        create: { gameId, ...candidate },
       });
       statsUpserted++;
     } catch (e) { errors++; }
