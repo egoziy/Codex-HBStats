@@ -222,10 +222,16 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       }
     : null;
 
-  // Build recentForm from sections.recentForm
-  const recentForm: ('W' | 'D' | 'L')[] = (raw.sections.recentForm || []).map(
-    (entry: { result: 'W' | 'D' | 'L' }) => entry.result,
-  );
+  // Build recentForm from sections.recentForm. Service returns result: string;
+  // narrow to the contract type and drop anything unexpected.
+  const recentForm: ('W' | 'D' | 'L')[] = (raw.sections.recentForm || [])
+    .map((entry: { result: string }): 'W' | 'D' | 'L' | null => {
+      if (entry.result === 'W' || entry.result === 'D' || entry.result === 'L') {
+        return entry.result;
+      }
+      return null;
+    })
+    .filter((r: 'W' | 'D' | 'L' | null): r is 'W' | 'D' | 'L' => r !== null);
 
   // Build squad grouped by position
   const rawSquad = raw.sections.squad || [];

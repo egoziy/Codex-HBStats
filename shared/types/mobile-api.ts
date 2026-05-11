@@ -13,6 +13,17 @@ import type {
   StandingRow,
 } from './common';
 
+// Re-export domain primitives so consumers can import everything from @shared/types/mobile-api.
+export type {
+  TeamSummary,
+  TeamHeader,
+  PlayerSummary,
+  MatchCard,
+  MatchStatus,
+  NewsCard,
+  StandingRow,
+} from './common';
+
 // ---------- Auth ----------
 
 export interface LoginRequest {
