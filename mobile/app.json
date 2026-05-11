@@ -15,7 +15,8 @@
     },
     "ios": {
       "bundleIdentifier": "il.hbstats.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "associatedDomains": ["applinks:hbstats.example.com"]
     },
     "android": {
       "package": "il.hbstats.app",
