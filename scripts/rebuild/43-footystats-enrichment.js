@@ -59,9 +59,33 @@ async function main() {
     gameByLooseKey.set(k, g.id);
   }
 
-  // 2. Walk FS match details
-  const fsMatches = await prisma.footyStatsRawMatch.findMany({ select: { matchId: true, payload: true } });
-  console.log(`  FootyStats match details available: ${fsMatches.length}`);
+  // 2. Walk FS match details. Merge raw (API archive) and scraped (HTML) sources;
+  //    scraped values win when both have a non-null/non-sentinel value (FootyStats API
+  //    uses -1 for "no data"). Scraped data covers fewer fields but is fresher.
+  const [rawMatches, scrapedMatches] = await Promise.all([
+    prisma.footyStatsRawMatch.findMany({ select: { matchId: true, payload: true } }),
+    prisma.footyStatsScrapedMatch.findMany({ select: { matchId: true, payload: true } }),
+  ]);
+  console.log(`  FootyStats match details — API: ${rawMatches.length}, scraped: ${scrapedMatches.length}`);
+
+  // Build merged-by-matchId map. Treat -1 from API as null (sentinel for missing).
+  function clean(v) { return v === -1 ? null : v; }
+  const merged = new Map();
+  for (const r of rawMatches) {
+    const d = r.payload?.data || {};
+    const cleaned = {};
+    for (const [k, v] of Object.entries(d)) cleaned[k] = clean(v);
+    merged.set(r.matchId, cleaned);
+  }
+  for (const s of scrapedMatches) {
+    const d = s.payload?.data || {};
+    const existing = merged.get(s.matchId) || {};
+    for (const [k, v] of Object.entries(d)) {
+      if (v != null && v !== -1) existing[k] = v;
+    }
+    merged.set(s.matchId, existing);
+  }
+  const fsMatches = Array.from(merged.entries()).map(([matchId, data]) => ({ matchId, payload: { data } }));
 
   let matched = 0, statsUpserted = 0, fsLinked = 0, errors = 0;
 
