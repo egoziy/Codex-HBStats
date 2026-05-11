@@ -58,8 +58,12 @@ function getStatusLabel(status: string) {
 }
 
 function truncateText(text: string, maxLength: number) {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength).trim()}...`;
+  // Slice by code points, not UTF-16 code units, so emoji surrogate pairs
+  // (e.g. 🚩) don't get split — a lone surrogate on the server renders as
+  // ◆ (U+FFFD) on the client and breaks hydration.
+  const chars = Array.from(text);
+  if (chars.length <= maxLength) return text;
+  return `${chars.slice(0, maxLength).join('').trim()}...`;
 }
 
 function getTelegramPreviewTitle(text: string) {
