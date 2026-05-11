@@ -356,12 +356,25 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
       ORDER BY value DESC
       LIMIT 5
     `,
-    prisma.competitionLeaderboardEntry.findMany({
-      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal', category: 'TOP_ASSISTS' },
-      orderBy: { value: 'desc' },
-      take: 5,
-      select: { playerNameHe: true, playerNameEn: true, teamNameHe: true, teamNameEn: true, value: true, playerId: true, player: { select: { nameHe: true, nameEn: true } } },
-    }),
+    // Derive top assists from game events too (assister = relatedPlayerId on GOAL events).
+    // Same reasoning as topScorers — live data, no dependency on the Walla-scraped table.
+    prisma.$queryRaw<Array<{ playerId: string; playerNameHe: string | null; playerNameEn: string | null; teamNameHe: string | null; value: number }>>`
+      SELECT ge."relatedPlayerId" AS "playerId",
+             p."nameHe" AS "playerNameHe", p."nameEn" AS "playerNameEn",
+             t."nameHe" AS "teamNameHe", COUNT(*)::int AS value
+      FROM game_events ge
+      JOIN players p ON p.id = ge."relatedPlayerId"
+      LEFT JOIN teams t ON t.id = p."teamId"
+      JOIN games g ON g.id = ge."gameId"
+      WHERE ge.type IN ('GOAL', 'PENALTY_GOAL')
+        AND g."seasonId" = ${latestSeason.id}
+        AND g."competitionId" = 'comp_liga_haal'
+        AND g.status = 'COMPLETED'
+        AND ge."relatedPlayerId" IS NOT NULL
+      GROUP BY ge."relatedPlayerId", p."nameHe", p."nameEn", t."nameHe"
+      ORDER BY value DESC
+      LIMIT 5
+    `,
     prisma.gameEvent.findMany({
       where: {
         type: 'RED_CARD',
@@ -410,8 +423,8 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     `,
   ]);
 
-  // Map raw scorer query to LeaderboardBars-compatible shape
-  const topScorers = topScorersRaw.map((r) => ({
+  // Map raw scorer + assister queries to LeaderboardBars-compatible shape
+  const toLeaderboardRow = (r: { playerId: string; playerNameHe: string | null; playerNameEn: string | null; teamNameHe: string | null; value: number }) => ({
     playerId: r.playerId,
     playerNameHe: r.playerNameHe,
     playerNameEn: r.playerNameEn,
@@ -419,7 +432,9 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
     teamNameEn: null as string | null,
     value: Number(r.value),
     player: null as { nameHe: string | null; nameEn: string | null } | null,
-  }));
+  });
+  const topScorers = topScorersRaw.map(toLeaderboardRow);
+  const topAssistsMapped = topAssists.map(toLeaderboardRow);
 
   // Find suspended players: red card in current or previous round, OR 5th/9th yellow
   const goalMinutesData = goalMinutesRaw.map((row) => ({ name: row.bucket, goals: Number(row.goals) }));
@@ -791,9 +806,9 @@ export default async function HomePage({ searchParams }: { searchParams?: Search
               </Card>
             )}
 
-            {topAssists.length > 0 && (
+            {topAssistsMapped.length > 0 && (
               <Card title="מלכי הבישולים" actionHref="/statistics" actionLabel="לסטטיסטיקות">
-                <LeaderboardBars rows={topAssists} />
+                <LeaderboardBars rows={topAssistsMapped} />
               </Card>
             )}
 
