@@ -280,10 +280,23 @@ export default async function StandingsPage({
           .map((s) => [s.teamId, { pointsAdjustment: s.pointsAdjustment, pointsAdjustmentNoteHe: s.pointsAdjustmentNoteHe }])
       );
       if (adjMap.size === 0) return derived;
-      return sortStandings(derived.map((row) => {
+      // If we have a playoff split (rows tagged with groupNameEn), re-sort
+      // within each group separately so championship teams keep positions 1..N.
+      const withAdj = derived.map((row) => {
         const adj = adjMap.get(row.teamId);
         return adj ? { ...row, ...adj } : row;
-      }));
+      });
+      const hasPlayoffGroups = withAdj.some((r) => /championship|relegation/i.test((r as { groupNameEn?: string }).groupNameEn || ''));
+      if (hasPlayoffGroups) {
+        const champ = sortStandings(withAdj.filter((r) => /championship/i.test((r as { groupNameEn?: string }).groupNameEn || '')));
+        const rel   = sortStandings(withAdj.filter((r) => /relegation/i.test((r as { groupNameEn?: string }).groupNameEn || '')));
+        let pos = 1;
+        return [
+          ...champ.map((r) => ({ ...r, position: pos++ })),
+          ...rel.map((r) => ({ ...r, position: pos++ })),
+        ];
+      }
+      return sortStandings(withAdj);
     }
     return [];
   })();
