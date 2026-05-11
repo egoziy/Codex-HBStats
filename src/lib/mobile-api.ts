@@ -1,4 +1,3 @@
-import { getCurrentUser } from '@/lib/auth';
 import { getCompetitionDisplayName, getRoundDisplayName } from '@/lib/competition-display';
 import { getCurrentSeasonStartYear, getHomepageLiveSnapshots, type HomepageLiveSnapshot } from '@/lib/home-live';
 import prisma from '@/lib/prisma';
@@ -12,6 +11,8 @@ import {
 type MobileSearchParams = {
   team?: string | string[] | undefined;
   league?: string | string[] | undefined;
+  /** Optional authenticated user ID — used by mobile routes that resolve the user via Bearer JWT */
+  userId?: string | null;
 };
 
 function parseSearchValues(value: string | string[] | undefined) {
@@ -143,7 +144,15 @@ function normalizeIdArray(value: unknown) {
 }
 
 export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
-  const viewer = await getCurrentUser();
+  // Resolve the viewer: accept an explicit userId (mobile/Bearer) or fall back to getCurrentUser() (web/cookie).
+  let viewer: { id: string } | null = null;
+  if (searchParams?.userId !== undefined) {
+    viewer = searchParams.userId ? { id: searchParams.userId } : null;
+  } else {
+    const { getCurrentUser } = await import('@/lib/auth');
+    viewer = await getCurrentUser();
+  }
+
   const latestSeason = await prisma.season.findFirst({
     where: {
       year: {
@@ -409,24 +418,62 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
       nextMatch: nextGame
         ? {
             id: nextGame.id,
+            apiId: nextGame.apiFootballId ?? null,
             href: `/games/${nextGame.id}`,
             competition: getCompetitionDisplayName(nextGame.competition),
+            competitionId: nextGame.competition?.id ?? null,
+            competitionName: getCompetitionDisplayName(nextGame.competition),
+            homeTeam: {
+              id: nextGame.homeTeam.id,
+              apiId: nextGame.homeTeam.apiFootballId ?? null,
+              nameEn: nextGame.homeTeam.nameEn,
+              nameHe: nextGame.homeTeam.nameHe || nextGame.homeTeam.nameEn,
+              logoUrl: nextGame.homeTeam.logoUrl ?? null,
+            },
+            awayTeam: {
+              id: nextGame.awayTeam.id,
+              apiId: nextGame.awayTeam.apiFootballId ?? null,
+              nameEn: nextGame.awayTeam.nameEn,
+              nameHe: nextGame.awayTeam.nameHe || nextGame.awayTeam.nameEn,
+              logoUrl: nextGame.awayTeam.logoUrl ?? null,
+            },
             homeTeamName: getTeamLabel(nextGame.homeTeam),
             awayTeamName: getTeamLabel(nextGame.awayTeam),
             dateTime: nextGame.dateTime.toISOString(),
+            status: nextGame.status,
+            homeScore: nextGame.homeScore ?? null,
+            awayScore: nextGame.awayScore ?? null,
             predictionLabel: nextGame.prediction?.winnerTeamNameHe || nextGame.prediction?.winnerTeamNameEn || null,
           }
         : null,
       lastMatch: lastGame
         ? {
             id: lastGame.id,
+            apiId: lastGame.apiFootballId ?? null,
             href: `/games/${lastGame.id}`,
             competition: getCompetitionDisplayName(lastGame.competition),
+            competitionId: lastGame.competition?.id ?? null,
+            competitionName: getCompetitionDisplayName(lastGame.competition),
+            homeTeam: {
+              id: lastGame.homeTeam.id,
+              apiId: lastGame.homeTeam.apiFootballId ?? null,
+              nameEn: lastGame.homeTeam.nameEn,
+              nameHe: lastGame.homeTeam.nameHe || lastGame.homeTeam.nameEn,
+              logoUrl: lastGame.homeTeam.logoUrl ?? null,
+            },
+            awayTeam: {
+              id: lastGame.awayTeam.id,
+              apiId: lastGame.awayTeam.apiFootballId ?? null,
+              nameEn: lastGame.awayTeam.nameEn,
+              nameHe: lastGame.awayTeam.nameHe || lastGame.awayTeam.nameEn,
+              logoUrl: lastGame.awayTeam.logoUrl ?? null,
+            },
             homeTeamName: getTeamLabel(lastGame.homeTeam),
             awayTeamName: getTeamLabel(lastGame.awayTeam),
             dateTime: lastGame.dateTime.toISOString(),
-            homeScore: lastGame.homeScore ?? 0,
-            awayScore: lastGame.awayScore ?? 0,
+            status: lastGame.status,
+            homeScore: lastGame.homeScore ?? null,
+            awayScore: lastGame.awayScore ?? null,
           }
         : null,
       standings: compactStandings.map((row) => ({
@@ -434,6 +481,7 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         teamId: row.teamId,
         teamName: row.team.nameHe || row.team.nameEn,
         position: row.displayPosition,
+        played: row.played,
         points: row.adjustedPoints,
         isFavorite: selectedTeamIds.includes(row.teamId),
       })),

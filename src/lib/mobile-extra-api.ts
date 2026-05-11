@@ -90,8 +90,13 @@ export async function getMobileNewsPayload(limit = 10) {
   };
 }
 
-export async function getMobilePreferencesPayload() {
-  const viewer = await getCurrentUser();
+export async function getMobilePreferencesPayload(params?: { userId?: string }) {
+  let viewer: { id: string } | null = null;
+  if (params?.userId !== undefined) {
+    viewer = params.userId ? { id: params.userId } : null;
+  } else {
+    viewer = await getCurrentUser();
+  }
   if (!viewer) return null;
 
   const user = await prisma.user.findUnique({

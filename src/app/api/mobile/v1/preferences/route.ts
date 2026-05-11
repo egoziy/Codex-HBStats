@@ -4,8 +4,13 @@ import { getMobilePreferencesPayload, updateMobilePreferencesPayload } from '@/l
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const payload = await getMobilePreferencesPayload();
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const payload = await getMobilePreferencesPayload({ userId: user.id });
 
   if (!payload) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

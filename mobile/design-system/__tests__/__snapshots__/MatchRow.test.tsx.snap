@@ -1,0 +1,104 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`MatchRow renders finished match with scores 1`] = `
+<View
+  className="flex-row items-center justify-between py-3 px-2 border-b border-gray-100"
+>
+  <View
+    className="flex-1"
+  >
+    <Text
+      className="text-base"
+    >
+      בית
+    </Text>
+    <Text
+      className="text-base"
+    >
+      חוץ
+    </Text>
+  </View>
+  <View
+    className="px-3 items-center"
+  >
+    <Text
+      className="text-base font-semibold"
+    >
+      2 - 1
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`MatchRow renders live match with minute 1`] = `
+<View
+  className="flex-row items-center justify-between py-3 px-2 border-b border-gray-100"
+>
+  <View
+    className="flex-1"
+  >
+    <Text
+      className="text-base"
+    >
+      בית
+    </Text>
+    <Text
+      className="text-base"
+    >
+      חוץ
+    </Text>
+  </View>
+  <View
+    className="px-3 items-center"
+  >
+    <View
+      className="flex-row items-center gap-1"
+    >
+      <View
+        className="w-2 h-2 rounded-full bg-red-500"
+      />
+      <Text
+        className="text-xs text-red-600 font-bold"
+      >
+        LIVE
+      </Text>
+    </View>
+    <Text
+      className="text-xs text-gray-500 mt-1"
+    >
+      67
+      '
+    </Text>
+  </View>
+</View>
+`;
+
+exports[`MatchRow renders scheduled match (no scores) 1`] = `
+<View
+  className="flex-row items-center justify-between py-3 px-2 border-b border-gray-100"
+>
+  <View
+    className="flex-1"
+  >
+    <Text
+      className="text-base"
+    >
+      בית
+    </Text>
+    <Text
+      className="text-base"
+    >
+      חוץ
+    </Text>
+  </View>
+  <View
+    className="px-3 items-center"
+  >
+    <Text
+      className="text-sm text-gray-500"
+    >
+      19:00
+    </Text>
+  </View>
+</View>
+`;
