@@ -1417,6 +1417,17 @@ model FootyStatsRawMatch {
   @@map("footystats_raw_match")
 }
 
+// HTML-scraped FootyStats match payloads (replacing the API after account termination).
+// Same shape as FootyStatsRawMatch.payload.data so the merge code can read either source.
+model FootyStatsScrapedMatch {
+  matchId   Int      @id
+  url       String
+  payload   Json
+  scrapedAt DateTime @default(now())
+
+  @@map("footystats_scraped_match")
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // API-Football raw archive — one table per endpoint, raw JSON payloads.
 // ──────────────────────────────────────────────────────────────────────

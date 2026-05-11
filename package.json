@@ -1,6 +1,6 @@
 {
   "name": "soccer-league-management",
-  "version": "0.2.1",
+  "version": "0.3.3",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3100",
@@ -34,6 +34,7 @@
     "next-i18next": "^14.0.0",
     "openai": "^6.34.0",
     "puppeteer-core": "^24.40.0",
+    "puppeteer-real-browser": "^1.4.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^3.8.0",

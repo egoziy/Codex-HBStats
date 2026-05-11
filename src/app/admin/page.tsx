@@ -491,6 +491,7 @@ export default async function AdminPage({
               <Link href="/admin/referees" className="rounded-full bg-white/15 px-3 py-1.5 transition hover:bg-white/25">שופטים</Link>
               <Link href="/admin/scrape" className="rounded-full bg-blue-500/30 px-3 py-1.5 transition hover:bg-blue-500/50">סריקת אתרים</Link>
               <Link href="/admin/merge" className="rounded-full bg-purple-500/30 px-3 py-1.5 transition hover:bg-purple-500/50">מיזוג נתונים</Link>
+              <Link href="/admin/matchday" className="rounded-full bg-emerald-500/30 px-3 py-1.5 transition hover:bg-emerald-500/50">יום משחקים</Link>
               <Link href="/admin/setup" className="rounded-full bg-emerald-500/30 px-3 py-1.5 transition hover:bg-emerald-500/50">ייבוא מלא</Link>
               <Link href="/admin/db-transfer" className="rounded-full bg-orange-500/30 px-3 py-1.5 transition hover:bg-orange-500/50">העברת DB</Link>
             </div>
@@ -531,6 +532,23 @@ export default async function AdminPage({
         {/* Data tab (default) */}
         {adminTab === 'data' ? (
           <div className="space-y-4">
+            <section className="rounded-[20px] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-black text-emerald-900">עדכון יום משחקים</h2>
+                  <p className="mt-1 text-xs text-emerald-700/80">
+                    סנכרון מהיר של נתוני יום ספציפי: API-Football (אירועים, הרכבים, סטטיסטיקה) + FootyStats (xG) + מיזוג.
+                  </p>
+                </div>
+                <Link
+                  href="/admin/matchday"
+                  className="rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700"
+                >
+                  פתח עדכון יום משחקים →
+                </Link>
+              </div>
+            </section>
+
             <section className="rounded-[20px] border border-stone-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center gap-3">
                 <h2 className="text-base font-black text-stone-900">FootyStats — סנכרון נתונים</h2>
