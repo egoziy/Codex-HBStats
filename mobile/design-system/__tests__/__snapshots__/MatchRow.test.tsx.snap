@@ -97,7 +97,7 @@ exports[`MatchRow renders scheduled match (no scores) 1`] = `
     <Text
       className="text-sm text-gray-500"
     >
-      22:00
+      19:00
     </Text>
   </View>
 </View>

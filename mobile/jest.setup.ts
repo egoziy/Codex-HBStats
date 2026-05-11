@@ -1,3 +1,7 @@
+// Force a stable timezone so snapshots that include formatted local times
+// are identical across developer Macs (UTC+3) and CI (UTC).
+process.env.TZ = 'UTC';
+
 import '@testing-library/jest-native/extend-expect';
 import { server } from './__tests__/msw/server';
 
