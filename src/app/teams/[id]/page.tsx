@@ -198,12 +198,20 @@ export default async function TeamPage({
     .filter((p): p is NonNullable<typeof p> => p !== null);
 
   const sortedStandings = sortStandings(seasonStandings);
-  const standing = sortedStandings.find((row) => row.teamId === team.id) || null;
-  const standingIndex = sortedStandings.findIndex((row) => row.teamId === team.id);
+  // Standings for one season include multiple competitions (e.g. ליגת העל,
+  // ליגה לאומית, גביעים). Filter to the competition this team actually plays in
+  // so the compact table on the team page shows the right league.
+  const teamStandingRow = sortedStandings.find((row) => row.teamId === team.id) || null;
+  const teamCompetitionId = teamStandingRow?.competitionId ?? null;
+  const leagueStandings = teamCompetitionId
+    ? sortStandings(sortedStandings.filter((row) => row.competitionId === teamCompetitionId))
+    : sortedStandings;
+  const standing = leagueStandings.find((row) => row.teamId === team.id) || null;
+  const standingIndex = leagueStandings.findIndex((row) => row.teamId === team.id);
   const nearbyStandings =
     standingIndex >= 0
-      ? sortedStandings.slice(Math.max(0, standingIndex - 2), Math.min(sortedStandings.length, standingIndex + 3))
-      : sortedStandings.slice(0, 5);
+      ? leagueStandings.slice(Math.max(0, standingIndex - 2), Math.min(leagueStandings.length, standingIndex + 3))
+      : leagueStandings.slice(0, 5);
 
   const derived = deriveTeamDeepStats(team.id, teamGames);
   const seasonTeamStat = team.teamStats.find((stat) => stat.seasonId === team.seasonId) || team.teamStats[0] || null;
