@@ -30,7 +30,14 @@ export async function GET(request: NextRequest) {
   const parsedLimit = Number(limitParam);
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
 
-  const snapshots = await getHomepageLiveSnapshots(null, { limit });
+  // Service may try to refresh from API-Football and throw if the key is missing
+  // (e.g. CI without API_FOOTBALL_KEY). Treat any failure here as "no live data".
+  let snapshots: Awaited<ReturnType<typeof getHomepageLiveSnapshots>>;
+  try {
+    snapshots = await getHomepageLiveSnapshots(null, { limit });
+  } catch {
+    snapshots = [];
+  }
 
   const groupsMap = new Map<string, LiveLeagueGroup>();
 
