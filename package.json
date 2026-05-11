@@ -34,7 +34,6 @@
     "next-i18next": "^14.0.0",
     "openai": "^6.34.0",
     "puppeteer-core": "^24.40.0",
-    "puppeteer-real-browser": "^1.4.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^3.8.0",
@@ -43,6 +42,7 @@
   "devDependencies": {
     "@swc/core": "^1.15.33",
     "@swc/jest": "^0.2.39",
+    "puppeteer-real-browser": "^1.4.4",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/supertest": "^7.2.0",

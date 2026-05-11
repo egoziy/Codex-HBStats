@@ -6,6 +6,10 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '500mb',
     },
+    // Puppeteer + native binaries break webpack bundling. They're invoked only
+    // from node scripts (via child_process.spawn), never imported from app code,
+    // so exclude them from Next.js bundling.
+    serverComponentsExternalPackages: ['puppeteer-real-browser', 'puppeteer-core'],
   },
   api: {
     bodyParser: {
