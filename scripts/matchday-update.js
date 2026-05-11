@@ -111,6 +111,42 @@ async function fetchAF(urlPath) {
   return res.json();
 }
 
+/**
+ * Refresh fixture metadata (referee, venue, status, elapsed) on the canonical
+ * Game record. API-Football's /fixtures?id=X returns these — our previous
+ * matchday job only refreshed lineups/events/statistics, so games that didn't
+ * exist before the original full-season dump had no referee.
+ */
+async function refreshFixtureMetadata(game) {
+  const fixtureId = game.apiFootballId;
+  const data = await fetchAF(`/fixtures?id=${fixtureId}`).catch((e) => ({ _err: e.message }));
+  if (data._err) return { _err: data._err };
+  const f = data?.response?.[0];
+  if (!f) return { _err: 'empty response' };
+
+  const updates = {};
+  const refEn = f.fixture?.referee;
+  if (refEn) {
+    if (!game.refereeEn) updates.refereeEn = refEn;
+    // Only fill Hebrew when missing — manual admin entries take precedence.
+    if (!game.refereeHe) updates.refereeHe = refEn;
+  }
+  const venueName = f.fixture?.venue?.name;
+  if (venueName) {
+    if (!game.venueNameEn) updates.venueNameEn = venueName;
+    if (!game.venueNameHe) updates.venueNameHe = venueName;
+  }
+  const st = f.fixture?.status;
+  if (st?.short) updates.statusShort = st.short;
+  if (st?.long)  updates.statusLong = st.long;
+  if (typeof st?.elapsed === 'number') updates.elapsed = st.elapsed;
+  if (typeof st?.extra === 'number')   updates.extra = st.extra;
+
+  if (Object.keys(updates).length === 0) return { skipped: true };
+  await prisma.game.update({ where: { id: game.id }, data: updates });
+  return { updated: Object.keys(updates) };
+}
+
 function mapEventType(type, detail) {
   if (type === 'Goal') {
     if (detail === 'Own Goal') return 'OWN_GOAL';
@@ -322,10 +358,26 @@ async function main() {
     if (!API_KEY) { console.error('API_FOOTBALL_KEY missing — skipping AF refresh'); }
     else {
       console.log(`\n→ Refreshing API-Football data...`);
+      // First pass: pull the full canonical Game row (with refereeHe etc.) so
+      // refreshFixtureMetadata can decide whether to fill empty fields.
+      const fullGames = !DRY_RUN
+        ? await prisma.game.findMany({
+            where: { id: { in: games.map((g) => g.id) } },
+            select: { id: true, apiFootballId: true, refereeHe: true, refereeEn: true, venueNameHe: true, venueNameEn: true },
+          })
+        : [];
+      const fullById = new Map(fullGames.map((g) => [g.id, g]));
+
       for (const g of games) {
-        const meta = seasonByGame.get(g.apiFootballId);
+        const seasonMeta = seasonByGame.get(g.apiFootballId);
         try {
-          const raw = await refreshRawApiFootball(g, meta.leagueId, meta.season);
+          // Fixture metadata (referee, venue, status, elapsed)
+          if (!DRY_RUN) {
+            const fixtureMeta = await refreshFixtureMetadata(fullById.get(g.id) || g);
+            if (fixtureMeta.updated) console.log(`    → fixture meta updated: ${fixtureMeta.updated.join(', ')}`);
+          }
+          // Lineups + events + statistics + project to canonical
+          const raw = await refreshRawApiFootball(g, seasonMeta.leagueId, seasonMeta.season);
           if (!DRY_RUN) await projectFixtureToGame(g, raw, lookups);
           console.log(`  ✓ ${g.apiFootballId} ${g.homeTeam.nameHe} vs ${g.awayTeam.nameHe}`);
         } catch (e) {
@@ -350,20 +402,37 @@ async function main() {
     }
   } else if (SKIP_FS) console.log('\n(skipping FootyStats scrape)');
 
-  // 3. IFA refresh — scrape current season match details (events, lineups, refs)
-  //    Idempotent: upserts by IFA game id, so re-running this matchday is safe.
+  // 3. IFA refresh — scrape ONLY the matchday's specific round, not the whole season.
+  //    Find the round number from the matchday's games (e.g. 'Championship Group - 32'
+  //    → round 32). Pass --from N --to N to scrape-ifa-full.js so it targets that round.
+  //    Idempotent: upserts by IFA game id.
   if (!SKIP_IFA && !DRY_RUN) {
     const ifaLeagueId = IFA_LEAGUE_MAP[LEAGUE];
     if (!ifaLeagueId) {
       console.log(`\n(no IFA league mapping for "${LEAGUE}" — skipping)`);
     } else {
       const ifaSeason = ifaSeasonIdFromDate(DATE);
-      console.log(`\n→ Refreshing IFA details (season=${ifaSeason}, league=${ifaLeagueId})...`);
+      // Extract round numbers from games' roundNameEn (e.g. 'Championship Group - 32' → 32)
+      const gameRecords = await prisma.game.findMany({
+        where: { id: { in: games.map((g) => g.id) } },
+        select: { roundNameEn: true },
+      });
+      const rounds = new Set();
+      for (const gr of gameRecords) {
+        const m = (gr.roundNameEn || '').match(/(\d+)\s*$/);
+        if (m) rounds.add(parseInt(m[1], 10));
+      }
+      const roundList = Array.from(rounds);
+      const from = roundList.length ? Math.min(...roundList) : 1;
+      const to   = roundList.length ? Math.max(...roundList) : 36;
+      console.log(`\n→ Refreshing IFA details (season=${ifaSeason}, league=${ifaLeagueId}, rounds=${from}-${to})...`);
       const result = spawnSync('node', [
         'scripts/scrape-ifa-full.js',
         '--mode', 'details',
         '--season', ifaSeason,
         '--league', ifaLeagueId,
+        '--from', String(from),
+        '--to',   String(to),
       ], { stdio: 'inherit' });
       if (result.status !== 0) console.error('  ✗ IFA refresh failed (continuing)');
     }
