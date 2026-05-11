@@ -7,6 +7,7 @@ import { getDisplayZeroStatPlayersSetting } from '@/lib/player-zero-stat-setting
 import { formatPlayerName, formatPlayerPosition } from '@/lib/player-display';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
+import { buildStandingsFromGames, shouldDeriveStandings } from '@/lib/standings-from-games';
 
 export const dynamic = 'force-dynamic';
 
@@ -232,7 +233,41 @@ export default async function StatisticsPage({
       : [],
   ]);
 
-  const standings = sortStandings(rawStandings);
+  // If the stored Standing rows are still end-of-regular-season (no playoff
+  // group info) but completed games include playoff rounds, derive a fresh
+  // table from games so championship/relegation split is reflected.
+  const standings = (() => {
+    if (selectedSeason && !selectedTeam && shouldDeriveStandings(rawStandings, games)) {
+      // Reuse teams from the games' home/away references for the derived view
+      const teamMap = new Map<string, { id: string; nameHe: string; nameEn: string; logoUrl: string | null }>();
+      for (const g of games) {
+        if (g.homeTeam) teamMap.set(g.homeTeam.id, { id: g.homeTeam.id, nameHe: g.homeTeam.nameHe, nameEn: g.homeTeam.nameEn, logoUrl: g.homeTeam.logoUrl });
+        if (g.awayTeam) teamMap.set(g.awayTeam.id, { id: g.awayTeam.id, nameHe: g.awayTeam.nameHe, nameEn: g.awayTeam.nameEn, logoUrl: g.awayTeam.logoUrl });
+      }
+      const derived = buildStandingsFromGames([...teamMap.values()], games.map((g) => ({
+        homeTeamId: g.homeTeamId,
+        awayTeamId: g.awayTeamId,
+        homeScore: g.homeScore,
+        awayScore: g.awayScore,
+        roundNameEn: g.roundNameEn,
+      })));
+      // Overlay stored point adjustments (deductions) onto the derived rows.
+      const adjMap = new Map(
+        rawStandings
+          .filter((s) => s.pointsAdjustment !== 0)
+          .map((s) => [s.teamId, { pointsAdjustment: s.pointsAdjustment, pointsAdjustmentNoteHe: s.pointsAdjustmentNoteHe }]),
+      );
+      // Map derived rows to the same shape rawStandings has (with team relation)
+      return derived.map((row) => {
+        const adj = adjMap.get(row.teamId);
+        return {
+          ...row,
+          ...(adj ?? {}),
+        };
+      });
+    }
+    return sortStandings(rawStandings);
+  })();
 
   let totalGoals = 0;
   for (const game of games) {
