@@ -266,7 +266,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8011/admin/unlinked)",
       "Bash(curl -s http://localhost:8011/admin/unlinked)",
       "Bash(curl -s -o /dev/null -w \"homepage:%{http_code} time:%{time_total}\\\\n\" http://localhost:8011/)",
-      "Bash(curl -s -o /tmp/u.html -w \"unlinked:%{http_code} time:%{time_total}\\\\n\" http://localhost:8011/admin/unlinked)"
+      "Bash(curl -s -o /tmp/u.html -w \"unlinked:%{http_code} time:%{time_total}\\\\n\" http://localhost:8011/admin/unlinked)",
+      "Bash(node scripts/probe-flashscore-leagues.js)"
     ],
     "additionalDirectories": [
       "/Users/yaniv/Documents/AI/SoocerStats/src/app/api/mobile/v1/games/[id]",

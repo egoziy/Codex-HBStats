@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type StepStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 type Step = { key: string; label: string; status: StepStatus; error?: string };
@@ -14,22 +14,31 @@ type Status = {
   error: string | null;
 };
 
-const KNOWN_LEAGUES = [
-  { slug: 'ligat-ha-al', label: 'ליגת העל' },
-  { slug: 'liga-leumit', label: 'ליגה לאומית' },
-  { slug: 'state-cup', label: 'גביע המדינה' },
-  { slug: 'toto-cup', label: 'גביע הטוטו' },
+// Today is during 2025-2026 (Aug 2025 → Jul 2026). Current-season slugs have
+// no year suffix on Flashscore; historical seasons append "-YYYY-YYYY".
+const CURRENT_SEASON = '2025-2026';
+const HISTORICAL_SEASONS = (() => {
+  const arr: string[] = [];
+  for (let endYear = 2025; endYear >= 1996; endYear--) {
+    arr.push(`${endYear - 1}-${endYear}`);
+  }
+  return arr;
+})();
+
+const LEAGUES = [
+  { label: 'ליגת העל', baseSlug: 'ligat-ha-al' },
+  { label: 'ליגה לאומית', baseSlug: 'leumit-league' },
+  { label: 'גביע המדינה', baseSlug: 'state-cup' },
+  { label: 'סופר קאפ (אלוף האלופים)', baseSlug: 'super-cup' },
+  { label: 'גביע הטוטו', baseSlug: 'toto-cup' },
+  { label: 'ליגה א\' צפון', baseSlug: 'liga-alef-north' },
+  { label: 'ליגה א\' דרום', baseSlug: 'liga-alef-south' },
 ];
 
-const CURRENT_YEAR = new Date().getUTCFullYear();
-const KNOWN_SEASONS = Array.from({ length: 8 }).map((_, i) => {
-  const y = CURRENT_YEAR - i;
-  return `${y - 1}-${y}`;
-});
-
 export default function AdminFlashscoreClient() {
-  const [leagueSlug, setLeagueSlug] = useState('ligat-ha-al');
-  const [season, setSeason] = useState(KNOWN_SEASONS[0]);
+  const [leagueIdx, setLeagueIdx] = useState(0);
+  const [season, setSeason] = useState(CURRENT_SEASON);
+  const [customSlug, setCustomSlug] = useState('');
   const [skipFixtures, setSkipFixtures] = useState(false);
   const [skipTeams, setSkipTeams] = useState(false);
   const [skipMatches, setSkipMatches] = useState(false);
@@ -39,6 +48,17 @@ export default function AdminFlashscoreClient() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const logRef = useRef<HTMLPreElement | null>(null);
+
+  // Slug derivation: current-season → base slug, historical → base + season suffix.
+  // Super Cup uses a single-year suffix (super-cup-2024); leagues use a range
+  // (ligat-ha-al-2024-2025). User can override via the custom slug field.
+  const derivedSlug = useMemo(() => {
+    if (customSlug.trim()) return customSlug.trim();
+    const base = LEAGUES[leagueIdx].baseSlug;
+    if (season === CURRENT_SEASON) return base;
+    if (base === 'super-cup') return `${base}-${season.split('-')[0]}`;
+    return `${base}-${season}`;
+  }, [leagueIdx, season, customSlug]);
 
   const refresh = useCallback(async () => {
     try {
@@ -58,7 +78,6 @@ export default function AdminFlashscoreClient() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  // Auto-scroll log to bottom whenever it updates.
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [status?.output]);
@@ -72,7 +91,7 @@ export default function AdminFlashscoreClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
-          leagueSlug,
+          leagueSlug: derivedSlug,
           season,
           skipFixtures,
           skipTeams,
@@ -101,25 +120,17 @@ export default function AdminFlashscoreClient() {
         <h2 className="text-xl font-black text-stone-900">בחירת מסגרת ועונה</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-semibold text-stone-700">ליגה</span>
+            <span className="font-semibold text-stone-700">מסגרת</span>
             <select
-              value={leagueSlug}
-              onChange={(e) => setLeagueSlug(e.target.value)}
+              value={leagueIdx}
+              onChange={(e) => setLeagueIdx(Number(e.target.value))}
               disabled={running}
               className="rounded-lg border border-stone-300 bg-white px-3 py-2"
             >
-              {KNOWN_LEAGUES.map((l) => (
-                <option key={l.slug} value={l.slug}>{l.label} ({l.slug})</option>
+              {LEAGUES.map((l, i) => (
+                <option key={l.baseSlug} value={i}>{l.label}</option>
               ))}
             </select>
-            <input
-              type="text"
-              value={leagueSlug}
-              onChange={(e) => setLeagueSlug(e.target.value)}
-              disabled={running}
-              placeholder="או הזן slug ידני"
-              className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs"
-            />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-semibold text-stone-700">עונה</span>
@@ -129,8 +140,28 @@ export default function AdminFlashscoreClient() {
               disabled={running}
               className="rounded-lg border border-stone-300 bg-white px-3 py-2"
             >
-              {KNOWN_SEASONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              {HISTORICAL_SEASONS.map((s) => (
+                <option key={s} value={s}>{s === CURRENT_SEASON ? `${s} (עונה נוכחית)` : s}</option>
+              ))}
             </select>
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs">
+          <div className="font-semibold text-stone-600">
+            URL ל-Flashscore: <code className="rounded bg-white px-1.5 py-0.5 text-stone-900" dir="ltr">/football/israel/{derivedSlug}/</code>
+          </div>
+          <label className="mt-2 flex flex-col gap-1 text-stone-700">
+            <span>או הזן slug ידנית (יעקוף את הבחירה למעלה):</span>
+            <input
+              type="text"
+              value={customSlug}
+              onChange={(e) => setCustomSlug(e.target.value)}
+              disabled={running}
+              placeholder="לדוגמה: ligat-ha-al-2010-2011"
+              className="rounded-lg border border-stone-300 bg-white px-3 py-1.5"
+              dir="ltr"
+            />
           </label>
         </div>
 
@@ -184,9 +215,15 @@ export default function AdminFlashscoreClient() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        <strong>שים לב:</strong> ייבוא מלא לעונת ליגה רגילה (~220 משחקים) לוקח 60–90 דקות.
-        עונות גביע קצרות יותר. ניתן לסגור את הדף ולחזור — הסטטוס מתעדכן גם אחרי רענון.
+      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 leading-7">
+        <strong>טיפים:</strong>
+        <ul className="mt-2 list-inside list-disc space-y-1">
+          <li>עונה נוכחית: <code dir="ltr">ligat-ha-al</code></li>
+          <li>עונה היסטורית: <code dir="ltr">ligat-ha-al-2024-2025</code> (מתבנה אוטומטית מהבחירה)</li>
+          <li>סופר קאפ אישי: <code dir="ltr">super-cup-2024</code> (שנה אחת בלבד)</li>
+          <li>ייבוא מלא ~220 משחקים: 60–90 דק'. עונות גביע: 10–20 דק'.</li>
+          <li>אם שם קבוצה לא מתאים לאחר מיזוג — תוסיף alias ב-<code dir="ltr">scripts/rebuild/44-flashscore-enrichment.js</code> ופנה אלי.</li>
+        </ul>
       </div>
     </div>
   );
