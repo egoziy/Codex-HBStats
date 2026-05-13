@@ -1,6 +1,7 @@
-import { ScrollView, View, Text, ActivityIndicator, Image } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Svg, Path } from 'react-native-svg';
 import { useMatch } from '@/hooks/useMatch';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Card } from '@/design-system/Card';
@@ -64,8 +65,14 @@ function StatRow({ label, home, away }: { label: string; home: string | number; 
 export default function MatchScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const router = useRouter();
   const { data, isLoading } = useMatch(id);
   const { brand } = useTheme();
+
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/' as any);
+  };
 
   if (isLoading || !data) {
     return (
@@ -88,6 +95,16 @@ export default function MatchScreen() {
         style={{ borderRadius: 28, overflow: 'hidden' }}
       >
         <View className="px-5 py-6">
+          {/* Top row: back arrow on the right (RTL home), space-reserve on left. */}
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Pressable onPress={goBack} hitSlop={10} style={{ padding: 4 }}>
+              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                {/* Arrow head pointing right (back in RTL = forward visually) */}
+                <Path d="M9 6l6 6-6 6" />
+              </Svg>
+            </Pressable>
+            <View />
+          </View>
           {/* HOME on the right, AWAY on the left — forced via row-reverse so
               the layout reads correctly in both RTL and Expo Go (which does
               not auto-flip flex-row). */}

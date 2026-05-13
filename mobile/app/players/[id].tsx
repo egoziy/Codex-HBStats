@@ -1,6 +1,7 @@
 import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Svg, Path } from 'react-native-svg';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Card } from '@/design-system/Card';
@@ -62,7 +63,20 @@ export default function PlayerScreen() {
         style={{ borderRadius: 28, overflow: 'hidden' }}
       >
         <View className="px-6 py-6">
-          <View className="flex-row items-center gap-4">
+          {/* Back arrow on the right (RTL) */}
+          <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Pressable
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as any))}
+              hitSlop={10}
+              style={{ padding: 4 }}
+            >
+              <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                <Path d="M9 6l6 6-6 6" />
+              </Svg>
+            </Pressable>
+            <View />
+          </View>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 16 }}>
             {data.player.photoUrl ? (
               <Image source={{ uri: data.player.photoUrl }} className="w-24 h-24 rounded-full border-2 border-white/30" />
             ) : (
@@ -70,7 +84,7 @@ export default function PlayerScreen() {
                 <Text className="text-3xl font-black text-white">{firstLetter}</Text>
               </View>
             )}
-            <View className="flex-1">
+            <View style={{ flex: 1, alignItems: 'flex-end' }}>
               {data.player.position ? (
                 <Text className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/70">
                   {data.player.position}
@@ -87,7 +101,7 @@ export default function PlayerScreen() {
             </View>
           </View>
           {(age !== null || data.player.marketValue || data.player.contractUntil) ? (
-            <View className="mt-4 flex-row flex-wrap gap-2">
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
               {age !== null ? <Pill label={`גיל ${age}`} /> : null}
               {data.player.marketValue ? <Pill label={`שווי ${data.player.marketValue}`} /> : null}
               {data.player.contractUntil ? <Pill label={`חוזה ${formatHebrewDate(data.player.contractUntil)}`} /> : null}

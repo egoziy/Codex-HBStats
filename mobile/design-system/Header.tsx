@@ -20,15 +20,18 @@ export function Header({ title, subtitle, onBack, showBack }: HeaderProps) {
 
   return (
     <View style={{ flexShrink: 0 }}>
-      {/* Brand-colored bar */}
+      {/* Brand-colored bar — row-reverse so the HBS badge sits centred while
+          the hamburger lands on the right (RTL start) and search on the left. */}
       <View
         style={{
           backgroundColor: brand.accent,
           paddingTop: 54,
           paddingBottom: 10,
           paddingHorizontal: 14,
+          flexDirection: 'row-reverse',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}
-        className="flex-row items-center justify-between"
       >
         {showBack ? (
           <Pressable onPress={onBack} hitSlop={10}>
@@ -44,7 +47,7 @@ export function Header({ title, subtitle, onBack, showBack }: HeaderProps) {
           </Pressable>
         )}
 
-        <View className="flex-row items-center gap-2">
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
           <Text style={{ color: 'white', fontSize: 11, fontWeight: '700', letterSpacing: 0.4, opacity: 0.9 }}>
             ליגת העל
           </Text>

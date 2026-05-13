@@ -59,12 +59,12 @@ export default function HomeScreen() {
           <Section title="המועדפת שלך">
             <Pressable onPress={() => router.push(`/teams/${fav.id}` as any)}>
               <Card>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 12 }}>
                   <TeamCrest mono={fav.nameHe.slice(0, 2)} bg={brand.accent} fg="white" size={36} logoUrl={fav.logoUrl} />
-                  <Text style={{ flex: 1, color: theme.ink[900], fontSize: 16, fontWeight: '800' }}>
+                  <Text style={{ flex: 1, color: theme.ink[900], fontSize: 16, fontWeight: '800', textAlign: 'right' }}>
                     {fav.nameHe}
                   </Text>
-                  <Text style={{ color: brand.accent, fontSize: 12, fontWeight: '700' }}>לדף הקבוצה ←</Text>
+                  <Text style={{ color: brand.accent, fontSize: 12, fontWeight: '700' }}>← לדף הקבוצה</Text>
                 </View>
               </Card>
             </Pressable>
@@ -83,15 +83,16 @@ export default function HomeScreen() {
                       paddingHorizontal: 14,
                       borderBottomWidth: i === arr.length - 1 ? 0 : 1,
                       borderBottomColor: theme.ink[100],
-                      flexDirection: 'row',
+                      flexDirection: 'row-reverse',
                       alignItems: 'center',
                       justifyContent: 'space-between',
+                      gap: 8,
                     }}
                   >
-                    <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: theme.ink[900] }}>
+                    <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: theme.ink[900], textAlign: 'right' }} numberOfLines={1}>
                       {m.home.name} — {m.away.name}
                     </Text>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: brand.accent, marginHorizontal: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: brand.accent }}>
                       {m.home.score ?? '-'}:{m.away.score ?? '-'}
                     </Text>
                     <StatusPill status="live" minute={m.minute} />
@@ -114,14 +115,14 @@ export default function HomeScreen() {
                     paddingHorizontal: 14,
                     borderBottomWidth: i === arr.length - 1 ? 0 : 1,
                     borderBottomColor: theme.ink[100],
-                    flexDirection: 'row',
+                    flexDirection: 'row-reverse',
                     alignItems: 'center',
                   }}
                 >
                   <Text style={{ width: 22, fontSize: 12, fontWeight: '700', color: theme.ink[500], textAlign: 'center' }}>
                     {row.rank}
                   </Text>
-                  <Text style={{ flex: 1, marginHorizontal: 10, fontSize: 13.5, fontWeight: '600', color: theme.ink[900] }} numberOfLines={1}>
+                  <Text style={{ flex: 1, marginHorizontal: 10, fontSize: 13.5, fontWeight: '600', color: theme.ink[900], textAlign: 'right' }} numberOfLines={1}>
                     {row.teamName}
                   </Text>
                   <Text style={{ fontSize: 11, color: theme.ink[500], marginEnd: 12 }}>{row.played}</Text>
@@ -197,8 +198,8 @@ function MatchPreviewRow({ match, onPress, brandAccent }: { match: MatchCard; on
   return (
     <Pressable onPress={onPress}>
       <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900] }}>
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+          <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900], textAlign: 'right' }} numberOfLines={1}>
             {match.home.team.nameHe}
           </Text>
           <View style={{ marginHorizontal: 12, alignItems: 'center' }}>
@@ -214,7 +215,7 @@ function MatchPreviewRow({ match, onPress, brandAccent }: { match: MatchCard; on
               <Text style={{ fontSize: 13, color: theme.ink[500] }}>{time}</Text>
             )}
           </View>
-          <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900], textAlign: 'left' }}>
+          <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900], textAlign: 'left' }} numberOfLines={1}>
             {match.away.team.nameHe}
           </Text>
         </View>
@@ -246,7 +247,7 @@ function LiveFeatureHero({
           <Text style={{ color: 'white', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>חי עכשיו · ליגת העל</Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
         <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
           <TeamCrest mono={match.home.name.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} />
           <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
@@ -261,7 +262,7 @@ function LiveFeatureHero({
           <View
             style={{
               marginTop: 6,
-              flexDirection: 'row',
+              flexDirection: 'row-reverse',
               alignItems: 'center',
               gap: 4,
               backgroundColor: 'white',
@@ -324,7 +325,7 @@ function UpcomingFeatureHero({
           <Text style={{ color: 'white', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>המשחק הבא · ליגת העל</Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
         <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
           <TeamCrest mono={match.home.team.nameHe.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} logoUrl={match.home.team.logoUrl} />
           <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
