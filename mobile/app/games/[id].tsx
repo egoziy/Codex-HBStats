@@ -17,25 +17,46 @@ const EVENT_ICONS: Record<MatchEvent['type'], string> = {
   penalty: '🎯',
 };
 
+const STATUS_LABEL_HE: Record<string, string> = {
+  finished: 'הסתיים',
+  live: 'חי',
+  scheduled: 'טרם החל',
+  cancelled: 'בוטל',
+  postponed: 'נדחה',
+};
+
+/**
+ * Row layout: in RTL the HOME team is visually on the right and AWAY on the
+ * left. We force flexDirection explicitly (Expo Go doesn't auto-flip flex
+ * direction even when I18nManager.forceRTL is set) so the layout is correct
+ * everywhere — home events read right-to-left, away events read left-to-right.
+ */
 function EventRow({ event }: { event: MatchEvent }) {
-  const align = event.team === 'home' ? 'flex-row' : 'flex-row-reverse';
+  const flexDirection = event.team === 'home' ? 'row-reverse' : 'row';
   return (
-    <View className={`${align} items-center gap-2 py-1.5`}>
-      <View className="w-10 items-center">
+    <View style={{ flexDirection, alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+      <View style={{ width: 36, alignItems: 'center' }}>
         <Text className="text-[11px] font-black text-ink-500">{event.minute}'</Text>
       </View>
-      <Text className="text-lg">{EVENT_ICONS[event.type]}</Text>
-      <Text className="flex-1 text-sm font-bold text-ink-900">{event.player ?? '—'}</Text>
+      <Text className="text-lg">{EVENT_ICONS[event.type] ?? '•'}</Text>
+      <Text
+        className="flex-1 text-sm font-bold text-ink-900"
+        style={{ textAlign: event.team === 'home' ? 'right' : 'left' }}
+      >
+        {event.player ?? '—'}
+      </Text>
     </View>
   );
 }
 
 function StatRow({ label, home, away }: { label: string; home: string | number; away: string | number }) {
+  // HOME value on the right (start in RTL), AWAY on the left — force row-reverse
+  // so it always reads correctly regardless of Expo Go's RTL handling.
   return (
-    <View className="flex-row items-center py-2 border-b border-ink-100">
-      <Text className="w-12 text-sm font-black text-ink-900 text-start">{home}</Text>
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f5f5f4' }}>
+      <Text style={{ width: 48, textAlign: 'right' }} className="text-sm font-black text-ink-900">{home}</Text>
       <Text className="flex-1 text-center text-[11px] font-semibold text-ink-500 uppercase tracking-wider">{label}</Text>
-      <Text className="w-12 text-sm font-black text-ink-900 text-end">{away}</Text>
+      <Text style={{ width: 48, textAlign: 'left' }} className="text-sm font-black text-ink-900">{away}</Text>
     </View>
   );
 }
@@ -67,8 +88,10 @@ export default function MatchScreen() {
         style={{ borderRadius: 28, overflow: 'hidden' }}
       >
         <View className="px-5 py-6">
-          <View className="flex-row items-center justify-between">
-            {/* HOME (right side in RTL) */}
+          {/* HOME on the right, AWAY on the left — forced via row-reverse so
+              the layout reads correctly in both RTL and Expo Go (which does
+              not auto-flip flex-row). */}
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
             <View className="items-center flex-1">
               {homeTeam.logoUrl ? (
                 <Image source={{ uri: homeTeam.logoUrl }} className="w-16 h-16 rounded-md bg-white/10" />
@@ -79,7 +102,6 @@ export default function MatchScreen() {
               )}
               <Text className="text-sm mt-2 text-center text-white font-bold" numberOfLines={2}>{homeTeam.nameHe}</Text>
             </View>
-            {/* SCORE */}
             <View className="items-center px-4">
               {isLive ? (
                 <View className="flex-row items-center gap-1.5 mb-1">
@@ -88,13 +110,12 @@ export default function MatchScreen() {
                 </View>
               ) : null}
               <Text className="text-4xl font-black text-white">
-                {match.score.home ?? '-'} : {match.score.away ?? '-'}
+                {match.score.home ?? '-'} – {match.score.away ?? '-'}
               </Text>
               <Text className="text-xs text-white/70 mt-1 font-semibold">
-                {isLive ? `דקה ${match.minute ?? '-'}'` : match.status}
+                {isLive ? `דקה ${match.minute ?? '-'}'` : (STATUS_LABEL_HE[match.status] ?? match.status)}
               </Text>
             </View>
-            {/* AWAY (left side in RTL) */}
             <View className="items-center flex-1">
               {awayTeam.logoUrl ? (
                 <Image source={{ uri: awayTeam.logoUrl }} className="w-16 h-16 rounded-md bg-white/10" />
@@ -137,7 +158,7 @@ export default function MatchScreen() {
       {(data.lineups.home.players.length > 0 || data.lineups.away.players.length > 0) ? (
         <Card>
           <Section title="הרכבים">
-            <View className="flex-row gap-3">
+            <View style={{ flexDirection: 'row-reverse', gap: 12 }}>
               <View className="flex-1">
                 <Text className="text-sm font-black text-ink-900">{homeTeam.nameHe}</Text>
                 {data.lineups.home.formation ? (
@@ -178,7 +199,7 @@ export default function MatchScreen() {
       {data.h2h && data.h2h.lastN.length > 0 ? (
         <Card>
           <Section title="היסטוריה ישירה">
-            <View className="flex-row justify-around py-2">
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-around', paddingVertical: 8 }}>
               <View className="items-center flex-1">
                 <Text className="text-3xl font-black text-ink-900">{data.h2h.wins.home}</Text>
                 <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider" numberOfLines={1}>{homeTeam.nameHe}</Text>

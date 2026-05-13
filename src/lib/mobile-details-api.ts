@@ -601,7 +601,12 @@ export async function getMobileGamePayload(gameId: string) {
       stats: comparisonRows,
       events: game.events.map((event) => ({
         id: event.id,
-        type: getEventDisplayLabel(event.type),
+        // Raw enum value (GOAL / YELLOW_CARD / SUBSTITUTION_OUT / ...) — kept
+        // so the mobile API mapper can translate to its own type taxonomy.
+        // The previous Hebrew display label is exposed as typeLabel for any
+        // call site that still wants the human-readable string.
+        type: event.type,
+        typeLabel: getEventDisplayLabel(event.type),
         minute: event.minute,
         extraMinute: event.extraMinute,
         displayMinute: `${event.minute}${event.extraMinute ? `+${event.extraMinute}` : ''}'`,
