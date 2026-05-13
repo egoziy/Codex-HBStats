@@ -323,7 +323,9 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
       take: 24,
     }),
     fetchTelegramMessagesFromSources(effectiveTelegramSources, 5).catch(() => []),
-    getHomepageLiveSnapshots(null, { limit: 6 }),
+    // Fetch a bigger pool, then trim to Israel below — the global feed returns
+    // worldwide matches and the live-countries admin setting isn't always set.
+    getHomepageLiveSnapshots(null, { limit: 24 }),
   ]);
 
   const nextGame =
@@ -518,7 +520,13 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
         awayTeamName: getTeamLabel(game.awayTeam),
         dateTime: game.dateTime.toISOString(),
       })),
-      live: liveItems.map(mapHomepageLiveSnapshot),
+      // Mobile only surfaces Israeli matches. Filter by countryLabel so foreign
+      // global-feed snapshots (which leak through when admin hasn't configured
+      // live_countries) don't appear on the mobile home screen.
+      live: liveItems
+        .filter((snapshot) => snapshot.countryLabel === 'Israel')
+        .slice(0, 6)
+        .map(mapHomepageLiveSnapshot),
       news: telegramMessages.slice(0, 5).map((message) => ({
         id: message.id,
         source: message.sourceLabel,
