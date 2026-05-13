@@ -382,7 +382,7 @@ function PremierGameView({
                 <PremierMetricCard label="כדורגל שליטה" value={`${formatPercent(game.gameStats?.homeTeamPossession ?? null)} / ${formatPercent(game.gameStats?.awayTeamPossession ?? null)}`} />
                 <PremierMetricCard label="בעיטות למסגרת" value={`${formatNumber(game.gameStats?.homeShotsOnTarget ?? null)} / ${formatNumber(game.gameStats?.awayShotsOnTarget ?? null)}`} />
                 <PremierMetricCard label="כרטיסים צהובים" value={`${eventSummary.homeYellowCards} / ${eventSummary.awayYellowCards}`} />
-                <PremierMetricCard label="חילופים" value={`${homeLineup.substitutes.length} / ${awayLineup.substitutes.length}`} />
+                <PremierMetricCard label="חילופים" value={`${eventSummary.homeSubstitutions} / ${eventSummary.awaySubstitutions}`} />
               </div>
             </div>
           </div>
@@ -1020,8 +1020,11 @@ function buildEventSummary(
     awayYellowCards: countEvents(game.awayTeamId, ['YELLOW_CARD']),
     homeRedCards: countEvents(game.homeTeamId, ['RED_CARD']),
     awayRedCards: countEvents(game.awayTeamId, ['RED_CARD']),
-    homeSubstitutions: countEvents(game.homeTeamId, ['SUBSTITUTION_IN']),
-    awaySubstitutions: countEvents(game.awayTeamId, ['SUBSTITUTION_IN']),
+    // API-Football stores one row per substitution as SUBSTITUTION_OUT (the
+    // incoming player lives on relatedPlayerId), so we count those — not _IN —
+    // to avoid double-counting and to handle pipelines that only emit _OUT.
+    homeSubstitutions: countEvents(game.homeTeamId, ['SUBSTITUTION_OUT']),
+    awaySubstitutions: countEvents(game.awayTeamId, ['SUBSTITUTION_OUT']),
   };
 }
 
@@ -1159,66 +1162,69 @@ function buildSummaryCards(
   const goalConversionHome = homeShotsOnTarget && homeShotsOnTarget > 0 ? Math.round((homeGoals / homeShotsOnTarget) * 100) : null;
   const goalConversionAway = awayShotsOnTarget && awayShotsOnTarget > 0 ? Math.round((awayGoals / awayShotsOnTarget) * 100) : null;
 
-  // Order: away-home so home value appears on the right (matching home team badge position in RTL layout).
-  // Container forces dir="ltr" — that locks LTR rendering, then "away / home" visually shows away on left, home on right.
+  // Order: home then away in source. In an RTL paragraph the browser's bidi
+  // algorithm reverses LTR-number runs, so source "home / away" renders
+  // visually as "away / home" — keeping the home value on the visual right,
+  // which matches the home team badge position on the right in RTL layout
+  // and the "בית / חוץ" delta label (בית reads on the right).
   return [
     {
       label: 'תוצאה',
-      value: `${awayGoals}-${homeGoals}`,
+      value: `${homeGoals}-${awayGoals}`,
       delta: homeGoals === awayGoals ? 'תיקו' : homeGoals > awayGoals ? 'יתרון בית' : 'יתרון חוץ',
       note: 'מופק גם מאירועים אם תוצאת ה־API לא זמינה',
     },
     ...(homeXg != null && awayXg != null ? [{
       label: 'xG (שערים צפויים)',
-      value: `${Number(awayXg).toFixed(2)} / ${Number(homeXg).toFixed(2)}`,
+      value: `${Number(homeXg).toFixed(2)} / ${Number(awayXg).toFixed(2)}`,
       delta: 'בית / חוץ',
-      note: 'הסתברות לכל בעיטה — הצפי הסטטיסטי לתוצאה מ-FootyStats',
+      note: 'הסתברות לכל בעיטה — הצפי הסטטיסטי לתוצאה',
     }] : []),
     {
       label: 'דיוק בבעיטות',
-      value: `${formatPercent(shotAccuracyAway)} / ${formatPercent(shotAccuracyHome)}`,
+      value: `${formatPercent(shotAccuracyHome)} / ${formatPercent(shotAccuracyAway)}`,
       delta: 'בית / חוץ',
       note: 'אחוז הבעיטות למסגרת מתוך כלל הבעיטות',
     },
     {
       label: 'ניצול מצבים',
-      value: `${formatPercent(goalConversionAway)} / ${formatPercent(goalConversionHome)}`,
+      value: `${formatPercent(goalConversionHome)} / ${formatPercent(goalConversionAway)}`,
       delta: 'בית / חוץ',
       note: 'שערים חלקי בעיטות למסגרת',
     },
     {
       label: 'אחזקת כדור',
-      value: `${formatPercent(awayPossession)} / ${formatPercent(homePossession)}`,
+      value: `${formatPercent(homePossession)} / ${formatPercent(awayPossession)}`,
       delta: 'בית / חוץ',
       note: 'אחוזי שליטה במשחק',
     },
     {
       label: 'קרנות',
-      value: `${formatNumber(awayCorners)} / ${formatNumber(homeCorners)}`,
+      value: `${formatNumber(homeCorners)} / ${formatNumber(awayCorners)}`,
       delta: homeCorners !== null && awayCorners !== null ? diffLabel(homeCorners, awayCorners) : null,
       note: 'קרנות לטובת כל צד',
     },
     {
       label: 'עבירות',
-      value: `${formatNumber(awayFouls)} / ${formatNumber(homeFouls)}`,
+      value: `${formatNumber(homeFouls)} / ${formatNumber(awayFouls)}`,
       delta: homeFouls !== null && awayFouls !== null ? diffLabel(homeFouls, awayFouls) : null,
       note: 'עבירות שנרשמו במשחק',
     },
     {
       label: 'צהובים',
-      value: `${formatNumber(awayYellowCards)} / ${formatNumber(homeYellowCards)}`,
+      value: `${formatNumber(homeYellowCards)} / ${formatNumber(awayYellowCards)}`,
       delta: homeYellowCards !== null && awayYellowCards !== null ? diffLabel(homeYellowCards, awayYellowCards) : null,
       note: 'כולל נתון שמור או מחושב מהאירועים',
     },
     {
       label: 'אדומים',
-      value: `${formatNumber(awayRedCards)} / ${formatNumber(homeRedCards)}`,
+      value: `${formatNumber(homeRedCards)} / ${formatNumber(awayRedCards)}`,
       delta: homeRedCards !== null && awayRedCards !== null ? diffLabel(homeRedCards, awayRedCards) : null,
       note: 'כולל נתון שמור או מחושב מהאירועים',
     },
     {
       label: 'בעיטות למסגרת',
-      value: `${formatNumber(awayShotsOnTarget)} / ${formatNumber(homeShotsOnTarget)}`,
+      value: `${formatNumber(homeShotsOnTarget)} / ${formatNumber(awayShotsOnTarget)}`,
       delta: homeShotsOnTarget !== null && awayShotsOnTarget !== null ? diffLabel(homeShotsOnTarget, awayShotsOnTarget) : null,
       note: 'ניסיונות שהלכו למסגרת',
     },

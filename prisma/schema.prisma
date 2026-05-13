@@ -1429,6 +1429,78 @@ model FootyStatsScrapedMatch {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Flashscore HTML scrape — Phase 1: Ligat HaAl 2025/26, expand later.
+// All payloads stored as JSON for schema flexibility; key fields hoisted
+// for indexing/lookup. Merge layer (Phase 3) chooses per-field source.
+// ──────────────────────────────────────────────────────────────────────
+
+model FlashscoreScrapedMatch {
+  matchKey    String   @id              // Flashscore match id, e.g. "lEXcjwx9"
+  url         String
+  leagueSlug  String                    // e.g. "ligat-haal" — for filtering
+  season      String                    // e.g. "2025-2026"
+  kickoffAt   DateTime?
+  homeKey     String?                   // Flashscore team key, e.g. "h-beer-sheva-EXAD1YZP"
+  awayKey     String?
+  status      String?                   // "FT" | "Scheduled" | "Live" | etc.
+  payload     Json                      // { summary, events, stats, lineups, headToHead }
+  scrapedAt   DateTime @default(now())
+
+  @@index([leagueSlug, season])
+  @@index([kickoffAt])
+  @@map("flashscore_scraped_match")
+}
+
+model FlashscoreScrapedTeam {
+  teamKey     String   @id              // e.g. "h-beer-sheva-EXAD1YZP"
+  url         String
+  nameEn      String?
+  leagueSlug  String?
+  season      String?
+  payload     Json                      // { overview, squad, standingsRow, fixtures }
+  scrapedAt   DateTime @default(now())
+
+  @@index([leagueSlug, season])
+  @@map("flashscore_scraped_team")
+}
+
+model FlashscoreScrapedTransfer {
+  id          Int      @id @default(autoincrement())
+  teamKey     String                    // owning team page where the transfer was scraped
+  season      String                    // e.g. "2025-2026"
+  direction   String                    // "in" | "out"
+  playerKey   String?                   // Flashscore player id if linked, e.g. "K8ECARcG"
+  playerName  String
+  fromTeam    String?
+  toTeam      String?
+  fee         String?
+  transferDate DateTime?
+  payload     Json                      // raw row + any extras
+  scrapedAt   DateTime @default(now())
+
+  @@unique([teamKey, season, direction, playerName, transferDate], name: "transfer_natural_key")
+  @@index([playerKey])
+  @@map("flashscore_scraped_transfer")
+}
+
+model FlashscoreScrapedPlayer {
+  playerKey   String   @id              // e.g. "K8ECARcG"
+  url         String
+  nameEn      String?
+  birthDate   DateTime?
+  position    String?
+  nationality String?
+  marketValue String?                   // e.g. "€1.2m" — string to preserve formatting
+  contractUntil DateTime?
+  currentTeamKey String?
+  payload     Json                      // { profile, career[], stats }
+  scrapedAt   DateTime @default(now())
+
+  @@index([currentTeamKey])
+  @@map("flashscore_scraped_player")
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // API-Football raw archive — one table per endpoint, raw JSON payloads.
 // ──────────────────────────────────────────────────────────────────────
 

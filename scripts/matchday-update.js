@@ -450,10 +450,10 @@ async function main() {
     if (result.status !== 0) console.error('  ✗ Walla games scrape failed (continuing)');
   } else if (SKIP_WALLA) console.log('\n(skipping Walla refresh)');
 
-  // 5. Enrichment merge
+  // 5. Enrichment merge — Flashscore fills only the gaps API-Football leaves.
   if (!SKIP_MERGE && !DRY_RUN) {
-    console.log(`\n→ Running enrichment merge...`);
-    spawnSync('node', ['scripts/rebuild/43-footystats-enrichment.js', '--apply'], { stdio: 'inherit' });
+    console.log(`\n→ Running Flashscore enrichment...`);
+    spawnSync('node', ['scripts/rebuild/44-flashscore-enrichment.js', '--apply'], { stdio: 'inherit' });
   } else if (SKIP_MERGE) console.log('\n(skipping enrichment merge)');
 
   console.log('\n=== matchday-update done ===\n');
