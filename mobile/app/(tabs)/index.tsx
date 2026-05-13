@@ -1,134 +1,364 @@
-import { ScrollView, View, Text, RefreshControl, ActivityIndicator, Pressable, Image } from 'react-native';
+import { ScrollView, View, Text, RefreshControl, ActivityIndicator, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useHome } from '@/hooks/useHome';
+import { useTheme } from '@/contexts/ThemeContext';
+import { Header } from '@/design-system/Header';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
-import { MatchRow } from '@/design-system/MatchRow';
-import { LiveDot } from '@/design-system/LiveDot';
+import { TeamCrest } from '@/design-system/TeamCrest';
+import { StatusPill } from '@/design-system/StatusPill';
 import { theme } from '@/design-system/theme';
+import type { MatchCard } from '@shared/types/common';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { data, isLoading, refetch, isRefetching } = useHome();
+  const { brand } = useTheme();
 
   if (isLoading && !data) {
     return (
-      <View className="flex-1 items-center justify-center bg-canvas-start">
-        <ActivityIndicator color={theme.accent} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.canvas.start }}>
+        <ActivityIndicator color={brand.accent} />
       </View>
     );
   }
 
   if (!data) {
     return (
-      <View className="flex-1 items-center justify-center bg-canvas-start p-6">
-        <Text className="text-base text-ink-700 text-center">
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: theme.canvas.start }}>
+        <Text style={{ color: theme.ink[700], fontSize: 14, textAlign: 'center' }}>
           לא הצלחנו לטעון את הדף. נסה שוב מאוחר יותר.
         </Text>
       </View>
     );
   }
 
+  // Featured: prefer the first live game, fall back to nextMatch.
+  const liveFeature = data.liveStrip[0] ?? null;
   const fav = data.favoriteTeam;
-  const nextM = data.nextMatch;
-  const lastM = data.lastMatch;
 
   return (
-    <ScrollView
-      className="flex-1 bg-canvas-start"
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={theme.accent} />}
-      contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }}
-    >
-      {fav ? (
-        <Pressable onPress={() => router.push(`/teams/${fav.id}` as any)}>
-          <Card>
-            <View className="flex-row items-center gap-3">
-              {fav.logoUrl ? (
-                <Image source={{ uri: fav.logoUrl }} className="w-14 h-14 rounded-md" />
-              ) : (
-                <View className="w-14 h-14 rounded-md bg-ink-100 items-center justify-center">
-                  <Text className="text-2xl font-black text-ink-700">{fav.nameHe.slice(0, 1)}</Text>
-                </View>
-              )}
-              <View className="flex-1">
-                <Text className="text-[10px] font-bold uppercase tracking-[0.18em] text-ink-500">המועדפת שלך</Text>
-                <Text className="text-lg font-black text-ink-900 mt-0.5">{fav.nameHe}</Text>
-              </View>
-            </View>
-          </Card>
-        </Pressable>
-      ) : null}
+    <View style={{ flex: 1, backgroundColor: theme.canvas.start }}>
+      <Header />
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={brand.accent} />}
+        contentContainerStyle={{ paddingBottom: 32 }}
+      >
+        {/* Featured match hero — brand gradient like the prototype */}
+        {liveFeature ? (
+          <LiveFeatureHero match={liveFeature} accentStart={brand.accent} accentEnd={brand.accentDeep} onPress={() => router.push(`/games/${liveFeature.id}` as any)} />
+        ) : data.nextMatch ? (
+          <UpcomingFeatureHero match={data.nextMatch} accentStart={brand.accent} accentEnd={brand.accentDeep} onPress={() => router.push(`/games/${data.nextMatch!.id}` as any)} />
+        ) : null}
 
-      {data.liveStrip.length > 0 ? (
-        <Card>
-          <Section
-            title="משחקים חיים"
-            action={<LiveDot />}
-          >
-            {data.liveStrip.map((m) => (
-              <Pressable key={m.id} onPress={() => router.push(`/games/${m.id}` as any)}>
-                <View className="py-2.5 border-b border-ink-100">
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-sm font-bold text-ink-900">{m.home.name} — {m.away.name}</Text>
-                    <Text className="text-xs font-black text-accent">
+        <View style={{ height: 16 }} />
+
+        {/* Favourite team chip */}
+        {fav ? (
+          <Section title="המועדפת שלך">
+            <Pressable onPress={() => router.push(`/teams/${fav.id}` as any)}>
+              <Card>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TeamCrest mono={fav.nameHe.slice(0, 2)} bg={brand.accent} fg="white" size={36} logoUrl={fav.logoUrl} />
+                  <Text style={{ flex: 1, color: theme.ink[900], fontSize: 16, fontWeight: '800' }}>
+                    {fav.nameHe}
+                  </Text>
+                  <Text style={{ color: brand.accent, fontSize: 12, fontWeight: '700' }}>לדף הקבוצה ←</Text>
+                </View>
+              </Card>
+            </Pressable>
+          </Section>
+        ) : null}
+
+        {/* Live strip — show secondary live games */}
+        {data.liveStrip.length > 1 ? (
+          <Section title="גם משחקים חיים">
+            <Card pad={false}>
+              {data.liveStrip.slice(1).map((m, i, arr) => (
+                <Pressable key={m.id} onPress={() => router.push(`/games/${m.id}` as any)}>
+                  <View
+                    style={{
+                      paddingVertical: 11,
+                      paddingHorizontal: 14,
+                      borderBottomWidth: i === arr.length - 1 ? 0 : 1,
+                      borderBottomColor: theme.ink[100],
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: theme.ink[900] }}>
+                      {m.home.name} — {m.away.name}
+                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: brand.accent, marginHorizontal: 8 }}>
                       {m.home.score ?? '-'}:{m.away.score ?? '-'}
                     </Text>
+                    <StatusPill status="live" minute={m.minute} />
                   </View>
-                  <Text className="text-xs text-ink-500 mt-0.5">דקה {m.minute}'</Text>
+                </Pressable>
+              ))}
+            </Card>
+          </Section>
+        ) : null}
+
+        {/* Standings preview */}
+        {data.compactStandings.length > 0 ? (
+          <Section title="טבלת ליגת העל" actionLabel="טבלה מלאה">
+            <Card pad={false}>
+              {data.compactStandings.slice(0, 5).map((row, i, arr) => (
+                <View
+                  key={row.rank}
+                  style={{
+                    paddingVertical: 11,
+                    paddingHorizontal: 14,
+                    borderBottomWidth: i === arr.length - 1 ? 0 : 1,
+                    borderBottomColor: theme.ink[100],
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ width: 22, fontSize: 12, fontWeight: '700', color: theme.ink[500], textAlign: 'center' }}>
+                    {row.rank}
+                  </Text>
+                  <Text style={{ flex: 1, marginHorizontal: 10, fontSize: 13.5, fontWeight: '600', color: theme.ink[900] }} numberOfLines={1}>
+                    {row.teamName}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: theme.ink[500], marginEnd: 12 }}>{row.played}</Text>
+                  <View
+                    style={{
+                      backgroundColor: brand.accentGlow,
+                      borderRadius: 6,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      minWidth: 30,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.ink[900], textAlign: 'center' }}>
+                      {row.points}
+                    </Text>
+                  </View>
                 </View>
-              </Pressable>
-            ))}
+              ))}
+            </Card>
           </Section>
-        </Card>
-      ) : null}
+        ) : null}
 
-      {nextM ? (
-        <Card>
+        {/* Next & last match cards */}
+        {data.nextMatch && !liveFeature ? null : data.nextMatch ? (
           <Section title="המשחק הבא">
-            <Pressable onPress={() => router.push(`/games/${nextM.id}` as any)}>
-              <MatchRow match={nextM} />
-            </Pressable>
+            <MatchPreviewRow match={data.nextMatch} onPress={() => router.push(`/games/${data.nextMatch!.id}` as any)} brandAccent={brand.accent} />
           </Section>
-        </Card>
-      ) : null}
+        ) : null}
 
-      {lastM ? (
-        <Card>
+        {data.lastMatch ? (
           <Section title="המשחק האחרון">
-            <Pressable onPress={() => router.push(`/games/${lastM.id}` as any)}>
-              <MatchRow match={lastM} />
-            </Pressable>
+            <MatchPreviewRow match={data.lastMatch} onPress={() => router.push(`/games/${data.lastMatch!.id}` as any)} brandAccent={brand.accent} />
           </Section>
-        </Card>
-      ) : null}
+        ) : null}
 
-      {data.compactStandings.length > 0 ? (
-        <Card>
-          <Section title="טבלה">
-            {data.compactStandings.map((row) => (
-              <View key={row.rank} className="flex-row items-center py-1.5 border-b border-ink-100">
-                <Text className="text-sm font-black text-ink-500 w-8">{row.rank}.</Text>
-                <Text className="text-sm font-bold text-ink-900 flex-1">{row.teamName}</Text>
-                <Text className="text-xs text-ink-500 ms-2">{row.played}</Text>
-                <Text className="text-sm font-black text-ink-900 ms-3 w-8 text-end">{row.points}</Text>
-              </View>
-            ))}
-          </Section>
-        </Card>
-      ) : null}
-
-      {data.newsStrip.length > 0 ? (
-        <Card>
+        {/* News strip */}
+        {data.newsStrip.length > 0 ? (
           <Section title="חדשות">
-            {data.newsStrip.map((n) => (
-              <View key={n.id} className="py-2 border-b border-ink-100">
-                <Text className="text-sm text-ink-900" numberOfLines={2}>{n.preview}</Text>
-                <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider">{n.source}</Text>
-              </View>
-            ))}
+            <Card pad={false}>
+              {data.newsStrip.slice(0, 5).map((n, i, arr) => (
+                <View
+                  key={n.id}
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    borderBottomWidth: i === arr.length - 1 ? 0 : 1,
+                    borderBottomColor: theme.ink[100],
+                  }}
+                >
+                  <Text style={{ color: theme.ink[900], fontSize: 13.5, lineHeight: 18 }} numberOfLines={2}>
+                    {n.preview}
+                  </Text>
+                  <Text style={{ color: theme.ink[500], fontSize: 11, fontWeight: '600', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    {n.source}
+                  </Text>
+                </View>
+              ))}
+            </Card>
           </Section>
-        </Card>
-      ) : null}
-    </ScrollView>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+function MatchPreviewRow({ match, onPress, brandAccent }: { match: MatchCard; onPress: () => void; brandAccent: string }) {
+  const time = (() => {
+    const d = new Date(match.date);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  })();
+  const isLive = match.status === 'live';
+  const isFinished = match.status === 'finished';
+  return (
+    <Pressable onPress={onPress}>
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900] }}>
+            {match.home.team.nameHe}
+          </Text>
+          <View style={{ marginHorizontal: 12, alignItems: 'center' }}>
+            {isLive ? (
+              <Text style={{ fontSize: 18, fontWeight: '800', color: brandAccent }}>
+                {match.home.score}:{match.away.score}
+              </Text>
+            ) : isFinished ? (
+              <Text style={{ fontSize: 18, fontWeight: '800', color: theme.ink[900] }}>
+                {match.home.score}–{match.away.score}
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 13, color: theme.ink[500] }}>{time}</Text>
+            )}
+          </View>
+          <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900], textAlign: 'left' }}>
+            {match.away.team.nameHe}
+          </Text>
+        </View>
+      </Card>
+    </Pressable>
+  );
+}
+
+function LiveFeatureHero({
+  match,
+  accentStart,
+  accentEnd,
+  onPress,
+}: {
+  match: { id: string; minute: number | null; home: { name: string; score: number | null }; away: { name: string; score: number | null } };
+  accentStart: string;
+  accentEnd: string;
+  onPress: () => void;
+}) {
+  return (
+    <LinearGradient
+      colors={[accentStart, accentEnd]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={{ paddingVertical: 22, paddingHorizontal: 16 }}
+    >
+      <View style={{ alignItems: 'center', marginBottom: 16 }}>
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 }}>
+          <Text style={{ color: 'white', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>חי עכשיו · ליגת העל</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+        <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
+          <TeamCrest mono={match.home.name.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} />
+          <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
+            {match.home.name}
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '600' }}>בית</Text>
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ color: 'white', fontSize: 32, fontWeight: '800', lineHeight: 36 }}>
+            {match.home.score ?? '-'} – {match.away.score ?? '-'}
+          </Text>
+          <View
+            style={{
+              marginTop: 6,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: 'white',
+              paddingHorizontal: 10,
+              paddingVertical: 3,
+              borderRadius: 999,
+            }}
+          >
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: accentStart }} />
+            <Text style={{ color: accentStart, fontSize: 11, fontWeight: '800' }}>חי {match.minute ?? '-'}'</Text>
+          </View>
+        </View>
+        <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
+          <TeamCrest mono={match.away.name.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} />
+          <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
+            {match.away.name}
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '600' }}>חוץ</Text>
+        </View>
+      </View>
+      <Pressable
+        onPress={onPress}
+        style={{
+          alignSelf: 'center',
+          marginTop: 18,
+          backgroundColor: 'white',
+          paddingVertical: 10,
+          paddingHorizontal: 22,
+          borderRadius: 999,
+        }}
+      >
+        <Text style={{ color: accentStart, fontSize: 13, fontWeight: '800' }}>לעמוד המשחק</Text>
+      </Pressable>
+    </LinearGradient>
+  );
+}
+
+function UpcomingFeatureHero({
+  match,
+  accentStart,
+  accentEnd,
+  onPress,
+}: {
+  match: MatchCard;
+  accentStart: string;
+  accentEnd: string;
+  onPress: () => void;
+}) {
+  const d = new Date(match.date);
+  const dateLabel = `${d.toLocaleDateString('he-IL', { weekday: 'short', day: '2-digit', month: '2-digit' })} · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return (
+    <LinearGradient
+      colors={[accentStart, accentEnd]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={{ paddingVertical: 22, paddingHorizontal: 16 }}
+    >
+      <View style={{ alignItems: 'center', marginBottom: 16 }}>
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999 }}>
+          <Text style={{ color: 'white', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>המשחק הבא · ליגת העל</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+        <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
+          <TeamCrest mono={match.home.team.nameHe.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} logoUrl={match.home.team.logoUrl} />
+          <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
+            {match.home.team.nameHe}
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '600' }}>בית</Text>
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ color: 'white', fontSize: 24, fontWeight: '800', letterSpacing: -0.5 }}>VS</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '600', marginTop: 6, textAlign: 'center' }}>
+            {dateLabel}
+          </Text>
+        </View>
+        <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
+          <TeamCrest mono={match.away.team.nameHe.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} logoUrl={match.away.team.logoUrl} />
+          <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
+            {match.away.team.nameHe}
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10, fontWeight: '600' }}>חוץ</Text>
+        </View>
+      </View>
+      <Pressable
+        onPress={onPress}
+        style={{
+          alignSelf: 'center',
+          marginTop: 18,
+          backgroundColor: 'white',
+          paddingVertical: 10,
+          paddingHorizontal: 22,
+          borderRadius: 999,
+        }}
+      >
+        <Text style={{ color: accentStart, fontSize: 13, fontWeight: '800' }}>לעמוד המשחק</Text>
+      </Pressable>
+    </LinearGradient>
   );
 }

@@ -5,6 +5,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { queryClient, persister } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 if (!I18nManager.isRTL) {
   I18nManager.forceRTL(true);
@@ -38,13 +39,15 @@ export default function RootLayout() {
         buster: 'v1',
       }}
     >
-      <AuthProvider>
-        <AuthGate />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="login" />
-        </Stack>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <AuthGate />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="login" />
+          </Stack>
+        </AuthProvider>
+      </ThemeProvider>
     </PersistQueryClientProvider>
   );
 }

@@ -2,6 +2,7 @@ import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'rea
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePlayer } from '@/hooks/usePlayer';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
 import { MetricCell } from '@/design-system/MetricCell';
@@ -37,11 +38,12 @@ export default function PlayerScreen() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const { data, isLoading } = usePlayer(id);
+  const { brand } = useTheme();
 
   if (isLoading || !data) {
     return (
       <View className="flex-1 items-center justify-center bg-white">
-        <ActivityIndicator color={theme.accent} />
+        <ActivityIndicator color={brand.accent} />
       </View>
     );
   }
@@ -54,7 +56,7 @@ export default function PlayerScreen() {
     <ScrollView className="flex-1 bg-canvas-start" contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }}>
       {/* Hero header — purple→blue gradient with photo + name + team. */}
       <LinearGradient
-        colors={[theme.hero.start, theme.hero.end]}
+        colors={[brand.accent, brand.accentDeep]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ borderRadius: 28, overflow: 'hidden' }}
@@ -125,7 +127,7 @@ export default function PlayerScreen() {
 
       {data.career.length > 0 ? (
         <Card>
-          <Section title="היסטוריית קריירה" subtitle={`${data.career.length} עונות`}>
+          <Section title={`היסטוריית קריירה · ${data.career.length} עונות`}>
             <View className="-mx-1">
               {data.career.map((row, i) => (
                 <CareerRow key={row.season + '-' + i} row={row} />

@@ -2,6 +2,7 @@ import { ScrollView, View, Text, ActivityIndicator, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMatch } from '@/hooks/useMatch';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
 import { LiveDot } from '@/design-system/LiveDot';
@@ -43,11 +44,12 @@ export default function MatchScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const { data, isLoading } = useMatch(id);
+  const { brand } = useTheme();
 
   if (isLoading || !data) {
     return (
       <View className="flex-1 items-center justify-center bg-canvas-start">
-        <ActivityIndicator color={theme.accent} />
+        <ActivityIndicator color={brand.accent} />
       </View>
     );
   }
@@ -59,7 +61,7 @@ export default function MatchScreen() {
     <ScrollView className="flex-1 bg-canvas-start" contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }}>
       {/* Hero — match scoreline on purple→blue gradient */}
       <LinearGradient
-        colors={[theme.hero.start, theme.hero.end]}
+        colors={[brand.accent, brand.accentDeep]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ borderRadius: 28, overflow: 'hidden' }}

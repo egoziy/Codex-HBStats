@@ -1,7 +1,7 @@
 import { View, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode } from 'react';
-import { theme } from './theme';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface GradientHeaderProps {
   title: string;
@@ -15,9 +15,10 @@ interface GradientHeaderProps {
  * player). Matches the web app's PremierTeamBadge layout.
  */
 export function GradientHeader({ title, subtitle, badge, children }: GradientHeaderProps) {
+  const { brand } = useTheme();
   return (
     <LinearGradient
-      colors={[theme.hero.start, theme.hero.end]}
+      colors={[brand.accent, brand.accentDeep]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{ borderRadius: 28, overflow: 'hidden' }}

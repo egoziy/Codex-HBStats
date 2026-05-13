@@ -1,19 +1,35 @@
-import { View, ViewProps } from 'react-native';
+/**
+ * Card — white rounded container with hairline border. Used inside Sections
+ * to wrap rows/lists. Matches the prototype's ILCard (radius 14, p=14).
+ */
+
+import { View, type ViewProps } from 'react-native';
 import { ReactNode } from 'react';
+import { theme } from './theme';
 
 interface CardProps extends ViewProps {
   children: ReactNode;
   className?: string;
-  /** "flat" drops the border + shadow for nesting inside another card. */
-  variant?: 'default' | 'flat';
+  /** Drop padding when rendering an edge-to-edge list inside the card. */
+  pad?: boolean;
+  /** Horizontal margin (default 16). Set 0 for full-bleed cards. */
+  marginX?: number;
 }
 
-export function Card({ children, className = '', variant = 'default', ...rest }: CardProps) {
-  const base = variant === 'flat'
-    ? 'bg-ink-50 rounded-card p-4'
-    : 'bg-white rounded-card p-5 border border-ink-200 shadow-sm';
+export function Card({ children, className, pad = true, marginX = 16, ...rest }: CardProps) {
   return (
-    <View className={`${base} ${className}`} {...rest}>
+    <View
+      style={{
+        backgroundColor: 'white',
+        borderWidth: 1,
+        borderColor: theme.ink[200],
+        borderRadius: 14,
+        padding: pad ? 14 : 0,
+        marginHorizontal: marginX,
+      }}
+      className={className}
+      {...rest}
+    >
       {children}
     </View>
   );

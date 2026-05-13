@@ -2,7 +2,17 @@
 
 exports[`Card accepts className override 1`] = `
 <View
-  className="bg-white rounded-card p-5 border border-ink-200 shadow-sm bg-blue-50"
+  className="bg-blue-50"
+  style={
+    {
+      "backgroundColor": "white",
+      "borderColor": "#e7e5e4",
+      "borderRadius": 14,
+      "borderWidth": 1,
+      "marginHorizontal": 16,
+      "padding": 14,
+    }
+  }
 >
   <Text>
     Custom
@@ -12,7 +22,16 @@ exports[`Card accepts className override 1`] = `
 
 exports[`Card renders children with default styling 1`] = `
 <View
-  className="bg-white rounded-card p-5 border border-ink-200 shadow-sm "
+  style={
+    {
+      "backgroundColor": "white",
+      "borderColor": "#e7e5e4",
+      "borderRadius": 14,
+      "borderWidth": 1,
+      "marginHorizontal": 16,
+      "padding": 14,
+    }
+  }
 >
   <Text>
     Hello
