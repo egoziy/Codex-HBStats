@@ -205,19 +205,36 @@ export interface PlayerRecentMatch {
   contribution: { goals: number; assists: number; minutes: number };
 }
 
+export interface PlayerCareerEntry {
+  season: string;          // "2023/2024"
+  team: string | null;
+  competition: string | null;
+  rating: number | null;   // Flashscore average match rating
+  apps: number | null;
+  goals: number | null;
+  assists: number | null;
+  yellow: number | null;
+  red: number | null;
+}
+
+export interface PlayerProfile {
+  id: string;
+  nameHe: string;
+  nameEn: string;
+  photoUrl: string | null;
+  dateOfBirth: string | null;
+  nationality: string | null;
+  position: string | null;
+  marketValue: string | null;     // e.g. "€1.2m" — sourced from Flashscore
+  contractUntil: string | null;   // ISO date — sourced from Flashscore
+}
+
 export interface PlayerPayload {
-  player: {
-    id: string;
-    nameHe: string;
-    nameEn: string;
-    photoUrl: string | null;
-    dateOfBirth: string | null;
-    nationality: string | null;
-    position: string | null;
-  };
+  player: PlayerProfile;
   currentTeam: TeamSummary | null;
   currentSeasonStats: PlayerSeasonStats | null;
   recentMatches: PlayerRecentMatch[];
+  career: PlayerCareerEntry[];
 }
 
 // ---------- Preferences ----------

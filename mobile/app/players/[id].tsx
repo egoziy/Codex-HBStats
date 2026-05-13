@@ -2,6 +2,7 @@ import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'rea
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { usePlayer } from '@/hooks/usePlayer';
 import { Card } from '@/design-system/Card';
+import type { PlayerCareerEntry } from '@shared/types/mobile-api';
 
 const roleLabel: Record<'started' | 'subbed_in' | 'unused' | 'subbed_out', string> = {
   started: 'התחיל',
@@ -9,6 +10,23 @@ const roleLabel: Record<'started' | 'subbed_in' | 'unused' | 'subbed_out', strin
   unused: 'ספסל',
   subbed_out: 'הוחלף',
 };
+
+function formatHebrewDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+}
+
+function calculateAge(iso: string | null): number | null {
+  if (!iso) return null;
+  const birth = new Date(iso);
+  if (Number.isNaN(birth.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
+  return age;
+}
 
 export default function PlayerScreen() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -25,6 +43,8 @@ export default function PlayerScreen() {
   }
 
   const stats = data.currentSeasonStats;
+  const age = calculateAge(data.player.dateOfBirth);
+
   return (
     <ScrollView className="flex-1 bg-gray-50" contentContainerStyle={{ padding: 16, gap: 12 }}>
       <Card>
@@ -40,22 +60,49 @@ export default function PlayerScreen() {
           )}
           <View className="flex-1">
             <Text className="text-xl font-bold">{data.player.nameHe}</Text>
-            {data.player.position && <Text className="text-sm text-gray-500">{data.player.position}</Text>}
-            {data.player.nationality && (
-              <Text className="text-sm text-gray-500">{data.player.nationality}</Text>
-            )}
+            {data.player.position ? <Text className="text-sm text-gray-500">{data.player.position}</Text> : null}
+            {data.player.nationality ? <Text className="text-sm text-gray-500">{data.player.nationality}</Text> : null}
           </View>
         </View>
-        {data.currentTeam && (
+        {data.currentTeam ? (
           <Pressable onPress={() => router.push(`/teams/${data.currentTeam!.id}` as any)}>
             <Text className="text-sm text-blue-600 mt-2">
               קבוצה: {data.currentTeam.nameHe}
             </Text>
           </Pressable>
-        )}
+        ) : null}
       </Card>
 
-      {stats && (
+      {(data.player.dateOfBirth || data.player.marketValue || data.player.contractUntil) ? (
+        <Card>
+          <Text className="text-base font-bold mb-3">פרטים אישיים</Text>
+          <View className="gap-2">
+            {data.player.dateOfBirth ? (
+              <View className="flex-row justify-between">
+                <Text className="text-sm text-gray-500">תאריך לידה</Text>
+                <Text className="text-sm font-bold">
+                  {formatHebrewDate(data.player.dateOfBirth)}
+                  {age !== null ? `  (גיל ${age})` : ''}
+                </Text>
+              </View>
+            ) : null}
+            {data.player.marketValue ? (
+              <View className="flex-row justify-between">
+                <Text className="text-sm text-gray-500">שווי שוק</Text>
+                <Text className="text-sm font-bold">{data.player.marketValue}</Text>
+              </View>
+            ) : null}
+            {data.player.contractUntil ? (
+              <View className="flex-row justify-between">
+                <Text className="text-sm text-gray-500">חוזה עד</Text>
+                <Text className="text-sm font-bold">{formatHebrewDate(data.player.contractUntil)}</Text>
+              </View>
+            ) : null}
+          </View>
+        </Card>
+      ) : null}
+
+      {stats ? (
         <Card>
           <Text className="text-base font-bold mb-2">סטטיסטיקות עונה</Text>
           <View className="flex-row flex-wrap gap-3 justify-around">
@@ -67,9 +114,18 @@ export default function PlayerScreen() {
             <View className="items-center"><Text className="text-2xl font-bold">{Math.round(stats.minutes / 60)}h</Text><Text className="text-xs text-gray-500">דקות</Text></View>
           </View>
         </Card>
-      )}
+      ) : null}
 
-      {data.recentMatches.length > 0 && (
+      {data.career.length > 0 ? (
+        <Card>
+          <Text className="text-base font-bold mb-2">היסטוריית קריירה</Text>
+          {data.career.map((row, i) => (
+            <CareerRow key={row.season + '-' + i} row={row} />
+          ))}
+        </Card>
+      ) : null}
+
+      {data.recentMatches.length > 0 ? (
         <Card>
           <Text className="text-base font-bold mb-2">5 משחקים אחרונים</Text>
           {data.recentMatches.map((m) => (
@@ -89,7 +145,34 @@ export default function PlayerScreen() {
             </Pressable>
           ))}
         </Card>
-      )}
+      ) : null}
     </ScrollView>
+  );
+}
+
+function CareerRow({ row }: { row: PlayerCareerEntry }) {
+  return (
+    <View className="py-2 border-b border-gray-100">
+      <View className="flex-row justify-between">
+        <Text className="text-sm font-bold">{row.season}</Text>
+        <Text className="text-xs text-gray-500">{row.competition ?? ''}</Text>
+      </View>
+      {row.team ? <Text className="text-xs text-gray-500 mt-0.5">{row.team}</Text> : null}
+      <View className="flex-row gap-3 mt-1">
+        {row.apps !== null ? <CareerStat label="הופעות" value={row.apps} /> : null}
+        {row.goals !== null ? <CareerStat label="שערים" value={row.goals} /> : null}
+        {row.assists !== null ? <CareerStat label="בישולים" value={row.assists} /> : null}
+        {row.rating !== null ? <CareerStat label="ציון" value={row.rating.toFixed(1)} /> : null}
+      </View>
+    </View>
+  );
+}
+
+function CareerStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <View className="flex-row gap-1">
+      <Text className="text-xs text-gray-500">{label}</Text>
+      <Text className="text-xs font-bold">{value}</Text>
+    </View>
   );
 }
