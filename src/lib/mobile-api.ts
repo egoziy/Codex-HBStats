@@ -2,6 +2,7 @@ import { getCompetitionDisplayName, getRoundDisplayName } from '@/lib/competitio
 import { getCurrentSeasonStartYear, getHomepageLiveSnapshots, type HomepageLiveSnapshot } from '@/lib/home-live';
 import prisma from '@/lib/prisma';
 import { sortStandings } from '@/lib/standings';
+import { buildStandingsFromGames, shouldDeriveStandings } from '@/lib/standings-from-games';
 import {
   DEFAULT_TELEGRAM_SOURCES,
   fetchTelegramMessagesFromSources,
@@ -199,8 +200,12 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
       orderBy: [{ nameHe: 'asc' }, { nameEn: 'asc' }],
       select: { id: true, apiFootballId: true, nameHe: true, nameEn: true },
     }),
+    // Restrict standings to a single competition. Mobile shows the Israeli
+    // Premier League (Ligat HaAl) by default; without this filter the row set
+    // contains standings from every competition in the season (Leumit / cups)
+    // and the home screen mixes teams across leagues.
     prisma.standing.findMany({
-      where: { seasonId: latestSeason.id },
+      where: { seasonId: latestSeason.id, competitionId: 'comp_liga_haal' },
       include: {
         team: true,
         competition: {
@@ -231,7 +236,37 @@ export async function getMobileHomePayload(searchParams?: MobileSearchParams) {
   const selectedTeams = seasonTeams.filter((team) => favoriteTeamIds.includes(team.id));
   const selectedTeamIds = selectedTeams.map((team) => team.id);
 
-  const sortedStandings = sortStandings(rawStandings);
+  // Stored standings reflect end-of-regular-season totals. Once playoff starts,
+  // derive a live table from the actual games so the mobile home matches the
+  // live web /standings view (championship vs relegation groups, current pts).
+  const competitionGamesForStandings = await prisma.game.findMany({
+    where: {
+      seasonId: latestSeason.id,
+      competitionId: 'comp_liga_haal',
+      status: { in: ['COMPLETED', 'ONGOING'] },
+    },
+    select: {
+      homeTeamId: true,
+      awayTeamId: true,
+      homeScore: true,
+      awayScore: true,
+      roundNameEn: true,
+    },
+  });
+
+  const teamsForDerivation = seasonTeams.map((t) => ({
+    id: t.id,
+    nameEn: t.nameEn,
+    nameHe: t.nameHe,
+    logoUrl: null,
+  }));
+
+  const sortedStandings = shouldDeriveStandings(
+    rawStandings.map((r) => ({ played: r.played, groupNameEn: r.groupNameEn ?? null })),
+    competitionGamesForStandings,
+  )
+    ? buildStandingsFromGames(teamsForDerivation, competitionGamesForStandings)
+    : sortStandings(rawStandings);
   const compactStandings = (() => {
     if (!sortedStandings.length) return [];
     if (!selectedTeamIds.length) return sortedStandings.slice(0, 6);
