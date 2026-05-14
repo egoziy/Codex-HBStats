@@ -98,8 +98,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
-export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used inside ThemeProvider');
-  return ctx;
+/** Defensive default — returns the red scheme without requiring a Provider
+ *  so unit tests that mount a screen in isolation don't have to wrap. */
+const FALLBACK_THEME: ThemeContextValue = {
+  color: DEFAULT_COLOR,
+  brand: brandColorsFor(DEFAULT_COLOR),
+  setColor: async () => {},
+  schemes: (Object.keys(SCHEMES) as ColorName[]).map((name) => ({
+    name,
+    label: COLOR_LABELS[name],
+    preview: brandColorsFor(name).accent,
+  })),
+};
+
+export function useTheme(): ThemeContextValue {
+  return useContext(ThemeContext) ?? FALLBACK_THEME;
 }
