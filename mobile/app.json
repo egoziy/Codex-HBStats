@@ -16,7 +16,9 @@
     "ios": {
       "bundleIdentifier": "il.hbstats.app",
       "supportsTablet": false,
-      "associatedDomains": ["applinks:hbstats.example.com"]
+      "associatedDomains": [
+        "applinks:hbstats.example.com"
+      ]
     },
     "android": {
       "package": "il.hbstats.app",
@@ -37,6 +39,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d47a7eca-da88-4598-b14a-49cdc48ea340"
+      }
+    },
+    "owner": "egoziy"
   }
 }

@@ -105,7 +105,7 @@ export default function HomeScreen() {
 
         {/* Standings preview */}
         {data.compactStandings.length > 0 ? (
-          <Section title="טבלת ליגת העל" actionLabel="טבלה מלאה">
+          <Section title="טבלת ליגת העל" actionLabel="טבלה מלאה" onAction={() => router.push('/(tabs)/standings' as any)}>
             <Card pad={false}>
               {data.compactStandings.slice(0, 5).map((row, i, arr) => (
                 <View
@@ -172,10 +172,15 @@ export default function HomeScreen() {
                     borderBottomColor: theme.ink[100],
                   }}
                 >
-                  <Text style={{ color: theme.ink[900], fontSize: 13.5, lineHeight: 18 }} numberOfLines={2}>
+                  <Text
+                    style={{ color: theme.ink[900], fontSize: 13.5, lineHeight: 19, textAlign: 'right', writingDirection: 'rtl' }}
+                    numberOfLines={3}
+                  >
                     {n.preview}
                   </Text>
-                  <Text style={{ color: theme.ink[500], fontSize: 11, fontWeight: '600', marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <Text
+                    style={{ color: theme.ink[500], fontSize: 11, fontWeight: '600', marginTop: 4, letterSpacing: 0.5, textAlign: 'right', writingDirection: 'rtl' }}
+                  >
                     {n.source}
                   </Text>
                 </View>

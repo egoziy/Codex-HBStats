@@ -72,6 +72,36 @@ export interface CompactStandingRow {
   points: number;
 }
 
+// Standings tab — full Israeli Premier League table, optionally split into
+// championship / relegation playoff groups.
+export interface StandingsRow {
+  position: number;
+  teamId: string;
+  teamNameHe: string;
+  teamNameEn: string;
+  logoUrl: string | null;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalsDiff: number;
+  points: number;
+  form: string;             // last 5 results, newest first ("נננתה")
+  groupNameEn: string | null;
+}
+
+export interface StandingsGroup {
+  label: string;            // "ליגת העל" or "קבוצת אליפות"/"קבוצת ירידה"
+  rows: StandingsRow[];
+}
+
+export interface StandingsPayload {
+  season: { id: string; year: number; name: string } | null;
+  groups: StandingsGroup[];
+}
+
 export interface HomePayload {
   user: { id: string; name: string; avatarUrl: string | null } | null;
   favoriteTeam: TeamSummary | null;

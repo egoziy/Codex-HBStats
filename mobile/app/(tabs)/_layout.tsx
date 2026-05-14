@@ -60,6 +60,7 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'בית', tabBarIcon: HomeIcon }} />
+      <Tabs.Screen name="standings" options={{ title: 'טבלה', tabBarIcon: TableIcon }} />
       <Tabs.Screen name="live" options={{ title: 'חי', tabBarIcon: LiveIcon }} />
       <Tabs.Screen name="preferences" options={{ title: 'הגדרות', tabBarIcon: PlayersIcon }} />
     </Tabs>

@@ -1,80 +1,109 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { sortStandings } from '@/lib/standings';
+import { buildStandingsFromGames, shouldDeriveStandings } from '@/lib/standings-from-games';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const yearParam = searchParams.get('year');
+const LIGAT_HAAL_ID = 'comp_liga_haal';
 
+export async function GET(_request: NextRequest) {
   const season = await prisma.season.findFirst({
-    where: yearParam ? { year: parseInt(yearParam, 10) } : { year: { lte: new Date().getFullYear() } },
     orderBy: { year: 'desc' },
   });
-
-  if (!season) return NextResponse.json({ standings: [], season: null });
-
-  // Find Ligat Ha'al competition
-  const competitions = await prisma.competition.findMany({
-    where: { type: 'LEAGUE' },
-    select: { id: true, nameHe: true, nameEn: true },
-  });
-
-  const standings = await prisma.standing.findMany({
-    where: { seasonId: season.id },
-    include: {
-      team: { select: { id: true, nameHe: true, nameEn: true, logoUrl: true } },
-      competition: { select: { id: true, nameHe: true, nameEn: true, type: true } },
-    },
-    orderBy: [{ position: 'asc' }],
-  });
-
-  // Group by competition
-  const groups = new Map<string, typeof standings>();
-  for (const row of standings) {
-    const key = row.competitionId;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(row);
+  if (!season) {
+    return NextResponse.json({ season: null, groups: [] });
   }
 
-  // Prefer Ligat Ha'al league
-  const sorted = Array.from(groups.entries()).sort(([, a], [, b]) => {
-    const aComp = a[0]?.competition;
-    const bComp = b[0]?.competition;
-    const aIsLeague = aComp?.type === 'LEAGUE' &&
-      (aComp?.nameEn?.toLowerCase().includes('ligat') || aComp?.nameEn?.toLowerCase().includes('liga'));
-    const bIsLeague = bComp?.type === 'LEAGUE' &&
-      (bComp?.nameEn?.toLowerCase().includes('ligat') || bComp?.nameEn?.toLowerCase().includes('liga'));
-    if (aIsLeague && !bIsLeague) return -1;
-    if (!aIsLeague && bIsLeague) return 1;
-    return 0;
+  const [rawStandings, games, teams] = await Promise.all([
+    prisma.standing.findMany({
+      where: { seasonId: season.id, competitionId: LIGAT_HAAL_ID },
+      include: { team: { select: { id: true, nameHe: true, nameEn: true, logoUrl: true } } },
+    }),
+    prisma.game.findMany({
+      where: {
+        seasonId: season.id,
+        competitionId: LIGAT_HAAL_ID,
+        status: { in: ['COMPLETED', 'ONGOING'] },
+      },
+      select: {
+        homeTeamId: true,
+        awayTeamId: true,
+        homeScore: true,
+        awayScore: true,
+        roundNameEn: true,
+        dateTime: true,
+      },
+      orderBy: { dateTime: 'asc' },
+    }),
+    prisma.team.findMany({
+      where: { seasonId: season.id },
+      select: { id: true, nameEn: true, nameHe: true, logoUrl: true },
+    }),
+  ]);
+
+  // Derive playoff-aware standings when the league is in the playoff phase;
+  // otherwise sort the snapshot rows stored from API-Football.
+  const sorted = shouldDeriveStandings(
+    rawStandings.map((r) => ({ played: r.played, groupNameEn: r.groupNameEn ?? null })),
+    games,
+  )
+    ? buildStandingsFromGames(teams.map((t) => ({ ...t })), games)
+    : sortStandings(rawStandings);
+
+  // Per-team last-5 results (newest first) — used by the mobile FormPill row.
+  function lastFiveFor(teamId: string): string {
+    return games
+      .filter((g) => (g.homeTeamId === teamId || g.awayTeamId === teamId) && g.homeScore != null && g.awayScore != null)
+      .sort((a, b) => (b.dateTime?.getTime() ?? 0) - (a.dateTime?.getTime() ?? 0))
+      .slice(0, 5)
+      .map((g) => {
+        const isHome = g.homeTeamId === teamId;
+        const teamGoals = isHome ? g.homeScore! : g.awayScore!;
+        const oppGoals = isHome ? g.awayScore! : g.homeScore!;
+        if (teamGoals > oppGoals) return 'נ';
+        if (teamGoals < oppGoals) return 'ה';
+        return 'ת';
+      })
+      .join('');
+  }
+
+  const rows = sorted.map((row) => {
+    const teamId = (row as { teamId?: string; team?: { id?: string } }).teamId ?? (row as { team?: { id?: string } }).team?.id ?? '';
+    const t = teams.find((x) => x.id === teamId);
+    return {
+      position: row.position,
+      teamId,
+      teamNameHe: t?.nameHe ?? '',
+      teamNameEn: t?.nameEn ?? '',
+      logoUrl: t?.logoUrl ?? null,
+      played: row.played,
+      wins: row.wins,
+      draws: row.draws,
+      losses: row.losses,
+      goalsFor: row.goalsFor,
+      goalsAgainst: row.goalsAgainst,
+      goalsDiff: row.goalsFor - row.goalsAgainst,
+      points: row.points,
+      form: lastFiveFor(teamId),
+      groupNameEn: 'groupNameEn' in row ? (row as { groupNameEn?: string }).groupNameEn ?? null : null,
+    };
   });
 
-  const result = sorted.map(([, rows]) => ({
-    competition: rows[0]?.competition
-      ? { id: rows[0].competition.id, nameHe: rows[0].competition.nameHe, nameEn: rows[0].competition.nameEn }
-      : null,
-    rows: rows.map((r) => ({
-      position: r.position,
-      teamId: r.team.id,
-      teamNameHe: r.team.nameHe,
-      teamNameEn: r.team.nameEn,
-      logoUrl: r.team.logoUrl,
-      played: r.played,
-      wins: r.wins,
-      draws: r.draws,
-      losses: r.losses,
-      goalsFor: r.goalsFor,
-      goalsAgainst: r.goalsAgainst,
-      goalsDiff: r.goalsDiff,
-      points: r.points,
-      form: r.form,
-      description: r.descriptionHe || r.descriptionEn,
-    })),
-  }));
+  // Split by playoff group when present so the UI can render two sections.
+  const championship = rows.filter((r) => /championship/i.test(r.groupNameEn ?? ''));
+  const relegation = rows.filter((r) => /relegation/i.test(r.groupNameEn ?? ''));
+
+  const groups =
+    championship.length > 0 && relegation.length > 0
+      ? [
+          { label: 'קבוצת אליפות', rows: championship },
+          { label: 'קבוצת ירידה', rows: relegation },
+        ]
+      : [{ label: 'ליגת העל', rows }];
 
   return NextResponse.json({
     season: { id: season.id, year: season.year, name: season.name },
-    groups: result,
+    groups,
   });
 }
