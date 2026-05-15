@@ -17,8 +17,12 @@
       "bundleIdentifier": "il.hbstats.app",
       "supportsTablet": false,
       "associatedDomains": [
+        "applinks:hbstats.example.com",
         "applinks:hbstats.example.com"
-      ]
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "il.hbstats.app",

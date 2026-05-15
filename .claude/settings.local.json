@@ -271,7 +271,10 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8011/)",
       "Bash(eas --version)",
       "Bash(eas whoami *)",
-      "Bash(eas init *)"
+      "Bash(eas init *)",
+      "Bash(eas device:list)",
+      "Bash(eas device:list --apple-team-id F2DLQGUP46)",
+      "Bash(eas build *)"
     ],
     "additionalDirectories": [
       "/Users/yaniv/Documents/AI/SoocerStats/src/app/api/mobile/v1/games/[id]",
