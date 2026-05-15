@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,8 +8,11 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
 import { LiveDot } from '@/design-system/LiveDot';
+import { TabBar } from '@/design-system/TabBar';
 import { theme } from '@/design-system/theme';
 import type { MatchEvent } from '@shared/types/mobile-api';
+
+type MatchTabId = 'overview' | 'events' | 'stats' | 'lineups';
 
 const EVENT_ICONS: Record<MatchEvent['type'], string> = {
   goal: '⚽',
@@ -68,6 +72,7 @@ export default function MatchScreen() {
   const router = useRouter();
   const { data, isLoading } = useMatch(id);
   const { brand } = useTheme();
+  const [tab, setTab] = useState<MatchTabId>('overview');
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -86,13 +91,13 @@ export default function MatchScreen() {
   const isLive = match.status === 'live';
 
   return (
-    <ScrollView className="flex-1 bg-canvas-start" contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }}>
-      {/* Hero — match scoreline on purple→blue gradient */}
+    <View style={{ flex: 1, backgroundColor: theme.canvas.start }}>
+      {/* Hero — match scoreline on brand gradient. Sits above the TabBar
+          and stays in place while the tab content scrolls below. */}
       <LinearGradient
         colors={[brand.accent, brand.accentDeep]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ borderRadius: 28, overflow: 'hidden' }}
       >
         <View className="px-5 py-6">
           {/* Top row: back arrow on the right (RTL home), space-reserve on left. */}
@@ -154,85 +159,139 @@ export default function MatchScreen() {
         </View>
       </LinearGradient>
 
-      {events.length > 0 ? (
-        <Card>
-          <Section title="אירועים">
-            {events.map((e) => <EventRow key={e.id} event={e} />)}
-          </Section>
-        </Card>
-      ) : null}
+      <TabBar
+        items={[
+          { id: 'overview', label: 'סקירה' },
+          { id: 'events',   label: 'אירועים' },
+          { id: 'stats',    label: 'סטטיסטיקה' },
+          { id: 'lineups',  label: 'הרכבים' },
+        ]}
+        value={tab}
+        onChange={(id) => setTab(id as MatchTabId)}
+      />
 
-      {data.matchStats ? (
-        <Card>
-          <Section title="סטטיסטיקה">
-            {data.matchStats.possession ? <StatRow label="החזקה" home={`${data.matchStats.possession.home}%`} away={`${data.matchStats.possession.away}%`} /> : null}
-            {data.matchStats.shots ? <StatRow label="בעיטות" home={data.matchStats.shots.home} away={data.matchStats.shots.away} /> : null}
-            {data.matchStats.corners ? <StatRow label="קרנות" home={data.matchStats.corners.home} away={data.matchStats.corners.away} /> : null}
-          </Section>
-        </Card>
-      ) : null}
-
-      {(data.lineups.home.players.length > 0 || data.lineups.away.players.length > 0) ? (
-        <Card>
-          <Section title="הרכבים">
-            <View style={{ flexDirection: 'row-reverse', gap: 12 }}>
-              <View className="flex-1">
-                <Text className="text-sm font-black text-ink-900">{homeTeam.nameHe}</Text>
-                {data.lineups.home.formation ? (
-                  <Text className="text-[11px] font-semibold text-ink-500 mb-2 uppercase tracking-wider">
-                    מערך {data.lineups.home.formation}
-                  </Text>
-                ) : null}
-                {data.lineups.home.players.filter((p) => p.isStarting).map((p) => (
-                  <View key={p.player.id} className="flex-row items-center gap-2 py-1.5 border-b border-ink-100">
-                    <View className="w-7 h-7 rounded-full bg-ink-100 items-center justify-center">
-                      <Text className="text-[11px] font-black text-ink-700">{p.player.jerseyNumber ?? '—'}</Text>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }}>
+        {tab === 'overview' ? (
+          <>
+            {/* Top stats highlights */}
+            {data.matchStats ? (
+              <Card>
+                <Section title="הסטטיסטיקה החשובה">
+                  {data.matchStats.possession ? <StatRow label="החזקה" home={`${data.matchStats.possession.home}%`} away={`${data.matchStats.possession.away}%`} /> : null}
+                  {data.matchStats.shots ? <StatRow label="בעיטות" home={data.matchStats.shots.home} away={data.matchStats.shots.away} /> : null}
+                  {data.matchStats.corners ? <StatRow label="קרנות" home={data.matchStats.corners.home} away={data.matchStats.corners.away} /> : null}
+                </Section>
+              </Card>
+            ) : null}
+            {/* Goals only — full timeline lives in the Events tab */}
+            {events.filter((e) => e.type === 'goal').length > 0 ? (
+              <Card>
+                <Section title="שערים">
+                  {events.filter((e) => e.type === 'goal').map((e) => <EventRow key={e.id} event={e} />)}
+                </Section>
+              </Card>
+            ) : null}
+            {/* H2H summary */}
+            {data.h2h && data.h2h.lastN.length > 0 ? (
+              <Card>
+                <Section title="היסטוריה ישירה">
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-around', paddingVertical: 8 }}>
+                    <View className="items-center flex-1">
+                      <Text className="text-3xl font-black text-ink-900">{data.h2h.wins.home}</Text>
+                      <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider" numberOfLines={1}>{homeTeam.nameHe}</Text>
                     </View>
-                    <Text className="flex-1 text-sm text-ink-900" numberOfLines={1}>{p.player.nameHe}</Text>
-                  </View>
-                ))}
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-black text-ink-900">{awayTeam.nameHe}</Text>
-                {data.lineups.away.formation ? (
-                  <Text className="text-[11px] font-semibold text-ink-500 mb-2 uppercase tracking-wider">
-                    מערך {data.lineups.away.formation}
-                  </Text>
-                ) : null}
-                {data.lineups.away.players.filter((p) => p.isStarting).map((p) => (
-                  <View key={p.player.id} className="flex-row items-center gap-2 py-1.5 border-b border-ink-100">
-                    <View className="w-7 h-7 rounded-full bg-ink-100 items-center justify-center">
-                      <Text className="text-[11px] font-black text-ink-700">{p.player.jerseyNumber ?? '—'}</Text>
+                    <View className="items-center flex-1">
+                      <Text className="text-3xl font-black text-ink-700">{data.h2h.wins.draw}</Text>
+                      <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider">תיקו</Text>
                     </View>
-                    <Text className="flex-1 text-sm text-ink-900" numberOfLines={1}>{p.player.nameHe}</Text>
+                    <View className="items-center flex-1">
+                      <Text className="text-3xl font-black text-ink-900">{data.h2h.wins.away}</Text>
+                      <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider" numberOfLines={1}>{awayTeam.nameHe}</Text>
+                    </View>
                   </View>
-                ))}
-              </View>
-            </View>
-          </Section>
-        </Card>
-      ) : null}
+                </Section>
+              </Card>
+            ) : null}
+          </>
+        ) : null}
 
-      {data.h2h && data.h2h.lastN.length > 0 ? (
-        <Card>
-          <Section title="היסטוריה ישירה">
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-around', paddingVertical: 8 }}>
-              <View className="items-center flex-1">
-                <Text className="text-3xl font-black text-ink-900">{data.h2h.wins.home}</Text>
-                <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider" numberOfLines={1}>{homeTeam.nameHe}</Text>
+        {tab === 'events' ? (
+          events.length > 0 ? (
+            <Card>
+              {events.map((e) => <EventRow key={e.id} event={e} />)}
+            </Card>
+          ) : (
+            <Card>
+              <Text style={{ textAlign: 'center', color: theme.ink[500], padding: 16 }}>
+                אין אירועים זמינים למשחק זה.
+              </Text>
+            </Card>
+          )
+        ) : null}
+
+        {tab === 'stats' ? (
+          data.matchStats ? (
+            <Card>
+              {data.matchStats.possession ? <StatRow label="החזקה" home={`${data.matchStats.possession.home}%`} away={`${data.matchStats.possession.away}%`} /> : null}
+              {data.matchStats.shots ? <StatRow label="בעיטות" home={data.matchStats.shots.home} away={data.matchStats.shots.away} /> : null}
+              {data.matchStats.corners ? <StatRow label="קרנות" home={data.matchStats.corners.home} away={data.matchStats.corners.away} /> : null}
+            </Card>
+          ) : (
+            <Card>
+              <Text style={{ textAlign: 'center', color: theme.ink[500], padding: 16 }}>
+                הסטטיסטיקה לא נטענה.
+              </Text>
+            </Card>
+          )
+        ) : null}
+
+        {tab === 'lineups' ? (
+          (data.lineups.home.players.length > 0 || data.lineups.away.players.length > 0) ? (
+            <Card>
+              <View style={{ flexDirection: 'row-reverse', gap: 12 }}>
+                <View className="flex-1">
+                  <Text className="text-sm font-black text-ink-900">{homeTeam.nameHe}</Text>
+                  {data.lineups.home.formation ? (
+                    <Text className="text-[11px] font-semibold text-ink-500 mb-2 uppercase tracking-wider">
+                      מערך {data.lineups.home.formation}
+                    </Text>
+                  ) : null}
+                  {data.lineups.home.players.filter((p) => p.isStarting).map((p) => (
+                    <View key={p.player.id} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.ink[100] }}>
+                      <View className="w-7 h-7 rounded-full bg-ink-100 items-center justify-center">
+                        <Text className="text-[11px] font-black text-ink-700">{p.player.jerseyNumber ?? '—'}</Text>
+                      </View>
+                      <Text style={{ flex: 1, textAlign: 'right' }} className="text-sm text-ink-900" numberOfLines={1}>{p.player.nameHe}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-black text-ink-900">{awayTeam.nameHe}</Text>
+                  {data.lineups.away.formation ? (
+                    <Text className="text-[11px] font-semibold text-ink-500 mb-2 uppercase tracking-wider">
+                      מערך {data.lineups.away.formation}
+                    </Text>
+                  ) : null}
+                  {data.lineups.away.players.filter((p) => p.isStarting).map((p) => (
+                    <View key={p.player.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.ink[100] }}>
+                      <View className="w-7 h-7 rounded-full bg-ink-100 items-center justify-center">
+                        <Text className="text-[11px] font-black text-ink-700">{p.player.jerseyNumber ?? '—'}</Text>
+                      </View>
+                      <Text style={{ flex: 1, textAlign: 'left' }} className="text-sm text-ink-900" numberOfLines={1}>{p.player.nameHe}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
-              <View className="items-center flex-1">
-                <Text className="text-3xl font-black text-ink-700">{data.h2h.wins.draw}</Text>
-                <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider">תיקו</Text>
-              </View>
-              <View className="items-center flex-1">
-                <Text className="text-3xl font-black text-ink-900">{data.h2h.wins.away}</Text>
-                <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider" numberOfLines={1}>{awayTeam.nameHe}</Text>
-              </View>
-            </View>
-          </Section>
-        </Card>
-      ) : null}
-    </ScrollView>
+            </Card>
+          ) : (
+            <Card>
+              <Text style={{ textAlign: 'center', color: theme.ink[500], padding: 16 }}>
+                ההרכבים לא נטענו.
+              </Text>
+            </Card>
+          )
+        ) : null}
+      </ScrollView>
+    </View>
   );
 }
