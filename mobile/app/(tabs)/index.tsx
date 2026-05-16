@@ -1,8 +1,10 @@
-import { ScrollView, View, Text, RefreshControl, ActivityIndicator, Pressable } from 'react-native';
+import { ScrollView, View, Text, RefreshControl, ActivityIndicator, Pressable, Image, Linking } from 'react-native';
+import { rtlRow } from '@/lib/rtl';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useHome } from '@/hooks/useHome';
 import { useTheme } from '@/contexts/ThemeContext';
+import { absoluteImage } from '@/lib/config';
 import { Header } from '@/design-system/Header';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
@@ -59,7 +61,7 @@ export default function HomeScreen() {
           <Section title="המועדפת שלך">
             <Pressable onPress={() => router.push(`/teams/${fav.id}` as any)}>
               <Card>
-                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 12 }}>
+                <View style={{ flexDirection: rtlRow(), alignItems: 'center', gap: 12 }}>
                   <TeamCrest mono={fav.nameHe.slice(0, 2)} bg={brand.accent} fg="white" size={36} logoUrl={fav.logoUrl} />
                   <Text style={{ flex: 1, color: theme.ink[900], fontSize: 16, fontWeight: '800', textAlign: 'right' }}>
                     {fav.nameHe}
@@ -83,7 +85,7 @@ export default function HomeScreen() {
                       paddingHorizontal: 14,
                       borderBottomWidth: i === arr.length - 1 ? 0 : 1,
                       borderBottomColor: theme.ink[100],
-                      flexDirection: 'row-reverse',
+                      flexDirection: rtlRow(),
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       gap: 8,
@@ -115,7 +117,7 @@ export default function HomeScreen() {
                     paddingHorizontal: 14,
                     borderBottomWidth: i === arr.length - 1 ? 0 : 1,
                     borderBottomColor: theme.ink[100],
-                    flexDirection: 'row-reverse',
+                    flexDirection: rtlRow(),
                     alignItems: 'center',
                   }}
                 >
@@ -162,29 +164,57 @@ export default function HomeScreen() {
         {data.newsStrip.length > 0 ? (
           <Section title="חדשות">
             <Card pad={false}>
-              {data.newsStrip.slice(0, 5).map((n, i, arr) => (
-                <View
-                  key={n.id}
-                  style={{
-                    paddingVertical: 10,
-                    paddingHorizontal: 14,
-                    borderBottomWidth: i === arr.length - 1 ? 0 : 1,
-                    borderBottomColor: theme.ink[100],
-                  }}
-                >
-                  <Text
-                    style={{ color: theme.ink[900], fontSize: 13.5, lineHeight: 19, textAlign: 'right', writingDirection: 'rtl' }}
-                    numberOfLines={3}
+              {data.newsStrip.slice(0, 5).map((n, i, arr) => {
+                const formattedDate = (() => {
+                  if (!n.publishedAt) return null;
+                  const d = new Date(n.publishedAt);
+                  if (Number.isNaN(d.getTime())) return null;
+                  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                })();
+                return (
+                  <Pressable
+                    key={n.id}
+                    onPress={() => n.url && Linking.openURL(n.url)}
                   >
-                    {n.preview}
-                  </Text>
-                  <Text
-                    style={{ color: theme.ink[500], fontSize: 11, fontWeight: '600', marginTop: 4, letterSpacing: 0.5, textAlign: 'right', writingDirection: 'rtl' }}
-                  >
-                    {n.source}
-                  </Text>
-                </View>
-              ))}
+                    <View
+                      style={{
+                        flexDirection: rtlRow(),
+                        gap: 12,
+                        padding: 12,
+                        borderBottomWidth: i === arr.length - 1 ? 0 : 1,
+                        borderBottomColor: theme.ink[100],
+                      }}
+                    >
+                      {absoluteImage(n.imageUrl) ? (
+                        <Image
+                          source={{ uri: absoluteImage(n.imageUrl) }}
+                          style={{ width: 64, height: 64, borderRadius: 10, backgroundColor: theme.ink[100] }}
+                        />
+                      ) : (
+                        <View style={{ width: 64, height: 64, borderRadius: 10, backgroundColor: brand.accentGlow, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 22 }}>📰</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{ color: theme.ink[900], fontSize: 13.5, lineHeight: 19, textAlign: 'right', writingDirection: 'rtl' }}
+                          numberOfLines={3}
+                        >
+                          {n.preview}
+                        </Text>
+                        <View style={{ flexDirection: rtlRow(), alignItems: 'center', marginTop: 6, gap: 6 }}>
+                          <View style={{ backgroundColor: brand.accentGlow, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 }}>
+                            <Text style={{ color: brand.accent, fontSize: 10, fontWeight: '800' }}>{n.source}</Text>
+                          </View>
+                          {formattedDate ? (
+                            <Text style={{ color: theme.ink[500], fontSize: 10 }}>{formattedDate}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
             </Card>
           </Section>
         ) : null}
@@ -203,7 +233,7 @@ function MatchPreviewRow({ match, onPress, brandAccent }: { match: MatchCard; on
   return (
     <Pressable onPress={onPress}>
       <Card>
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+        <View style={{ flexDirection: rtlRow(), alignItems: 'center' }}>
           <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900], textAlign: 'right' }} numberOfLines={1}>
             {match.home.team.nameHe}
           </Text>
@@ -252,7 +282,7 @@ function LiveFeatureHero({
           <Text style={{ color: 'white', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>חי עכשיו · ליגת העל</Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+      <View style={{ flexDirection: rtlRow(), alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
         <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
           <TeamCrest mono={match.home.name.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} />
           <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
@@ -267,7 +297,7 @@ function LiveFeatureHero({
           <View
             style={{
               marginTop: 6,
-              flexDirection: 'row-reverse',
+              flexDirection: rtlRow(),
               alignItems: 'center',
               gap: 4,
               backgroundColor: 'white',
@@ -330,7 +360,7 @@ function UpcomingFeatureHero({
           <Text style={{ color: 'white', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>המשחק הבא · ליגת העל</Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+      <View style={{ flexDirection: rtlRow(), alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
         <View style={{ flex: 1, alignItems: 'center', gap: 8 }}>
           <TeamCrest mono={match.home.team.nameHe.slice(0, 2)} bg="rgba(255,255,255,0.2)" fg="white" size={52} radius={14} logoUrl={match.home.team.logoUrl} />
           <Text style={{ color: 'white', fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>

@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { rtlRow } from '@/lib/rtl';
 import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Svg, Path } from 'react-native-svg';
 import { useMatch } from '@/hooks/useMatch';
 import { useTheme } from '@/contexts/ThemeContext';
+import { absoluteImage } from '@/lib/config';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
 import { LiveDot } from '@/design-system/LiveDot';
@@ -37,19 +39,48 @@ const STATUS_LABEL_HE: Record<string, string> = {
  * everywhere — home events read right-to-left, away events read left-to-right.
  */
 function EventRow({ event }: { event: MatchEvent }) {
-  const flexDirection = event.team === 'home' ? 'row-reverse' : 'row';
+  // Home events read right→left (RTL flow), away events left→right.
+  const flexDirection: 'row' | 'row-reverse' = event.team === 'home' ? rtlRow() : (rtlRow() === 'row-reverse' ? 'row' : 'row-reverse');
+  const textAlign = event.team === 'home' ? 'right' : 'left';
+  // Substitutions get rendered as "incoming → outgoing" (the API stores the
+  // SUBSTITUTION_OUT row with the incoming player in relatedPlayer).
+  const isSub = event.type === 'sub';
+  const isGoal = event.type === 'goal';
   return (
-    <View style={{ flexDirection, alignItems: 'center', gap: 8, paddingVertical: 6 }}>
+    <View style={{ flexDirection, alignItems: 'center', gap: 8, paddingVertical: 8 }}>
       <View style={{ width: 36, alignItems: 'center' }}>
         <Text className="text-[11px] font-black text-ink-500">{event.minute}'</Text>
       </View>
       <Text className="text-lg">{EVENT_ICONS[event.type] ?? '•'}</Text>
-      <Text
-        className="flex-1 text-sm font-bold text-ink-900"
-        style={{ textAlign: event.team === 'home' ? 'right' : 'left' }}
-      >
-        {event.player ?? '—'}
-      </Text>
+      <View style={{ flex: 1 }}>
+        {isSub && event.assistPlayer ? (
+          <>
+            <View style={{ flexDirection, alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 11, color: theme.result.win }}>▲</Text>
+              <Text className="text-sm font-bold text-ink-900" style={{ textAlign, flexShrink: 1 }} numberOfLines={1}>
+                {event.assistPlayer}
+              </Text>
+            </View>
+            <View style={{ flexDirection, alignItems: 'center', gap: 4, marginTop: 1 }}>
+              <Text style={{ fontSize: 11, color: theme.result.loss }}>▼</Text>
+              <Text className="text-xs text-ink-500" style={{ textAlign, flexShrink: 1 }} numberOfLines={1}>
+                {event.player ?? '—'}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text className="text-sm font-bold text-ink-900" style={{ textAlign }} numberOfLines={1}>
+              {event.player ?? '—'}
+            </Text>
+            {isGoal && event.assistPlayer ? (
+              <Text className="text-[11px] text-ink-500" style={{ textAlign, marginTop: 1 }} numberOfLines={1}>
+                בישול: {event.assistPlayer}
+              </Text>
+            ) : null}
+          </>
+        )}
+      </View>
     </View>
   );
 }
@@ -58,7 +89,7 @@ function StatRow({ label, home, away }: { label: string; home: string | number; 
   // HOME value on the right (start in RTL), AWAY on the left — force row-reverse
   // so it always reads correctly regardless of Expo Go's RTL handling.
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f5f5f4' }}>
+    <View style={{ flexDirection: rtlRow(), alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f5f5f4' }}>
       <Text style={{ width: 48, textAlign: 'right' }} className="text-sm font-black text-ink-900">{home}</Text>
       <Text className="flex-1 text-center text-[11px] font-semibold text-ink-500 uppercase tracking-wider">{label}</Text>
       <Text style={{ width: 48, textAlign: 'left' }} className="text-sm font-black text-ink-900">{away}</Text>
@@ -101,7 +132,7 @@ export default function MatchScreen() {
       >
         <View className="px-5 py-6">
           {/* Top row: back arrow on the right (RTL home), space-reserve on left. */}
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <View style={{ flexDirection: rtlRow(), alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <Pressable onPress={goBack} hitSlop={10} style={{ padding: 4 }}>
               <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                 {/* Arrow head pointing right (back in RTL = forward visually) */}
@@ -113,10 +144,10 @@ export default function MatchScreen() {
           {/* HOME on the right, AWAY on the left — forced via row-reverse so
               the layout reads correctly in both RTL and Expo Go (which does
               not auto-flip flex-row). */}
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: rtlRow(), alignItems: 'center', justifyContent: 'space-between' }}>
             <View className="items-center flex-1">
-              {homeTeam.logoUrl ? (
-                <Image source={{ uri: homeTeam.logoUrl }} className="w-16 h-16 rounded-md bg-white/10" />
+              {absoluteImage(homeTeam.logoUrl) ? (
+                <Image source={{ uri: absoluteImage(homeTeam.logoUrl) }} className="w-16 h-16 rounded-md bg-white/10" />
               ) : (
                 <View className="w-16 h-16 rounded-md bg-white/15 items-center justify-center">
                   <Text className="text-2xl font-black text-white">{homeTeam.nameHe.slice(0, 1)}</Text>
@@ -139,8 +170,8 @@ export default function MatchScreen() {
               </Text>
             </View>
             <View className="items-center flex-1">
-              {awayTeam.logoUrl ? (
-                <Image source={{ uri: awayTeam.logoUrl }} className="w-16 h-16 rounded-md bg-white/10" />
+              {absoluteImage(awayTeam.logoUrl) ? (
+                <Image source={{ uri: absoluteImage(awayTeam.logoUrl) }} className="w-16 h-16 rounded-md bg-white/10" />
               ) : (
                 <View className="w-16 h-16 rounded-md bg-white/15 items-center justify-center">
                   <Text className="text-2xl font-black text-white">{awayTeam.nameHe.slice(0, 1)}</Text>
@@ -177,9 +208,9 @@ export default function MatchScreen() {
             {data.matchStats ? (
               <Card>
                 <Section title="הסטטיסטיקה החשובה">
+                  {data.matchStats.xg ? <StatRow label="שערים צפויים (xG)" home={data.matchStats.xg.home.toFixed(2)} away={data.matchStats.xg.away.toFixed(2)} /> : null}
                   {data.matchStats.possession ? <StatRow label="החזקה" home={`${data.matchStats.possession.home}%`} away={`${data.matchStats.possession.away}%`} /> : null}
-                  {data.matchStats.shots ? <StatRow label="בעיטות" home={data.matchStats.shots.home} away={data.matchStats.shots.away} /> : null}
-                  {data.matchStats.corners ? <StatRow label="קרנות" home={data.matchStats.corners.home} away={data.matchStats.corners.away} /> : null}
+                  {data.matchStats.shotsOnTarget ? <StatRow label="בעיטות למסגרת" home={data.matchStats.shotsOnTarget.home} away={data.matchStats.shotsOnTarget.away} /> : null}
                 </Section>
               </Card>
             ) : null}
@@ -195,7 +226,7 @@ export default function MatchScreen() {
             {data.h2h && data.h2h.lastN.length > 0 ? (
               <Card>
                 <Section title="היסטוריה ישירה">
-                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-around', paddingVertical: 8 }}>
+                  <View style={{ flexDirection: rtlRow(), justifyContent: 'space-around', paddingVertical: 8 }}>
                     <View className="items-center flex-1">
                       <Text className="text-3xl font-black text-ink-900">{data.h2h.wins.home}</Text>
                       <Text className="text-[11px] font-semibold text-ink-500 mt-1 uppercase tracking-wider" numberOfLines={1}>{homeTeam.nameHe}</Text>
@@ -232,9 +263,15 @@ export default function MatchScreen() {
         {tab === 'stats' ? (
           data.matchStats ? (
             <Card>
+              {data.matchStats.xg ? <StatRow label="שערים צפויים (xG)" home={data.matchStats.xg.home.toFixed(2)} away={data.matchStats.xg.away.toFixed(2)} /> : null}
               {data.matchStats.possession ? <StatRow label="החזקה" home={`${data.matchStats.possession.home}%`} away={`${data.matchStats.possession.away}%`} /> : null}
               {data.matchStats.shots ? <StatRow label="בעיטות" home={data.matchStats.shots.home} away={data.matchStats.shots.away} /> : null}
+              {data.matchStats.shotsOnTarget ? <StatRow label="בעיטות למסגרת" home={data.matchStats.shotsOnTarget.home} away={data.matchStats.shotsOnTarget.away} /> : null}
               {data.matchStats.corners ? <StatRow label="קרנות" home={data.matchStats.corners.home} away={data.matchStats.corners.away} /> : null}
+              {data.matchStats.fouls ? <StatRow label="עבירות" home={data.matchStats.fouls.home} away={data.matchStats.fouls.away} /> : null}
+              {data.matchStats.offsides ? <StatRow label="נבדלים" home={data.matchStats.offsides.home} away={data.matchStats.offsides.away} /> : null}
+              {data.matchStats.yellowCards ? <StatRow label="צהובים" home={data.matchStats.yellowCards.home} away={data.matchStats.yellowCards.away} /> : null}
+              {data.matchStats.redCards ? <StatRow label="אדומים" home={data.matchStats.redCards.home} away={data.matchStats.redCards.away} /> : null}
             </Card>
           ) : (
             <Card>
@@ -248,7 +285,7 @@ export default function MatchScreen() {
         {tab === 'lineups' ? (
           (data.lineups.home.players.length > 0 || data.lineups.away.players.length > 0) ? (
             <Card>
-              <View style={{ flexDirection: 'row-reverse', gap: 12 }}>
+              <View style={{ flexDirection: rtlRow(), gap: 12 }}>
                 <View className="flex-1">
                   <Text className="text-sm font-black text-ink-900">{homeTeam.nameHe}</Text>
                   {data.lineups.home.formation ? (
@@ -257,7 +294,7 @@ export default function MatchScreen() {
                     </Text>
                   ) : null}
                   {data.lineups.home.players.filter((p) => p.isStarting).map((p) => (
-                    <View key={p.player.id} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.ink[100] }}>
+                    <View key={p.player.id} style={{ flexDirection: rtlRow(), alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.ink[100] }}>
                       <View className="w-7 h-7 rounded-full bg-ink-100 items-center justify-center">
                         <Text className="text-[11px] font-black text-ink-700">{p.player.jerseyNumber ?? '—'}</Text>
                       </View>

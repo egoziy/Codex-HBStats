@@ -97,19 +97,35 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       }
     : null;
 
-  // Build currentSeasonStats from the first aggregated stat row (latest season)
+  // Build currentSeasonStats from the first aggregated stat row (latest season).
+  // Flashscore's most recent career row is more accurate (it counts goals from
+  // the live league source), so when available we prefer it for goals/assists/
+  // cards while keeping the DB's appearance/minute counters.
   const firstStat = raw.sections.aggregatedStats?.[0] ?? null;
+  const fsTop = extras.career[0] ?? null;
   const currentSeasonStats: PlayerSeasonStats | null = firstStat
     ? {
-        appearances: firstStat.gamesPlayed,
+        appearances: fsTop?.apps ?? firstStat.gamesPlayed,
         starts: firstStat.starts,
         minutes: firstStat.minutesPlayed,
-        goals: firstStat.goals,
-        assists: firstStat.assists,
-        yellowCards: firstStat.yellowCards,
-        redCards: firstStat.redCards,
+        goals: fsTop?.goals ?? firstStat.goals,
+        assists: fsTop?.assists ?? firstStat.assists,
+        yellowCards: fsTop?.yellow ?? firstStat.yellowCards,
+        redCards: fsTop?.red ?? firstStat.redCards,
         subbedIn: firstStat.substituteAppearances,
         subbedOut: firstStat.timesSubbedOff,
+      }
+    : fsTop
+    ? {
+        appearances: fsTop.apps ?? 0,
+        starts: 0,
+        minutes: 0,
+        goals: fsTop.goals ?? 0,
+        assists: fsTop.assists ?? 0,
+        yellowCards: fsTop.yellow ?? 0,
+        redCards: fsTop.red ?? 0,
+        subbedIn: 0,
+        subbedOut: 0,
       }
     : null;
 

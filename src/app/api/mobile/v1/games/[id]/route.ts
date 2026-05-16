@@ -18,7 +18,11 @@ function toMatchStatus(raw: string | null | undefined): MatchStatus {
   }
 }
 
-function toMatchEventType(raw: string): MatchEvent['type'] {
+/** Map raw DB event type to the public mobile taxonomy. Returns null for
+ *  event types that should NOT surface on the mobile timeline (e.g. ASSIST
+ *  — the assister is already exposed on the GOAL event via relatedPlayer).
+ */
+function toMatchEventType(raw: string): MatchEvent['type'] | null {
   switch (raw) {
     case 'GOAL':
     case 'PENALTY_GOAL':
@@ -34,8 +38,10 @@ function toMatchEventType(raw: string): MatchEvent['type'] {
       return 'sub';
     case 'PENALTY_MISSED':
       return 'penalty';
+    case 'ASSIST':
+      return null;  // redundant — assister already on the GOAL row
     default:
-      return 'goal';
+      return null;  // skip unknown to avoid mis-rendering as ⚽
   }
 }
 
@@ -72,19 +78,24 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     city: null,
   };
 
-  // Build events array
-  const events: MatchEvent[] = raw.sections.events.map((event) => {
-    const teamSide: 'home' | 'away' =
-      event.teamId === game.homeTeam.id ? 'home' : 'away';
-    return {
-      id: event.id,
-      minute: event.minute,
-      type: toMatchEventType(event.type),
-      player: event.playerName ?? null,
-      team: teamSide,
-      assistPlayer: event.relatedPlayerName ?? null,
-    };
-  });
+  // Build events array. Drop events whose type doesn't render on mobile
+  // (ASSIST, anything unrecognised) instead of letting them appear as ⚽.
+  const events: MatchEvent[] = raw.sections.events
+    .map((event) => {
+      const mappedType = toMatchEventType(event.type);
+      if (!mappedType) return null;
+      const teamSide: 'home' | 'away' =
+        event.teamId === game.homeTeam.id ? 'home' : 'away';
+      return {
+        id: event.id,
+        minute: event.minute,
+        type: mappedType,
+        player: event.playerName ?? null,
+        team: teamSide,
+        assistPlayer: event.relatedPlayerName ?? null,
+      };
+    })
+    .filter((e): e is MatchEvent => e !== null);
 
   // Build lineups
   function buildLineup(side: 'home' | 'away'): Lineup {
@@ -139,33 +150,30 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   const shotsRow = findStat('בעיטות');
   const cornersRow = findStat('קרנות');
   const foulsRow = findStat('עבירות');
+  const yellowsRow = findStat('צהובים');
+  const redsRow = findStat('אדומים');
+  const offsidesRow = findStat('נבדלים');
+  const xgRow = findStat('xG (שערים צפויים)');
 
-  const hasAnyStats = [possessionRow, shotsOnTargetRow, shotsRow, cornersRow, foulsRow].some(
-    (row) => row && (row.homeValue !== null || row.awayValue !== null)
-  );
+  const allRows = [possessionRow, shotsOnTargetRow, shotsRow, cornersRow, foulsRow, yellowsRow, redsRow, offsidesRow, xgRow];
+  const hasAnyStats = allRows.some((row) => row && (row.homeValue !== null || row.awayValue !== null));
+
+  const pair = (row: typeof possessionRow) =>
+    row && (row.homeValue !== null || row.awayValue !== null)
+      ? { home: row.homeValue ?? 0, away: row.awayValue ?? 0 }
+      : null;
 
   const matchStats: MatchStats | null = hasAnyStats
     ? {
-        possession:
-          possessionRow && (possessionRow.homeValue !== null || possessionRow.awayValue !== null)
-            ? { home: possessionRow.homeValue ?? 0, away: possessionRow.awayValue ?? 0 }
-            : null,
-        shots:
-          shotsRow && (shotsRow.homeValue !== null || shotsRow.awayValue !== null)
-            ? { home: shotsRow.homeValue ?? 0, away: shotsRow.awayValue ?? 0 }
-            : null,
-        shotsOnTarget:
-          shotsOnTargetRow && (shotsOnTargetRow.homeValue !== null || shotsOnTargetRow.awayValue !== null)
-            ? { home: shotsOnTargetRow.homeValue ?? 0, away: shotsOnTargetRow.awayValue ?? 0 }
-            : null,
-        corners:
-          cornersRow && (cornersRow.homeValue !== null || cornersRow.awayValue !== null)
-            ? { home: cornersRow.homeValue ?? 0, away: cornersRow.awayValue ?? 0 }
-            : null,
-        fouls:
-          foulsRow && (foulsRow.homeValue !== null || foulsRow.awayValue !== null)
-            ? { home: foulsRow.homeValue ?? 0, away: foulsRow.awayValue ?? 0 }
-            : null,
+        possession: pair(possessionRow),
+        shots: pair(shotsRow),
+        shotsOnTarget: pair(shotsOnTargetRow),
+        corners: pair(cornersRow),
+        fouls: pair(foulsRow),
+        yellowCards: pair(yellowsRow),
+        redCards: pair(redsRow),
+        offsides: pair(offsidesRow),
+        xg: pair(xgRow),
       }
     : null;
 

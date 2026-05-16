@@ -1,4 +1,5 @@
 import { ScrollView, View, Text, RefreshControl, ActivityIndicator, Pressable } from 'react-native';
+import { rtlRow } from '@/lib/rtl';
 import { useRouter } from 'expo-router';
 import { useLive } from '@/hooks/useLive';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -55,7 +56,7 @@ export default function LiveScreen() {
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={brand.accent} />}
         contentContainerStyle={{ paddingVertical: 16, gap: 16, paddingBottom: 32 }}
       >
-        <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: -4 }}>
+        <View style={{ flexDirection: rtlRow(), justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: -4 }}>
           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.ink[500], textTransform: 'uppercase', letterSpacing: 1 }}>
             עודכן {formatLastUpdated(data.lastUpdated)}
           </Text>
@@ -67,7 +68,7 @@ export default function LiveScreen() {
                 <Pressable key={m.id} onPress={() => router.push(`/games/${m.id}` as any)}>
                   <View
                     style={{
-                      flexDirection: 'row-reverse',
+                      flexDirection: rtlRow(),
                       alignItems: 'center',
                       paddingVertical: 12,
                       paddingHorizontal: 14,

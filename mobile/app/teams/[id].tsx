@@ -1,9 +1,11 @@
 import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'react-native';
+import { rtlRow } from '@/lib/rtl';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Svg, Path } from 'react-native-svg';
 import { useTeam } from '@/hooks/useTeam';
 import { useTheme } from '@/contexts/ThemeContext';
+import { absoluteImage } from '@/lib/config';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
 import { MetricCell } from '@/design-system/MetricCell';
@@ -44,7 +46,7 @@ export default function TeamScreen() {
         style={{ paddingHorizontal: 20, paddingTop: 56, paddingBottom: 24 }}
       >
         {/* Top row: back arrow on the right */}
-        <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 16 }}>
+        <View style={{ flexDirection: rtlRow(), justifyContent: 'space-between', marginBottom: 16 }}>
           <Pressable onPress={goBack} hitSlop={10} style={{ padding: 4 }}>
             <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
               <Path d="M9 6l6 6-6 6" />
@@ -53,9 +55,9 @@ export default function TeamScreen() {
           <View />
         </View>
 
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 16 }}>
-          {data.team.logoUrl ? (
-            <Image source={{ uri: data.team.logoUrl }} style={{ width: 72, height: 72, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+        <View style={{ flexDirection: rtlRow(), alignItems: 'center', gap: 16 }}>
+          {absoluteImage(data.team.logoUrl) ? (
+            <Image source={{ uri: absoluteImage(data.team.logoUrl) }} style={{ width: 72, height: 72, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)' }} />
           ) : (
             <View style={{ width: 72, height: 72, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ color: 'white', fontSize: 28, fontWeight: '900' }}>{data.team.nameHe.slice(0, 1)}</Text>
@@ -79,7 +81,7 @@ export default function TeamScreen() {
       {data.recentForm.length > 0 ? (
         <Section title="צורה אחרונה" dense>
           <Card>
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'flex-start' }}>
+            <View style={{ flexDirection: rtlRow(), justifyContent: 'flex-start' }}>
               <FormRow form={formHe} size={26} gap={6} />
             </View>
           </Card>
@@ -89,7 +91,7 @@ export default function TeamScreen() {
       {/* Season stats grid */}
       <Section title="סטטיסטיקות עונה" dense>
         <Card pad={false}>
-          <View style={{ flexDirection: 'row-reverse', padding: 14, gap: 8 }}>
+          <View style={{ flexDirection: rtlRow(), padding: 14, gap: 8 }}>
             <MetricCell value={data.seasonStats.goalsScored} label="שערים בעד" tone="accent" />
             <MetricCell value={data.seasonStats.goalsAgainst} label="שערים נגד" />
             <MetricCell value={data.seasonStats.cleanSheets} label="רשת נקייה" />
@@ -107,7 +109,7 @@ export default function TeamScreen() {
                 <View
                   key={row.rank}
                   style={{
-                    flexDirection: 'row-reverse',
+                    flexDirection: rtlRow(),
                     alignItems: 'center',
                     paddingVertical: 10,
                     paddingHorizontal: 14,
@@ -168,7 +170,7 @@ export default function TeamScreen() {
                   <Pressable key={p.id} onPress={() => router.push(`/players/${p.id}` as any)}>
                     <View
                       style={{
-                        flexDirection: 'row-reverse',
+                        flexDirection: rtlRow(),
                         alignItems: 'center',
                         paddingVertical: 10,
                         paddingHorizontal: 14,
@@ -203,7 +205,7 @@ function MatchPreviewRow({ match }: { match: {
   const d = new Date(match.date);
   const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+    <View style={{ flexDirection: rtlRow(), alignItems: 'center' }}>
       <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.ink[900], textAlign: 'right' }} numberOfLines={1}>
         {match.home.team.nameHe}
       </Text>

@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { rtlRow } from '@/lib/rtl';
 import { ScrollView, View, Text, ActivityIndicator, Image, Pressable, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStats } from '@/hooks/useStats';
 import { useTheme } from '@/contexts/ThemeContext';
+import { absoluteImage } from '@/lib/config';
 import { Header } from '@/design-system/Header';
 import { Card } from '@/design-system/Card';
 import { TabBar } from '@/design-system/TabBar';
@@ -104,7 +106,7 @@ function LeaderRow({
   const Content = (
     <View
       style={{
-        flexDirection: 'row-reverse',
+        flexDirection: rtlRow(),
         alignItems: 'center',
         paddingVertical: 12,
         paddingHorizontal: 14,
@@ -116,8 +118,8 @@ function LeaderRow({
       <Text style={{ width: 24, fontSize: 13, fontWeight: '800', color: theme.ink[500], textAlign: 'center' }}>
         {entry.rank}
       </Text>
-      {entry.photoUrl ? (
-        <Image source={{ uri: entry.photoUrl }} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.ink[100] }} />
+      {absoluteImage(entry.photoUrl) ? (
+        <Image source={{ uri: absoluteImage(entry.photoUrl) }} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.ink[100] }} />
       ) : (
         <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.ink[100], alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: 13, fontWeight: '800', color: theme.ink[700] }}>

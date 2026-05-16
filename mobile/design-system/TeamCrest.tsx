@@ -7,6 +7,7 @@
  */
 
 import { View, Text, Image } from 'react-native';
+import { absoluteImage } from '@/lib/config';
 
 interface TeamCrestProps {
   /** Background block color (team primary). */
@@ -26,10 +27,11 @@ interface TeamCrestProps {
 export function TeamCrest({ bg = '#1c1917', fg = '#ffffff', mono = '?', size = 28, radius, logoUrl }: TeamCrestProps) {
   const r = radius ?? size * 0.22;
 
-  if (logoUrl) {
+  const resolvedLogo = absoluteImage(logoUrl);
+  if (resolvedLogo) {
     return (
       <Image
-        source={{ uri: logoUrl }}
+        source={{ uri: resolvedLogo }}
         style={{ width: size, height: size, borderRadius: r, backgroundColor: bg }}
       />
     );

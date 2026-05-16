@@ -257,31 +257,70 @@ async function enrichPlayers() {
     if (!fp.nameEn) { notFound++; continue; }
 
     // Find candidate DB players across this team's season rows (any of dbTeamIds).
-    const playersInTeam = await prisma.player.findMany({ where: { teamId: { in: dbTeamIds } } });
-    // Player name normalizer: tolerant of word order + accents + dots
-    const namePieces = (s) => normEn((s || '').replace(/\./g, ''))
-      .split(/\s+/).filter((w) => w.length >= 2).sort();
-    const target = namePieces(fp.nameEn);
-    const targetSet = new Set(target);
-    const candidates = playersInTeam.filter((p) => {
-      const pn = namePieces(p.nameEn);
-      if (pn.length === 0) return false;
-      // Pieces match in any order — every Flashscore piece must appear in DB name OR vice-versa.
-      const dbHasAll = target.every((w) => pn.includes(w));
-      const fsHasAll = pn.every((w) => targetSet.has(w));
-      return dbHasAll || fsHasAll;
+    // Include team.season.year for tie-breaking — prefer the most-recent record
+    // so the Flashscore extras land on the current-season row of the player.
+    const playersInTeam = await prisma.player.findMany({
+      where: { teamId: { in: dbTeamIds } },
+      include: { team: { select: { season: { select: { year: true } } } } },
     });
+    // Tokenizer: lowercase, strip dots, split, keep all pieces (incl. 1-char
+    // initials like "D" from "D. Biton"). Sort for set-comparison.
+    const namePieces = (s) => normEn((s || '').replace(/\./g, ''))
+      .split(/\s+/).filter(Boolean);
+    const target = namePieces(fp.nameEn);
+    const targetLong = target.filter((w) => w.length >= 2);
 
-    if (candidates.length === 0) { notFound++; continue; }
-    if (candidates.length > 1) {
-      // Prefer the one whose birthDate matches if Flashscore has one
-      if (fp.birthDate) {
-        const exact = candidates.find((p) => p.birthDate && dayKey(p.birthDate) === dayKey(fp.birthDate));
-        if (exact) candidates.splice(0, candidates.length, exact);
+    function matchScore(p) {
+      const pn = namePieces(p.nameEn);
+      if (pn.length === 0 || target.length === 0) return 0;
+      const pnLong = pn.filter((w) => w.length >= 2);
+      // Strong signal: every long piece matches.
+      const allLongMatch =
+        targetLong.length > 0 &&
+        targetLong.every((w) => pnLong.includes(w)) &&
+        pnLong.every((w) => targetLong.includes(w));
+      if (allLongMatch) return 100;
+      // Last-name match + first-letter match: e.g. "Dan Biton" ↔ "D. Biton".
+      // We compare the longest piece (likely surname) and the first letter.
+      const fsSurname = targetLong[targetLong.length - 1];
+      const pnSurname = pnLong[pnLong.length - 1];
+      if (fsSurname && fsSurname === pnSurname) {
+        const fsFirstLetter = target[0]?.[0];
+        const pnFirstLetter = pn[0]?.[0];
+        if (fsFirstLetter && pnFirstLetter && fsFirstLetter === pnFirstLetter) return 90;
+        // Surname-only match is weaker; only allow if there's a single such row.
+        return 60;
       }
-      if (candidates.length > 1) { multiMatch++; continue; }
+      // Subset matches (Flashscore name nested in DB name or vice-versa).
+      if (targetLong.length > 0 && targetLong.every((w) => pnLong.includes(w))) return 50;
+      if (pnLong.length > 0 && pnLong.every((w) => targetLong.includes(w))) return 50;
+      return 0;
     }
-    const dbPlayer = candidates[0];
+
+    const scored = playersInTeam
+      .map((p) => ({ p, score: matchScore(p) }))
+      .filter((c) => c.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) { notFound++; continue; }
+
+    // Single best match — or top-scoring is strictly better than the rest.
+    let best = scored[0];
+    if (scored.length > 1 && scored[1].score === best.score) {
+      // Tie 1: prefer a row whose birthDate matches Flashscore.
+      if (fp.birthDate) {
+        const exact = scored.find((c) => c.p.birthDate && dayKey(c.p.birthDate) === dayKey(fp.birthDate));
+        if (exact) best = exact;
+      }
+      // Tie 2: prefer the most-recent season (Flashscore reflects current season).
+      if (scored.filter((c) => c.score === best.score).length > 1) {
+        const tied = scored.filter((c) => c.score === best.score);
+        tied.sort((a, b) => (b.p.team?.season?.year ?? 0) - (a.p.team?.season?.year ?? 0));
+        // If still tied after year, accept the first (deterministic).
+        best = tied[0];
+      }
+    }
+    const dbPlayer = best.p;
     mapped++;
 
     if (!APPLY) continue;

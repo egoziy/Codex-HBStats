@@ -15,3 +15,15 @@ export function apiUrl(path: string): string {
   const suffix = path.startsWith('/') ? path : '/' + path;
   return `${base}/api/mobile/${config.apiVersion}${suffix}`;
 }
+
+/**
+ * Many image URLs from the API are server-relative ("/uploads/teams/...").
+ * Same-origin requests from the web app work; iPhone needs absolute URLs.
+ * Wrap every Image `uri` value through this helper.
+ */
+export function absoluteImage(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const base = config.apiBaseUrl.replace(/\/$/, '');
+  return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+}

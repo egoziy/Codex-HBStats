@@ -7,7 +7,11 @@ import { queryClient, persister } from '@/lib/queryClient';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 
+// Force native RTL on so flex-row auto-flips to row-reverse on real devices.
+// Components use `rtlRow()` helper which returns 'row' on native-RTL builds
+// (let native flip) and 'row-reverse' on Expo Go (manual flip).
 if (!I18nManager.isRTL) {
+  I18nManager.allowRTL(true);
   I18nManager.forceRTL(true);
 }
 

@@ -1,5 +1,6 @@
 import { View, Text, Image } from 'react-native';
 import type { TeamHeader as TeamHeaderData } from '@shared/types/common';
+import { absoluteImage } from '@/lib/config';
 
 interface TeamHeaderProps {
   team: TeamHeaderData;
@@ -8,8 +9,8 @@ interface TeamHeaderProps {
 export function TeamHeader({ team }: TeamHeaderProps) {
   return (
     <View className="flex-row items-center gap-3 py-4">
-      {team.logoUrl ? (
-        <Image source={{ uri: team.logoUrl }} className="w-16 h-16 rounded-md" />
+      {absoluteImage(team.logoUrl) ? (
+        <Image source={{ uri: absoluteImage(team.logoUrl) }} className="w-16 h-16 rounded-md" />
       ) : (
         <View className="w-16 h-16 rounded-md bg-gray-200 items-center justify-center">
           <Text className="text-2xl font-bold text-gray-600">

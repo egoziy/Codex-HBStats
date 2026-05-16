@@ -1,7 +1,9 @@
 import { ScrollView, View, Text, RefreshControl, ActivityIndicator, Pressable, Image } from 'react-native';
+import { rtlRow } from '@/lib/rtl';
 import { useRouter } from 'expo-router';
 import { useStandings } from '@/hooks/useStandings';
 import { useTheme } from '@/contexts/ThemeContext';
+import { absoluteImage } from '@/lib/config';
 import { Header } from '@/design-system/Header';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
@@ -61,7 +63,7 @@ export default function StandingsScreen() {
               {/* Column header */}
               <View
                 style={{
-                  flexDirection: 'row-reverse',
+                  flexDirection: rtlRow(),
                   alignItems: 'center',
                   paddingVertical: 8,
                   paddingHorizontal: 14,
@@ -116,7 +118,7 @@ function StandingsRowView({
     <Pressable onPress={onPress}>
       <View
         style={{
-          flexDirection: 'row-reverse',
+          flexDirection: rtlRow(),
           alignItems: 'center',
           paddingVertical: 11,
           paddingHorizontal: 14,
@@ -144,9 +146,9 @@ function StandingsRowView({
           {row.position}
         </Text>
 
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1, marginHorizontal: 10, gap: 8 }}>
-          {row.logoUrl ? (
-            <Image source={{ uri: row.logoUrl }} style={{ width: 22, height: 22, borderRadius: 4 }} />
+        <View style={{ flexDirection: rtlRow(), alignItems: 'center', flex: 1, marginHorizontal: 10, gap: 8 }}>
+          {absoluteImage(row.logoUrl) ? (
+            <Image source={{ uri: absoluteImage(row.logoUrl) }} style={{ width: 22, height: 22, borderRadius: 4 }} />
           ) : (
             <View style={{ width: 22, height: 22, borderRadius: 4, backgroundColor: theme.ink[200] }} />
           )}
@@ -178,7 +180,7 @@ function StandingsRowView({
         </View>
       </View>
       {row.form ? (
-        <View style={{ paddingHorizontal: 14, paddingBottom: 8, flexDirection: 'row-reverse' }}>
+        <View style={{ paddingHorizontal: 14, paddingBottom: 8, flexDirection: rtlRow() }}>
           <FormRow form={row.form} size={16} gap={3} />
         </View>
       ) : null}

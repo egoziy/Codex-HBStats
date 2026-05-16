@@ -5,6 +5,7 @@
 
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { rtlRow } from '@/lib/rtl';
 import { theme } from './theme';
 
 export interface TabItem {
@@ -35,7 +36,7 @@ export function TabBar({ items, value, onChange }: TabBarProps) {
           paddingHorizontal: 16,
           // row-reverse so the first tab anchors to the start side in RTL
           // (force explicit since Expo Go doesn't auto-flip flex).
-          flexDirection: 'row-reverse',
+          flexDirection: rtlRow(),
           gap: 20,
         }}
       >

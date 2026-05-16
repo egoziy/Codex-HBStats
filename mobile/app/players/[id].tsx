@@ -1,9 +1,11 @@
 import { ScrollView, View, Text, ActivityIndicator, Image, Pressable } from 'react-native';
+import { rtlRow } from '@/lib/rtl';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Svg, Path } from 'react-native-svg';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useTheme } from '@/contexts/ThemeContext';
+import { absoluteImage } from '@/lib/config';
 import { Card } from '@/design-system/Card';
 import { Section } from '@/design-system/Section';
 import { MetricCell } from '@/design-system/MetricCell';
@@ -64,7 +66,7 @@ export default function PlayerScreen() {
       >
         <View className="px-6 py-6">
           {/* Back arrow on the right (RTL) */}
-          <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 12 }}>
+          <View style={{ flexDirection: rtlRow(), justifyContent: 'space-between', marginBottom: 12 }}>
             <Pressable
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as any))}
               hitSlop={10}
@@ -76,9 +78,9 @@ export default function PlayerScreen() {
             </Pressable>
             <View />
           </View>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 16 }}>
-            {data.player.photoUrl ? (
-              <Image source={{ uri: data.player.photoUrl }} className="w-24 h-24 rounded-full border-2 border-white/30" />
+          <View style={{ flexDirection: rtlRow(), alignItems: 'center', gap: 16 }}>
+            {absoluteImage(data.player.photoUrl) ? (
+              <Image source={{ uri: absoluteImage(data.player.photoUrl) }} className="w-24 h-24 rounded-full border-2 border-white/30" />
             ) : (
               <View className="w-24 h-24 rounded-full bg-white/15 items-center justify-center border-2 border-white/30">
                 <Text className="text-3xl font-black text-white">{firstLetter}</Text>
@@ -101,7 +103,7 @@ export default function PlayerScreen() {
             </View>
           </View>
           {(age !== null || data.player.marketValue || data.player.contractUntil) ? (
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
+            <View style={{ flexDirection: rtlRow(), flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
               {age !== null ? <Pill label={`גיל ${age}`} /> : null}
               {data.player.marketValue ? <Pill label={`שווי ${data.player.marketValue}`} /> : null}
               {data.player.contractUntil ? <Pill label={`חוזה ${formatHebrewDate(data.player.contractUntil)}`} /> : null}

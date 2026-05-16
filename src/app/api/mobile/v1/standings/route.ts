@@ -97,8 +97,8 @@ export async function GET(_request: NextRequest) {
   const groups =
     championship.length > 0 && relegation.length > 0
       ? [
-          { label: 'קבוצת אליפות', rows: championship },
-          { label: 'קבוצת ירידה', rows: relegation },
+          { label: 'פלייאוף עליון', rows: championship },
+          { label: 'פלייאוף תחתון', rows: relegation },
         ]
       : [{ label: 'ליגת העל', rows }];
 

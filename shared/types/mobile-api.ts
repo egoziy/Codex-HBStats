@@ -191,6 +191,10 @@ export interface MatchStats {
   shotsOnTarget: { home: number; away: number } | null;
   corners: { home: number; away: number } | null;
   fouls: { home: number; away: number } | null;
+  yellowCards: { home: number; away: number } | null;
+  redCards: { home: number; away: number } | null;
+  offsides: { home: number; away: number } | null;
+  xg: { home: number; away: number } | null;
 }
 
 export interface H2H {

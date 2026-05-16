@@ -6,6 +6,7 @@
 import { View, Text, Pressable } from 'react-native';
 import { Svg, Path, Circle } from 'react-native-svg';
 import { useTheme } from '@/contexts/ThemeContext';
+import { rtlRow } from '@/lib/rtl';
 import { theme } from './theme';
 
 interface HeaderProps {
@@ -28,7 +29,7 @@ export function Header({ title, subtitle, onBack, showBack }: HeaderProps) {
           paddingTop: 54,
           paddingBottom: 10,
           paddingHorizontal: 14,
-          flexDirection: 'row-reverse',
+          flexDirection: rtlRow(),
           alignItems: 'center',
           justifyContent: 'space-between',
         }}
@@ -47,7 +48,7 @@ export function Header({ title, subtitle, onBack, showBack }: HeaderProps) {
           </Pressable>
         )}
 
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: rtlRow(), alignItems: 'center', gap: 8 }}>
           <Text style={{ color: 'white', fontSize: 11, fontWeight: '700', letterSpacing: 0.4, opacity: 0.9 }}>
             ליגת העל
           </Text>
