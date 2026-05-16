@@ -72,6 +72,32 @@ export interface CompactStandingRow {
   points: number;
 }
 
+// Stats tab — top scorers / assisters / yellow / red cards leaderboards.
+export interface StatsLeaderEntry {
+  rank: number;
+  playerId: string | null;
+  playerNameHe: string;
+  playerNameEn: string | null;
+  teamNameHe: string;
+  teamNameEn: string | null;
+  value: number;
+  gamesPlayed: number | null;
+  photoUrl: string | null;
+}
+
+export interface StatsCategories {
+  topScorers: StatsLeaderEntry[];
+  topAssists: StatsLeaderEntry[];
+  topYellowCards: StatsLeaderEntry[];
+  topRedCards: StatsLeaderEntry[];
+}
+
+export interface StatsPayload {
+  season: { id: string; year: number; name: string } | null;
+  competition: { id: string; nameHe: string; nameEn: string } | null;
+  categories: StatsCategories;
+}
+
 // Standings tab — full Israeli Premier League table, optionally split into
 // championship / relegation playoff groups.
 export interface StandingsRow {
